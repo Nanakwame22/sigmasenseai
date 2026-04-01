@@ -547,7 +547,7 @@ export class CPIMetricsBridge {
         status: 'active',
         auto_generated: true,
         actions: [
-          { label: 'View CPI Dashboard', url: '/cpi' },
+          { label: 'View CPI Dashboard', url: '/dashboard/cpi' },
           { label: 'Acknowledge', action: 'acknowledge' },
         ],
       });

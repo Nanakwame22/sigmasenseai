@@ -6,7 +6,7 @@ export default function Footer() {
   const footerLinks = {
     platform: [
       { label: 'AIM — Actionable Intelligence', href: '/dashboard/aim' },
-      { label: 'CPI — Clinical Process Intelligence', href: '/cpi' },
+      { label: 'CPI — Clinical Process Intelligence', href: '/dashboard/cpi' },
       { label: 'DMAIC Digital Workspace', href: '/dashboard/dmaic' },
       { label: 'Live Metrics & Dashboard', href: '/dashboard/metrics' },
       { label: 'AI Root Cause Analysis', href: '/dashboard/root-cause' },

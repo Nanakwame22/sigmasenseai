@@ -172,7 +172,7 @@ export default function CPIClinicalPanel() {
           No clinical data synced yet. Visit the CPI page to activate the bridge — domain snapshots will appear here automatically.
         </p>
         <Link
-          to="/cpi"
+          to="/dashboard/cpi"
           className="inline-flex items-center gap-2 text-sm font-semibold text-teal-600 hover:text-teal-800 transition-colors cursor-pointer"
         >
           <i className="ri-heart-pulse-line"></i>
@@ -217,7 +217,7 @@ export default function CPIClinicalPanel() {
             <span className="text-xs font-semibold text-gray-600">Bridge Active</span>
           </div>
           <Link
-            to="/cpi"
+            to="/dashboard/cpi"
             className="text-xs font-semibold text-teal-600 hover:text-teal-800 flex items-center gap-1 cursor-pointer whitespace-nowrap transition-colors"
           >
             View CPI <i className="ri-arrow-right-s-line"></i>

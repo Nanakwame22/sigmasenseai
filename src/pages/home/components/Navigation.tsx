@@ -64,7 +64,7 @@ export default function Navigation() {
         title: '🏥 CPI — Clinical Process Intelligence',
         description: 'Real-time predictive intelligence for healthcare operations',
         icon: 'ri-heart-pulse-line',
-        link: '/cpi'
+        link: '/dashboard/cpi'
       },
       {
         title: 'Live Metrics & Performance Dashboard',

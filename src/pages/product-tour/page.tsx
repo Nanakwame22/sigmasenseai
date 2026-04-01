@@ -79,7 +79,7 @@ const MODULES = [
       { icon: 'ri-file-shield-2-line', text: 'Complete phi_access_logs audit trail satisfying HIPAA §164.312' },
     ],
     ctaLabel: 'Explore CPI Module',
-    ctaLink: '/cpi',
+    ctaLink: '/dashboard/cpi',
     preview: <CPIPreview />,
     reverse: false,
   },
