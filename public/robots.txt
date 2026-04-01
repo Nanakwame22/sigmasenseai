@@ -1,0 +1,8 @@
+User-agent: *
+Disallow: /auth/
+Disallow: /dashboard/
+Disallow: /onboarding
+Allow: /
+Allow: /use-cases
+Allow: /case-studies
+Sitemap: https://example.com/sitemap.xml

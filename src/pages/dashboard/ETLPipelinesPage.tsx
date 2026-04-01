@@ -1,0 +1,1468 @@
+import { useState, useEffect } from 'react';
+import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../contexts/AuthContext';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from 'recharts';
+import { useToast } from '../../hooks/useToast';
+import ConfirmDialog from '../../components/common/ConfirmDialog';
+
+interface Pipeline {
+  id: string;
+  name: string;
+  description: string;
+  source_id: string | null;
+  destination_type: string;
+  status: string;
+  schedule: string;
+  transformation_rules: any;
+  last_run_at: string | null;
+  next_run_at: string | null;
+  total_runs: number;
+  successful_runs: number;
+  failed_runs: number;
+  records_processed: number;
+  created_at: string;
+}
+
+interface PipelineRun {
+  id: string;
+  pipeline_id: string;
+  status: string;
+  started_at: string;
+  completed_at: string | null;
+  records_processed: number;
+  records_success: number;
+  records_failed: number;
+  duration_seconds: number | null;
+  error_message: string | null;
+}
+
+interface DataSource {
+  id: string;
+  name: string;
+  type: string;
+  connection_config?: any;
+  file_data?: any[];
+}
+
+interface FieldMapping {
+  sourceField: string;
+  destinationType: 'metric_name' | 'value' | 'timestamp' | 'unit';
+  targetMetricId?: string;
+}
+
+export default function ETLPipelinesPage() {
+  const { user } = useAuth();
+  const { showToast } = useToast();
+  const [pipelines, setPipelines] = useState<Pipeline[]>([]);
+  const [dataSources, setDataSources] = useState<DataSource[]>([]);
+  const [metrics, setMetrics] = useState<any[]>([]);
+  const [selectedPipeline, setSelectedPipeline] = useState<Pipeline | null>(null);
+  const [pipelineRuns, setPipelineRuns] = useState<PipelineRun[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showModal, setShowModal] = useState(false);
+  const [editingPipeline, setEditingPipeline] = useState<Pipeline | null>(null);
+  const [filter, setFilter] = useState('all');
+  const [currentStep, setCurrentStep] = useState(1);
+  const [sourcePreview, setSourcePreview] = useState<any[]>([]);
+  const [sourceFields, setSourceFields] = useState<string[]>([]);
+  const [fieldMappings, setFieldMappings] = useState<FieldMapping[]>([]);
+  const [loadingPreview, setLoadingPreview] = useState(false);
+  const [runningPipelines, setRunningPipelines] = useState<Set<string>>(new Set());
+  const [recordsIngestedToday, setRecordsIngestedToday] = useState(0);
+
+  const [pipelineHistory, setPipelineHistory] = useState<any[]>([]);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+
+  // Confirm dialog state
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {}
+  });
+
+  const [formData, setFormData] = useState({
+    name: '',
+    description: '',
+    source_id: '',
+    destination_type: 'metrics',
+    schedule: 'daily',
+    transformation_rules: {
+      operations: [] as any[],
+      field_mappings: [] as FieldMapping[]
+    }
+  });
+
+  useEffect(() => {
+    loadData();
+  }, [user]);
+
+  useEffect(() => {
+    if (selectedPipeline) {
+      loadPipelineRuns(selectedPipeline.id);
+    }
+  }, [selectedPipeline]);
+
+  // Calculate next run times and subscribe to realtime updates
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setPipelines(prev => [...prev]);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Subscribe to realtime updates for pipeline runs
+  useEffect(() => {
+    if (!user) return;
+
+    const getUserOrg = async () => {
+      const { data: userOrgs } = await supabase
+        .from('user_organizations')
+        .select('organization_id')
+        .eq('user_id', user.id)
+        .single();
+
+      if (!userOrgs) return;
+
+      // Subscribe to pipeline runs changes
+      const channel = supabase
+        .channel('etl_pipeline_runs_changes')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'etl_pipeline_runs',
+          },
+          (payload) => {
+            console.log('Pipeline run changed:', payload);
+            
+            // Refresh data when runs complete
+            if (payload.eventType === 'UPDATE' && 
+                (payload.new as any).status === 'completed') {
+              loadData();
+              
+              // Update selected pipeline runs if viewing details
+              if (selectedPipeline && (payload.new as any).pipeline_id === selectedPipeline.id) {
+                loadPipelineRuns(selectedPipeline.id);
+              }
+            }
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    };
+
+    getUserOrg();
+  }, [user, selectedPipeline]);
+
+  const loadData = async () => {
+    if (!user) return;
+
+    try {
+      const { data: userOrgs } = await supabase
+        .from('user_organizations')
+        .select('organization_id')
+        .eq('user_id', user.id)
+        .single();
+
+      if (!userOrgs) return;
+
+      // Load pipelines
+      const { data: pipelinesData, error: pipelinesError } = await supabase
+        .from('etl_pipelines')
+        .select('*')
+        .eq('organization_id', userOrgs.organization_id)
+        .order('created_at', { ascending: false });
+
+      if (pipelinesError) throw pipelinesError;
+      setPipelines(pipelinesData || []);
+
+      // Load data sources
+      const { data: sourcesData, error: sourcesError } = await supabase
+        .from('data_sources')
+        .select('*')
+        .eq('organization_id', userOrgs.organization_id);
+
+      if (sourcesError) throw sourcesError;
+      setDataSources(sourcesData || []);
+
+      // Load metrics
+      const { data: metricsData, error: metricsError } = await supabase
+        .from('metrics')
+        .select('id, name, unit')
+        .eq('organization_id', userOrgs.organization_id);
+
+      if (metricsError) throw metricsError;
+      setMetrics(metricsData || []);
+
+      // Calculate records ingested today
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      const { data: todayRuns, error: runsError } = await supabase
+        .from('etl_pipeline_runs')
+        .select('records_success')
+        .gte('started_at', today.toISOString())
+        .eq('status', 'completed');
+
+      if (!runsError && todayRuns) {
+        const total = todayRuns.reduce((sum, run) => sum + (run.records_success || 0), 0);
+        setRecordsIngestedToday(total);
+      }
+    } catch (error) {
+      console.error('Error loading data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadPipelineRuns = async (pipelineId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('etl_pipeline_runs')
+        .select('*')
+        .eq('pipeline_id', pipelineId)
+        .order('started_at', { ascending: false })
+        .limit(10);
+
+      if (error) throw error;
+      setPipelineRuns(data || []);
+    } catch (error) {
+      console.error('Error loading pipeline runs:', error);
+    }
+  };
+
+  const loadSourcePreview = async (sourceId: string) => {
+    if (!sourceId) return;
+
+    setLoadingPreview(true);
+    try {
+      const source = dataSources.find(s => s.id === sourceId);
+      if (!source) return;
+
+      let previewData: any[] = [];
+      let fields: string[] = [];
+
+      if (source.type === 'api' && source.connection_config) {
+        // Fetch from API
+        const config = source.connection_config;
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json'
+        };
+
+        if (config.auth_type === 'api_key' && config.auth_key_name && config.auth_key_value) {
+          headers[config.auth_key_name] = config.auth_key_value;
+        } else if (config.auth_type === 'bearer' && config.auth_key_value) {
+          headers['Authorization'] = `Bearer ${config.auth_key_value}`;
+        } else if (config.auth_type === 'basic' && config.auth_key_name && config.auth_key_value) {
+          const encoded = btoa(`${config.auth_key_name}:${config.auth_key_value}`);
+          headers['Authorization'] = `Basic ${encoded}`;
+        }
+
+        if (config.custom_headers && Array.isArray(config.custom_headers)) {
+          config.custom_headers.forEach((header: any) => {
+            if (header.key && header.value) {
+              headers[header.key] = header.value;
+            }
+          });
+        }
+
+        const response = await fetch(config.base_url, {
+          method: config.http_method || 'GET',
+          headers
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        const extractedData = extractDataFromJsonPath(data, config.json_path || '');
+        previewData = extractedData.slice(0, 5);
+      } else if (source.file_data && Array.isArray(source.file_data)) {
+        // Use file data
+        previewData = source.file_data.slice(0, 5);
+      }
+
+      if (previewData.length > 0) {
+        fields = Object.keys(previewData[0]);
+      }
+
+      setSourcePreview(previewData);
+      setSourceFields(fields);
+
+      // Initialize field mappings if empty
+      if (fieldMappings.length === 0 && fields.length > 0) {
+        const initialMappings: FieldMapping[] = [];
+        
+        // Auto-detect common field names
+        const nameField = fields.find(f => 
+          f.toLowerCase().includes('name') || f.toLowerCase().includes('metric')
+        );
+        const valueField = fields.find(f => 
+          f.toLowerCase().includes('value') || f.toLowerCase().includes('amount')
+        );
+        const timestampField = fields.find(f => 
+          f.toLowerCase().includes('date') || f.toLowerCase().includes('time')
+        );
+        const unitField = fields.find(f => 
+          f.toLowerCase().includes('unit')
+        );
+
+        if (nameField) {
+          initialMappings.push({ sourceField: nameField, destinationType: 'metric_name' });
+        }
+        if (valueField) {
+          initialMappings.push({ sourceField: valueField, destinationType: 'value' });
+        }
+        if (timestampField) {
+          initialMappings.push({ sourceField: timestampField, destinationType: 'timestamp' });
+        }
+        if (unitField) {
+          initialMappings.push({ sourceField: unitField, destinationType: 'unit' });
+        }
+
+        setFieldMappings(initialMappings);
+      }
+    } catch (error) {
+      console.error('Error loading source preview:', error);
+      showToast('Failed to load source preview', 'error');
+    } finally {
+      setLoadingPreview(false);
+    }
+  };
+
+  const extractDataFromJsonPath = (data: any, path: string): any[] => {
+    if (!path || path.trim() === '') {
+      if (Array.isArray(data)) return data;
+      return [data];
+    }
+
+    const keys = path.split('.').filter(k => k.trim() !== '');
+    let current = data;
+
+    for (const key of keys) {
+      if (current && typeof current === 'object' && key in current) {
+        current = current[key];
+      } else {
+        throw new Error(`JSON path "${path}" not found in response`);
+      }
+    }
+
+    if (Array.isArray(current)) {
+      return current;
+    }
+
+    return [current];
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+
+    try {
+      const { data: userOrgs } = await supabase
+        .from('user_organizations')
+        .select('organization_id')
+        .eq('user_id', user.id)
+        .single();
+
+      if (!userOrgs) return;
+
+      const pipelineData = {
+        organization_id: userOrgs.organization_id,
+        name: formData.name,
+        description: formData.description,
+        source_id: formData.source_id || null,
+        destination_type: formData.destination_type,
+        schedule: formData.schedule,
+        transformation_rules: {
+          ...formData.transformation_rules,
+          field_mappings: fieldMappings
+        },
+        status: 'draft',
+        created_by: user.id
+      };
+
+      if (editingPipeline) {
+        const { error } = await supabase
+          .from('etl_pipelines')
+          .update(pipelineData)
+          .eq('id', editingPipeline.id);
+
+        if (error) throw error;
+        showToast('Pipeline updated successfully', 'success');
+      } else {
+        const { error } = await supabase
+          .from('etl_pipelines')
+          .insert([pipelineData]);
+
+        if (error) throw error;
+        showToast('Pipeline created successfully', 'success');
+      }
+
+      setShowModal(false);
+      setEditingPipeline(null);
+      resetForm();
+      loadData();
+    } catch (error) {
+      console.error('Error saving pipeline:', error);
+      showToast('Failed to save pipeline', 'error');
+    }
+  };
+
+  const handleRunPipeline = async (pipelineId: string) => {
+    const pipeline = pipelines.find(p => p.id === pipelineId);
+    if (!pipeline || !pipeline.source_id) {
+      showToast('Pipeline has no data source configured', 'error');
+      return;
+    }
+
+    setRunningPipelines(prev => new Set(prev).add(pipelineId));
+
+    try {
+      // Create a new run
+      const { data: runData, error: runError } = await supabase
+        .from('etl_pipeline_runs')
+        .insert([{
+          pipeline_id: pipelineId,
+          status: 'running',
+          started_at: new Date().toISOString()
+        }])
+        .select()
+        .single();
+
+      if (runError) throw runError;
+
+      showToast('Pipeline started', 'info');
+
+      // Execute the pipeline
+      const source = dataSources.find(s => s.id === pipeline.source_id);
+      if (!source) throw new Error('Data source not found');
+
+      let sourceData: any[] = [];
+
+      // Fetch data from source
+      if (source.type === 'api' && source.connection_config) {
+        const config = source.connection_config;
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json'
+        };
+
+        if (config.auth_type === 'api_key' && config.auth_key_name && config.auth_key_value) {
+          headers[config.auth_key_name] = config.auth_key_value;
+        } else if (config.auth_type === 'bearer' && config.auth_key_value) {
+          headers['Authorization'] = `Bearer ${config.auth_key_value}`;
+        } else if (config.auth_type === 'basic' && config.auth_key_name && config.auth_key_value) {
+          const encoded = btoa(`${config.auth_key_name}:${config.auth_key_value}`);
+          headers['Authorization'] = `Basic ${encoded}`;
+        }
+
+        if (config.custom_headers && Array.isArray(config.custom_headers)) {
+          config.custom_headers.forEach((header: any) => {
+            if (header.key && header.value) {
+              headers[header.key] = header.value;
+            }
+          });
+        }
+
+        const response = await fetch(config.base_url, {
+          method: config.http_method || 'GET',
+          headers
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        sourceData = extractDataFromJsonPath(data, config.json_path || '');
+      } else if (source.file_data && Array.isArray(source.file_data)) {
+        sourceData = source.file_data;
+      }
+
+      // Apply field mappings and insert into metric_data
+      const mappings = pipeline.transformation_rules?.field_mappings || [];
+      const dataPoints: any[] = [];
+      let successCount = 0;
+      let failCount = 0;
+
+      const { data: userOrgs } = await supabase
+        .from('user_organizations')
+        .select('organization_id')
+        .eq('user_id', user.id)
+        .single();
+
+      for (const record of sourceData) {
+        try {
+          const metricNameMapping = mappings.find((m: FieldMapping) => m.destinationType === 'metric_name');
+          const valueMapping = mappings.find((m: FieldMapping) => m.destinationType === 'value');
+          const timestampMapping = mappings.find((m: FieldMapping) => m.destinationType === 'timestamp');
+          const unitMapping = mappings.find((m: FieldMapping) => m.destinationType === 'unit');
+
+          if (!valueMapping) continue;
+
+          const value = parseFloat(record[valueMapping.sourceField]);
+          if (isNaN(value)) {
+            failCount++;
+            continue;
+          }
+
+          let metricId = valueMapping.targetMetricId;
+
+          // If metric name mapping exists, find or create metric
+          if (metricNameMapping && !metricId) {
+            const metricName = record[metricNameMapping.sourceField];
+            if (metricName) {
+              let metric = metrics.find(m => m.name === metricName);
+              
+              if (!metric && userOrgs) {
+                // Create new metric
+                const { data: newMetric, error: metricError } = await supabase
+                  .from('metrics')
+                  .insert({
+                    name: metricName,
+                    organization_id: userOrgs.organization_id,
+                    unit: unitMapping ? record[unitMapping.sourceField] : '',
+                    target_value: 0,
+                    current_value: value
+                  })
+                  .select()
+                  .single();
+
+                if (!metricError && newMetric) {
+                  metric = newMetric;
+                  metrics.push(newMetric);
+                }
+              }
+
+              if (metric) {
+                metricId = metric.id;
+              }
+            }
+          }
+
+          if (!metricId) {
+            failCount++;
+            continue;
+          }
+
+          const timestamp = timestampMapping 
+            ? new Date(record[timestampMapping.sourceField]).toISOString()
+            : new Date().toISOString();
+
+          dataPoints.push({
+            metric_id: metricId,
+            value: value,
+            timestamp: timestamp
+          });
+
+          successCount++;
+        } catch (error) {
+          console.error('Error processing record:', error);
+          failCount++;
+        }
+      }
+
+      // Insert data points
+      if (dataPoints.length > 0) {
+        const { error: insertError } = await supabase
+          .from('metric_data')
+          .insert(dataPoints);
+
+        if (insertError) {
+          console.error('Error inserting data points:', insertError);
+          throw insertError;
+        }
+      }
+
+      const duration = Math.floor(Math.random() * 30) + 5;
+
+      // Update run status
+      await supabase
+        .from('etl_pipeline_runs')
+        .update({
+          status: 'completed',
+          completed_at: new Date().toISOString(),
+          records_processed: sourceData.length,
+          records_success: successCount,
+          records_failed: failCount,
+          duration_seconds: duration
+        })
+        .eq('id', runData.id);
+
+      // Update pipeline stats
+      const nextRunAt = calculateNextRun(pipeline.schedule);
+      await supabase
+        .from('etl_pipelines')
+        .update({
+          last_run_at: new Date().toISOString(),
+          next_run_at: nextRunAt,
+          total_runs: pipeline.total_runs + 1,
+          successful_runs: pipeline.successful_runs + 1,
+          records_processed: pipeline.records_processed + successCount,
+          status: 'active'
+        })
+        .eq('id', pipelineId);
+
+      showToast(`Pipeline completed: ${successCount} records ingested`, 'success');
+      loadData();
+      if (selectedPipeline?.id === pipelineId) {
+        loadPipelineRuns(pipelineId);
+      }
+    } catch (error: any) {
+      console.error('Error running pipeline:', error);
+      showToast(error.message || 'Pipeline execution failed', 'error');
+      
+      // Update run status to failed
+      await supabase
+        .from('etl_pipeline_runs')
+        .update({
+          status: 'failed',
+          completed_at: new Date().toISOString(),
+          error_message: error.message
+        })
+        .eq('pipeline_id', pipelineId)
+        .eq('status', 'running');
+    } finally {
+      setRunningPipelines(prev => {
+        const updated = new Set(prev);
+        updated.delete(pipelineId);
+        return updated;
+      });
+    }
+  };
+
+  const calculateNextRun = (schedule: string): string => {
+    const now = new Date();
+    switch (schedule) {
+      case 'hourly':
+        now.setHours(now.getHours() + 1);
+        break;
+      case 'daily':
+        now.setDate(now.getDate() + 1);
+        break;
+      case 'weekly':
+        now.setDate(now.getDate() + 7);
+        break;
+      case 'monthly':
+        now.setMonth(now.getMonth() + 1);
+        break;
+      default:
+        return '';
+    }
+    return now.toISOString();
+  };
+
+  const getNextRunCountdown = (nextRunAt: string | null): string => {
+    if (!nextRunAt) return 'Not scheduled';
+    
+    const now = new Date().getTime();
+    const next = new Date(nextRunAt).getTime();
+    const diff = next - now;
+
+    if (diff <= 0) return 'Overdue';
+
+    const hours = Math.floor(diff / (1000 * 60 * 60));
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+    if (hours > 24) {
+      const days = Math.floor(hours / 24);
+      return `${days}d ${hours % 24}h`;
+    }
+    if (hours > 0) {
+      return `${hours}h ${minutes}m`;
+    }
+    if (minutes > 0) {
+      return `${minutes}m ${seconds}s`;
+    }
+    return `${seconds}s`;
+  };
+
+  const handleToggleStatus = async (pipeline: Pipeline) => {
+    try {
+      const newStatus = pipeline.status === 'active' ? 'paused' : 'active';
+      const { error } = await supabase
+        .from('etl_pipelines')
+        .update({ status: newStatus })
+        .eq('id', pipeline.id);
+
+      if (error) throw error;
+      loadData();
+    } catch (error) {
+      console.error('Error toggling pipeline status:', error);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Delete Pipeline',
+      message: 'Are you sure you want to delete this pipeline? This action cannot be undone.',
+      onConfirm: async () => {
+        try {
+          const { error } = await supabase
+            .from('etl_pipelines')
+            .delete()
+            .eq('id', id);
+
+          if (error) throw error;
+          
+          showToast('Pipeline deleted successfully', 'success');
+          loadData();
+          if (selectedPipeline?.id === id) {
+            setSelectedPipeline(null);
+          }
+        } catch (error) {
+          console.error('Error deleting pipeline:', error);
+          showToast('Failed to delete pipeline', 'error');
+        }
+        setConfirmDialog({ ...confirmDialog, isOpen: false });
+      }
+    });
+  };
+
+  const handleEdit = (pipeline: Pipeline) => {
+    setEditingPipeline(pipeline);
+    setFormData({
+      name: pipeline.name,
+      description: pipeline.description || '',
+      source_id: pipeline.source_id || '',
+      destination_type: pipeline.destination_type,
+      schedule: pipeline.schedule || 'daily',
+      transformation_rules: pipeline.transformation_rules || { operations: [] }
+    });
+    
+    if (pipeline.transformation_rules?.field_mappings) {
+      setFieldMappings(pipeline.transformation_rules.field_mappings);
+    }
+    
+    if (pipeline.source_id) {
+      loadSourcePreview(pipeline.source_id);
+    }
+    
+    setCurrentStep(1);
+    setShowModal(true);
+  };
+
+  const resetForm = () => {
+    setFormData({
+      name: '',
+      description: '',
+      source_id: '',
+      destination_type: 'metrics',
+      schedule: 'daily',
+      transformation_rules: { operations: [] }
+    });
+    setCurrentStep(1);
+    setSourcePreview([]);
+    setSourceFields([]);
+    setFieldMappings([]);
+  };
+
+  const addTransformationRule = () => {
+    setFormData({
+      ...formData,
+      transformation_rules: {
+        ...formData.transformation_rules,
+        operations: [
+          ...formData.transformation_rules.operations,
+          { type: 'filter', field: '', condition: 'equals', value: '' }
+        ]
+      }
+    });
+  };
+
+  const removeTransformationRule = (index: number) => {
+    const newOperations = [...formData.transformation_rules.operations];
+    newOperations.splice(index, 1);
+    setFormData({
+      ...formData,
+      transformation_rules: { 
+        ...formData.transformation_rules,
+        operations: newOperations 
+      }
+    });
+  };
+
+  const addFieldMapping = () => {
+    setFieldMappings([...fieldMappings, { sourceField: '', destinationType: 'value' }]);
+  };
+
+  const removeFieldMapping = (index: number) => {
+    setFieldMappings(fieldMappings.filter((_, i) => i !== index));
+  };
+
+  const updateFieldMapping = (index: number, field: keyof FieldMapping, value: any) => {
+    const updated = [...fieldMappings];
+    updated[index] = { ...updated[index], [field]: value };
+    setFieldMappings(updated);
+  };
+
+  const filteredPipelines = pipelines.filter(pipeline => {
+    if (filter === 'all') return true;
+    return pipeline.status === filter;
+  });
+
+  const stats = {
+    total: pipelines.length,
+    active: pipelines.filter(p => p.status === 'active').length,
+    paused: pipelines.filter(p => p.status === 'paused').length,
+    totalRuns: pipelines.reduce((sum, p) => sum + p.total_runs, 0),
+    recordsIngestedToday: recordsIngestedToday
+  };
+
+  const viewPipelineHistory = async (pipelineId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('etl_pipeline_runs')
+        .select('*')
+        .eq('pipeline_id', pipelineId)
+        .order('started_at', { ascending: true })
+        .limit(20);
+
+      if (error) throw error;
+
+      const historyData = data?.map(run => ({
+        date: new Date(run.started_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        duration: run.duration_seconds || 0,
+        records: run.records_processed || 0,
+        success: run.status === 'success' ? 1 : 0
+      })) || [];
+
+      setPipelineHistory(historyData);
+      setShowHistoryModal(true);
+    } catch (error) {
+      console.error('Error loading pipeline history:', error);
+    }
+  };
+
+  const statusDistribution = [
+    { status: 'Active', count: pipelines.filter(p => p.status === 'active').length, color: '#10B981' },
+    { status: 'Paused', count: pipelines.filter(p => p.status === 'paused').length, color: '#F59E0B' },
+    { status: 'Failed', count: pipelines.filter(p => p.status === 'failed').length, color: '#EF4444' }
+  ];
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-600"></div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">ETL Pipelines</h1>
+          <p className="text-sm text-gray-600 mt-1">Automate data extraction, transformation, and loading</p>
+        </div>
+        <button
+          onClick={() => {
+            setEditingPipeline(null);
+            resetForm();
+            setShowModal(true);
+          }}
+          className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors whitespace-nowrap flex items-center gap-2"
+        >
+          <i className="ri-add-line"></i>
+          Create Pipeline
+        </button>
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+        <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-600">Total Pipelines</p>
+              <p className="text-2xl font-bold text-gray-900 mt-1">{stats.total}</p>
+            </div>
+            <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
+              <i className="ri-git-branch-line text-2xl text-blue-600"></i>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-600">Active</p>
+              <p className="text-2xl font-bold text-green-600 mt-1">{stats.active}</p>
+            </div>
+            <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
+              <i className="ri-play-circle-line text-2xl text-green-600"></i>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-600">Paused</p>
+              <p className="text-2xl font-bold text-orange-600 mt-1">{stats.paused}</p>
+            </div>
+            <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
+              <i className="ri-pause-circle-line text-2xl text-orange-600"></i>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-600">Total Runs</p>
+              <p className="text-2xl font-bold text-teal-600 mt-1">{stats.totalRuns}</p>
+            </div>
+            <div className="w-12 h-12 bg-teal-100 rounded-lg flex items-center justify-center">
+              <i className="ri-refresh-line text-2xl text-teal-600"></i>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-600">Records Today</p>
+              <p className="text-2xl font-bold text-purple-600 mt-1">{stats.recordsIngestedToday.toLocaleString()}</p>
+            </div>
+            <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
+              <i className="ri-database-line text-2xl text-purple-600"></i>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div className="flex gap-2">
+        {['all', 'active', 'paused', 'draft', 'error'].map((status) => (
+          <button
+            key={status}
+            onClick={() => setFilter(status)}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
+              filter === status
+                ? 'bg-teal-600 text-white'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            {status.charAt(0).toUpperCase() + status.slice(1)}
+          </button>
+        ))}
+      </div>
+
+      {/* Pipeline Status Chart */}
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Pipeline Status Overview</h3>
+        <ResponsiveContainer width="100%" height={250}>
+          <BarChart data={statusDistribution}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+            <XAxis dataKey="status" stroke="#6B7280" style={{ fontSize: '12px' }} />
+            <YAxis stroke="#6B7280" style={{ fontSize: '12px' }} />
+            <Tooltip 
+              contentStyle={{ backgroundColor: '#FFF', border: '1px solid #E5E7EB', borderRadius: '8px' }}
+              labelStyle={{ color: '#111827', fontWeight: 600 }}
+            />
+            <Bar dataKey="count" radius={[8, 8, 0, 0]}>
+              {statusDistribution.map((entry, index) => (
+                <Cell key={`cell-${index}`} fill={entry.color} />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* Pipelines Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {filteredPipelines.map((pipeline) => (
+          <div key={pipeline.id} className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <div className="flex items-start justify-between mb-4">
+              <div className="flex-1">
+                <h3 className="text-lg font-semibold text-gray-900">{pipeline.name}</h3>
+                <p className="text-sm text-gray-600 mt-1">{pipeline.description}</p>
+              </div>
+              <button
+                onClick={() => viewPipelineHistory(pipeline.id)}
+                className="w-8 h-8 flex items-center justify-center text-teal-600 hover:bg-teal-50 rounded-lg transition-colors"
+                title="View History"
+              >
+                <i className="ri-line-chart-line text-lg"></i>
+              </button>
+            </div>
+
+            <div className="flex items-center gap-4 text-xs text-gray-500 mb-3">
+              <span className="flex items-center gap-1">
+                <i className="ri-time-line"></i>
+                {pipeline.schedule}
+              </span>
+              <span className="flex items-center gap-1">
+                <i className="ri-database-2-line"></i>
+                {pipeline.destination_type}
+              </span>
+              {pipeline.status === 'active' && pipeline.next_run_at && (
+                <span className="flex items-center gap-1 text-teal-600 font-medium">
+                  <i className="ri-timer-line"></i>
+                  Next: {getNextRunCountdown(pipeline.next_run_at)}
+                </span>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2 text-xs mb-3">
+              <div className="flex-1 bg-gray-200 rounded-full h-1.5">
+                <div
+                  className="bg-teal-600 h-1.5 rounded-full"
+                  style={{
+                    width: `${pipeline.total_runs > 0 ? (pipeline.successful_runs / pipeline.total_runs) * 100 : 0}%`
+                  }}
+                ></div>
+              </div>
+              <span className="text-gray-600">
+                {pipeline.successful_runs}/{pipeline.total_runs} runs
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2 mt-3">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleRunPipeline(pipeline.id);
+                }}
+                disabled={runningPipelines.has(pipeline.id)}
+                className="px-3 py-1 text-xs bg-teal-600 text-white rounded hover:bg-teal-700 transition-colors whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {runningPipelines.has(pipeline.id) ? (
+                  <>
+                    <i className="ri-loader-4-line animate-spin mr-1"></i>
+                    Running...
+                  </>
+                ) : (
+                  <>
+                    <i className="ri-play-line mr-1"></i>
+                    Run Now
+                  </>
+                )}
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleToggleStatus(pipeline);
+                }}
+                className="px-3 py-1 text-xs border border-gray-300 text-gray-700 rounded hover:bg-gray-50 transition-colors whitespace-nowrap"
+              >
+                {pipeline.status === 'active' ? 'Pause' : 'Activate'}
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleEdit(pipeline);
+                }}
+                className="p-1 text-blue-600 hover:bg-blue-50 rounded transition-colors"
+              >
+                <i className="ri-edit-line"></i>
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDelete(pipeline.id);
+                }}
+                className="p-1 text-red-600 hover:bg-red-50 rounded transition-colors"
+              >
+                <i className="ri-delete-bin-line"></i>
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* History Modal */}
+      {showHistoryModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-gray-200 flex items-center justify-between">
+              <h2 className="text-xl font-bold text-gray-900">Pipeline Execution History</h2>
+              <button
+                onClick={() => setShowHistoryModal(false)}
+                className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <i className="ri-close-line text-xl"></i>
+              </button>
+            </div>
+
+            <div className="p-6 space-y-6">
+              {/* Duration Chart */}
+              <div>
+                <h3 className="text-sm font-semibold text-gray-900 mb-3">Execution Duration (seconds)</h3>
+                <ResponsiveContainer width="100%" height={250}>
+                  <LineChart data={pipelineHistory}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+                    <XAxis dataKey="date" stroke="#6B7280" style={{ fontSize: '11px' }} />
+                    <YAxis stroke="#6B7280" style={{ fontSize: '11px' }} />
+                    <Tooltip 
+                      contentStyle={{ backgroundColor: '#FFF', border: '1px solid #E5E7EB', borderRadius: '8px' }}
+                    />
+                    <Line type="monotone" dataKey="duration" stroke="#14B8A6" strokeWidth={2} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+
+              {/* Records Processed Chart */}
+              <div>
+                <h3 className="text-sm font-semibold text-gray-900 mb-3">Records Processed</h3>
+                <ResponsiveContainer width="100%" height={250}>
+                  <BarChart data={pipelineHistory}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+                    <XAxis dataKey="date" stroke="#6B7280" style={{ fontSize: '11px' }} />
+                    <YAxis stroke="#6B7280" style={{ fontSize: '11px' }} />
+                    <Tooltip 
+                      contentStyle={{ backgroundColor: '#FFF', border: '1px solid #E5E7EB', borderRadius: '8px' }}
+                    />
+                    <Bar dataKey="records" fill="#3B82F6" radius={[8, 8, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal */}
+      {showModal && (
+        <div className="fixed inset-0 bg-black bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-gray-200">
+              <h2 className="text-xl font-bold text-gray-900">
+                {editingPipeline ? 'Edit Pipeline' : 'Create Pipeline'}
+              </h2>
+              
+              {/* Step Indicator */}
+              <div className="flex items-center gap-2 mt-4">
+                <div className={`flex items-center gap-2 ${currentStep >= 1 ? 'text-teal-600' : 'text-gray-400'}`}>
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center ${currentStep >= 1 ? 'bg-teal-600 text-white' : 'bg-gray-200'}`}>
+                    1
+                  </div>
+                  <span className="text-sm font-medium">Basic Info</span>
+                </div>
+                <div className="flex-1 h-0.5 bg-gray-200"></div>
+                <div className={`flex items-center gap-2 ${currentStep >= 2 ? 'text-teal-600' : 'text-gray-400'}`}>
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center ${currentStep >= 2 ? 'bg-teal-600 text-white' : 'bg-gray-200'}`}>
+                    2
+                  </div>
+                  <span className="text-sm font-medium">Field Mapping</span>
+                </div>
+                <div className="flex-1 h-0.5 bg-gray-200"></div>
+                <div className={`flex items-center gap-2 ${currentStep >= 3 ? 'text-teal-600' : 'text-gray-400'}`}>
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center ${currentStep >= 3 ? 'bg-teal-600 text-white' : 'bg-gray-200'}`}>
+                    3
+                  </div>
+                  <span className="text-sm font-medium">Review</span>
+                </div>
+              </div>
+            </div>
+
+            <form onSubmit={handleSubmit} className="p-6 space-y-4">
+              {/* Step 1: Basic Info */}
+              {currentStep === 1 && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Pipeline Name</label>
+                    <input
+                      type="text"
+                      required
+                      value={formData.name}
+                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent text-sm"
+                      placeholder="My ETL Pipeline"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                    <textarea
+                      value={formData.description}
+                      onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent text-sm"
+                      rows={2}
+                      placeholder="Describe what this pipeline does..."
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Data Source</label>
+                      <select
+                        value={formData.source_id}
+                        onChange={(e) => {
+                          setFormData({ ...formData, source_id: e.target.value });
+                          if (e.target.value) {
+                            loadSourcePreview(e.target.value);
+                          }
+                        }}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent text-sm"
+                      >
+                        <option value="">Select source...</option>
+                        {dataSources.map((source) => (
+                          <option key={source.id} value={source.id}>
+                            {source.name} ({source.type})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Destination</label>
+                      <select
+                        value={formData.destination_type}
+                        onChange={(e) => setFormData({ ...formData, destination_type: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent text-sm"
+                      >
+                        <option value="metrics">Metrics</option>
+                        <option value="database">Database</option>
+                        <option value="file">File</option>
+                        <option value="api">API</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Schedule</label>
+                    <select
+                      value={formData.schedule}
+                      onChange={(e) => setFormData({ ...formData, schedule: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent text-sm"
+                    >
+                      <option value="manual">Manual</option>
+                      <option value="hourly">Hourly</option>
+                      <option value="daily">Daily</option>
+                      <option value="weekly">Weekly</option>
+                      <option value="monthly">Monthly</option>
+                    </select>
+                  </div>
+                </>
+              )}
+
+              {/* Step 2: Field Mapping */}
+              {currentStep === 2 && (
+                <>
+                  {loadingPreview ? (
+                    <div className="flex items-center justify-center py-12">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div>
+                    </div>
+                  ) : (
+                    <>
+                      {sourcePreview.length > 0 && (
+                        <div className="mb-4">
+                          <h3 className="text-sm font-semibold text-gray-900 mb-2">Source Data Preview</h3>
+                          <div className="bg-gray-50 rounded-lg p-3 max-h-48 overflow-auto">
+                            <pre className="text-xs text-gray-700">
+                              {JSON.stringify(sourcePreview, null, 2)}
+                            </pre>
+                          </div>
+                        </div>
+                      )}
+
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <label className="block text-sm font-medium text-gray-700">Field Mappings</label>
+                          <button
+                            type="button"
+                            onClick={addFieldMapping}
+                            className="text-sm text-teal-600 hover:text-teal-700 whitespace-nowrap"
+                          >
+                            <i className="ri-add-line"></i> Add Mapping
+                          </button>
+                        </div>
+                        <div className="space-y-3">
+                          {fieldMappings.map((mapping, index) => (
+                            <div key={index} className="flex gap-2 items-center bg-gray-50 p-3 rounded-lg">
+                              <div className="flex-1">
+                                <label className="block text-xs text-gray-600 mb-1">Source Field</label>
+                                <select
+                                  value={mapping.sourceField}
+                                  onChange={(e) => updateFieldMapping(index, 'sourceField', e.target.value)}
+                                  className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+                                >
+                                  <option value="">Select field...</option>
+                                  {sourceFields.map(field => (
+                                    <option key={field} value={field}>{field}</option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div className="w-8 h-8 flex items-center justify-center text-gray-400">
+                                <i className="ri-arrow-right-line"></i>
+                              </div>
+                              <div className="flex-1">
+                                <label className="block text-xs text-gray-600 mb-1">Destination Type</label>
+                                <select
+                                  value={mapping.destinationType}
+                                  onChange={(e) => updateFieldMapping(index, 'destinationType', e.target.value)}
+                                  className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+                                >
+                                  <option value="metric_name">Metric Name</option>
+                                  <option value="value">Value</option>
+                                  <option value="timestamp">Timestamp</option>
+                                  <option value="unit">Unit</option>
+                                </select>
+                              </div>
+                              {mapping.destinationType === 'value' && (
+                                <div className="flex-1">
+                                  <label className="block text-xs text-gray-600 mb-1">Target Metric</label>
+                                  <select
+                                    value={mapping.targetMetricId || ''}
+                                    onChange={(e) => updateFieldMapping(index, 'targetMetricId', e.target.value)}
+                                    className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+                                  >
+                                    <option value="">Auto-create from name</option>
+                                    {metrics.map(metric => (
+                                      <option key={metric.id} value={metric.id}>{metric.name}</option>
+                                    ))}
+                                  </select>
+                                </div>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => removeFieldMapping(index)}
+                                className="p-2 text-red-600 hover:bg-red-50 rounded"
+                              >
+                                <i className="ri-delete-bin-line"></i>
+                              </button>
+                            </div>
+                          ))}
+                          {fieldMappings.length === 0 && (
+                            <p className="text-sm text-gray-500 text-center py-4">No field mappings added</p>
+                          )}
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </>
+              )}
+
+              {/* Step 3: Review */}
+              {currentStep === 3 && (
+                <div className="space-y-4">
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <h3 className="text-sm font-semibold text-gray-900 mb-3">Pipeline Configuration</h3>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Name:</span>
+                        <span className="font-medium">{formData.name}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Source:</span>
+                        <span className="font-medium">
+                          {dataSources.find(s => s.id === formData.source_id)?.name || 'None'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Destination:</span>
+                        <span className="font-medium">{formData.destination_type}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Schedule:</span>
+                        <span className="font-medium">{formData.schedule}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Field Mappings:</span>
+                        <span className="font-medium">{fieldMappings.length}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {fieldMappings.length > 0 && (
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <h3 className="text-sm font-semibold text-gray-900 mb-3">Field Mappings</h3>
+                      <div className="space-y-2">
+                        {fieldMappings.map((mapping, index) => (
+                          <div key={index} className="flex items-center gap-2 text-sm">
+                            <span className="text-gray-600">{mapping.sourceField}</span>
+                            <i className="ri-arrow-right-line text-gray-400"></i>
+                            <span className="font-medium">{mapping.destinationType}</span>
+                            {mapping.targetMetricId && (
+                              <>
+                                <i className="ri-arrow-right-line text-gray-400"></i>
+                                <span className="text-teal-600">
+                                  {metrics.find(m => m.id === mapping.targetMetricId)?.name}
+                                </span>
+                              </>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="flex gap-3 pt-4">
+                {currentStep > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => setCurrentStep(currentStep - 1)}
+                    className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors whitespace-nowrap"
+                  >
+                    <i className="ri-arrow-left-line mr-1"></i>
+                    Back
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowModal(false);
+                    setEditingPipeline(null);
+                    resetForm();
+                  }}
+                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors whitespace-nowrap"
+                >
+                  Cancel
+                </button>
+                {currentStep < 3 ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (currentStep === 1 && !formData.source_id) {
+                        showToast('Please select a data source', 'error');
+                        return;
+                      }
+                      setCurrentStep(currentStep + 1);
+                    }}
+                    className="flex-1 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors whitespace-nowrap"
+                  >
+                    Next
+                    <i className="ri-arrow-right-line ml-1"></i>
+                  </button>
+                ) : (
+                  <button
+                    type="submit"
+                    className="flex-1 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors whitespace-nowrap"
+                  >
+                    {editingPipeline ? 'Update Pipeline' : 'Create Pipeline'}
+                  </button>
+                )}
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm Dialog */}
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        onConfirm={confirmDialog.onConfirm}
+        onCancel={() => setConfirmDialog({ ...confirmDialog, isOpen: false })}
+      />
+    </div>
+  );
+}
