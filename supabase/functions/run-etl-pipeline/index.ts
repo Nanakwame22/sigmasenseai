@@ -20,6 +20,10 @@ interface Pipeline {
   };
 }
 
+type EventLevel = 'info' | 'warning' | 'error';
+type EventStage = 'queued' | 'startup' | 'fetch' | 'transform' | 'load' | 'complete' | 'failure';
+type RunStatus = 'queued' | 'running' | 'completed' | 'partial' | 'failed';
+
 interface DataSource {
   id: string;
   type: string;
@@ -111,6 +115,37 @@ function calculateNextRun(schedule: string): string {
   return next.toISOString();
 }
 
+async function logIngestionEvent(
+  adminClient: ReturnType<typeof createClient>,
+  payload: {
+    organization_id: string;
+    pipeline_id: string;
+    run_id?: string | null;
+    source_id?: string | null;
+    level: EventLevel;
+    stage: EventStage;
+    message: string;
+    details?: Record<string, unknown>;
+  }
+) {
+  const { error } = await adminClient
+    .from('etl_ingestion_events')
+    .insert({
+      organization_id: payload.organization_id,
+      pipeline_id: payload.pipeline_id,
+      run_id: payload.run_id ?? null,
+      source_id: payload.source_id ?? null,
+      level: payload.level,
+      stage: payload.stage,
+      message: payload.message,
+      details: payload.details ?? {},
+    });
+
+  if (error) {
+    console.warn('Unable to write ETL ingestion event:', error.message);
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -131,6 +166,8 @@ serve(async (req) => {
   const startedAt = Date.now();
   let runId: string | null = null;
   let pipeline: Pipeline | null = null;
+  let organizationId: string | null = null;
+  let sourceId: string | null = null;
 
   try {
     const { data: userData, error: authError } = await authClient.auth.getUser();
@@ -162,7 +199,7 @@ serve(async (req) => {
       });
     }
 
-    const organizationId = membership.organization_id as string;
+    organizationId = membership.organization_id as string;
 
     const { data: pipelineData, error: pipelineError } = await adminClient
       .from('etl_pipelines')
@@ -179,6 +216,7 @@ serve(async (req) => {
     }
 
     pipeline = pipelineData as Pipeline;
+    sourceId = pipeline.source_id;
 
     if (!pipeline.source_id) {
       return new Response(JSON.stringify({ error: 'Pipeline has no data source configured' }), {
@@ -205,7 +243,7 @@ serve(async (req) => {
       .from('etl_pipeline_runs')
       .insert({
         pipeline_id: pipelineId,
-        status: 'running',
+        status: 'queued',
         started_at: new Date().toISOString(),
       })
       .select('id')
@@ -217,10 +255,51 @@ serve(async (req) => {
 
     runId = runData.id as string;
 
+    await logIngestionEvent(adminClient, {
+      organization_id: organizationId,
+      pipeline_id: pipelineId,
+      run_id: runId,
+      source_id: sourceId,
+      level: 'info',
+      stage: 'queued',
+      message: 'Pipeline run queued for execution',
+      details: { schedule: pipeline.schedule },
+    });
+
+    await adminClient
+      .from('etl_pipeline_runs')
+      .update({ status: 'running' })
+      .eq('id', runId);
+
+    await logIngestionEvent(adminClient, {
+      organization_id: organizationId,
+      pipeline_id: pipelineId,
+      run_id: runId,
+      source_id: sourceId,
+      level: 'info',
+      stage: 'startup',
+      message: 'Pipeline execution started',
+    });
+
     const source = sourceData as DataSource;
     let records: Record<string, unknown>[] = [];
 
     if (source.type === 'api' && source.connection_config?.base_url) {
+      await logIngestionEvent(adminClient, {
+        organization_id: organizationId,
+        pipeline_id: pipelineId,
+        run_id: runId,
+        source_id: sourceId,
+        level: 'info',
+        stage: 'fetch',
+        message: 'Fetching source payload from API endpoint',
+        details: {
+          source_type: source.type,
+          method: source.connection_config.http_method || 'GET',
+          url: source.connection_config.base_url,
+        },
+      });
+
       const response = await fetch(source.connection_config.base_url, {
         method: source.connection_config.http_method || 'GET',
         headers: buildHeaders(source.connection_config),
@@ -234,6 +313,20 @@ serve(async (req) => {
       records = extractDataFromJsonPath(payload, source.connection_config.json_path || '');
     } else if (Array.isArray(source.file_data)) {
       records = source.file_data as Record<string, unknown>[];
+
+      await logIngestionEvent(adminClient, {
+        organization_id: organizationId,
+        pipeline_id: pipelineId,
+        run_id: runId,
+        source_id: sourceId,
+        level: 'info',
+        stage: 'fetch',
+        message: 'Loaded source payload from stored file data',
+        details: {
+          source_type: source.type,
+          records_detected: records.length,
+        },
+      });
     }
 
     const mappings = pipeline.transformation_rules?.field_mappings || [];
@@ -255,6 +348,20 @@ serve(async (req) => {
     const dataPoints: Array<{ metric_id: string; value: number; timestamp: string }> = [];
     let recordsSuccess = 0;
     let recordsFailed = 0;
+
+    await logIngestionEvent(adminClient, {
+      organization_id: organizationId,
+      pipeline_id: pipelineId,
+      run_id: runId,
+      source_id: sourceId,
+      level: 'info',
+      stage: 'transform',
+      message: 'Transforming source records into metric datapoints',
+      details: {
+        records_received: records.length,
+        mapping_count: mappings.length,
+      },
+    });
 
     for (const record of records) {
       try {
@@ -328,7 +435,37 @@ serve(async (req) => {
       }
     }
 
+    if (recordsFailed > 0) {
+      await logIngestionEvent(adminClient, {
+        organization_id: organizationId,
+        pipeline_id: pipelineId,
+        run_id: runId,
+        source_id: sourceId,
+        level: 'warning',
+        stage: 'transform',
+        message: 'Some records failed validation or mapping during transformation',
+        details: {
+          records_received: records.length,
+          records_success: recordsSuccess,
+          records_failed: recordsFailed,
+        },
+      });
+    }
+
     if (dataPoints.length > 0) {
+      await logIngestionEvent(adminClient, {
+        organization_id: organizationId,
+        pipeline_id: pipelineId,
+        run_id: runId,
+        source_id: sourceId,
+        level: 'info',
+        stage: 'load',
+        message: 'Writing transformed datapoints to metric_data',
+        details: {
+          datapoints: dataPoints.length,
+        },
+      });
+
       const { error: insertError } = await adminClient
         .from('metric_data')
         .insert(dataPoints);
@@ -339,11 +476,16 @@ serve(async (req) => {
     }
 
     const durationSeconds = Math.max(1, Math.round((Date.now() - startedAt) / 1000));
+    const runStatus: RunStatus = recordsFailed > 0 && recordsSuccess > 0
+      ? 'partial'
+      : recordsFailed > 0 && recordsSuccess === 0
+        ? 'failed'
+        : 'completed';
 
     await adminClient
       .from('etl_pipeline_runs')
       .update({
-        status: 'completed',
+        status: runStatus,
         completed_at: new Date().toISOString(),
         records_processed: records.length,
         records_success: recordsSuccess,
@@ -358,22 +500,43 @@ serve(async (req) => {
         last_run_at: new Date().toISOString(),
         next_run_at: calculateNextRun(pipeline.schedule),
         total_runs: (pipeline.total_runs || 0) + 1,
-        successful_runs: (pipeline.successful_runs || 0) + 1,
+        successful_runs: (pipeline.successful_runs || 0) + (runStatus === 'completed' ? 1 : 0),
+        failed_runs: (pipeline.failed_runs || 0) + (runStatus === 'failed' ? 1 : 0),
         records_processed: (pipeline.records_processed || 0) + recordsSuccess,
-        status: 'active',
+        status: runStatus === 'failed' ? 'failed' : 'active',
       })
       .eq('id', pipelineId)
       .eq('organization_id', organizationId);
 
+    await logIngestionEvent(adminClient, {
+      organization_id: organizationId,
+      pipeline_id: pipelineId,
+      run_id: runId,
+      source_id: sourceId,
+      level: runStatus === 'partial' ? 'warning' : 'info',
+      stage: 'complete',
+      message: runStatus === 'partial' ? 'Pipeline completed with partial success' : 'Pipeline completed successfully',
+      details: {
+        status: runStatus,
+        records_processed: records.length,
+        records_success: recordsSuccess,
+        records_failed: recordsFailed,
+        duration_seconds: durationSeconds,
+      },
+    });
+
     return new Response(JSON.stringify({
-      success: true,
+      success: runStatus !== 'failed',
+      status: runStatus,
       pipelineId,
       runId,
       records_processed: records.length,
       records_success: recordsSuccess,
       records_failed: recordsFailed,
       duration_seconds: durationSeconds,
-      message: `Pipeline completed: ${recordsSuccess} records ingested`,
+      message: runStatus === 'partial'
+        ? `Pipeline completed with warnings: ${recordsSuccess} records ingested, ${recordsFailed} failed`
+        : `Pipeline completed: ${recordsSuccess} records ingested`,
     }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -391,6 +554,19 @@ serve(async (req) => {
           duration_seconds: Math.max(1, Math.round((Date.now() - startedAt) / 1000)),
         })
         .eq('id', runId);
+    }
+
+    if (organizationId && pipeline?.id) {
+      await logIngestionEvent(adminClient, {
+        organization_id: organizationId,
+        pipeline_id: pipeline.id,
+        run_id: runId,
+        source_id: sourceId,
+        level: 'error',
+        stage: 'failure',
+        message: 'Pipeline execution failed',
+        details: { error: message },
+      });
     }
 
     if (pipeline?.id) {

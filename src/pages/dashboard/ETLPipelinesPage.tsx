@@ -36,6 +36,17 @@ interface PipelineRun {
   error_message: string | null;
 }
 
+interface IngestionEvent {
+  id: string;
+  pipeline_id: string;
+  run_id: string | null;
+  level: 'info' | 'warning' | 'error';
+  stage: 'queued' | 'startup' | 'fetch' | 'transform' | 'load' | 'complete' | 'failure';
+  message: string;
+  details: Record<string, unknown> | null;
+  created_at: string;
+}
+
 interface DataSource {
   id: string;
   name: string;
@@ -58,6 +69,8 @@ export default function ETLPipelinesPage() {
   const [metrics, setMetrics] = useState<any[]>([]);
   const [selectedPipeline, setSelectedPipeline] = useState<Pipeline | null>(null);
   const [pipelineRuns, setPipelineRuns] = useState<PipelineRun[]>([]);
+  const [latestRuns, setLatestRuns] = useState<Record<string, PipelineRun>>({});
+  const [ingestionEvents, setIngestionEvents] = useState<IngestionEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingPipeline, setEditingPipeline] = useState<Pipeline | null>(null);
@@ -142,9 +155,7 @@ export default function ETLPipelinesPage() {
           (payload) => {
             console.log('Pipeline run changed:', payload);
             
-            // Refresh data when runs complete
-            if (payload.eventType === 'UPDATE' && 
-                (payload.new as any).status === 'completed') {
+            if (payload.eventType === 'UPDATE') {
               loadData();
               
               // Update selected pipeline runs if viewing details
@@ -212,11 +223,27 @@ export default function ETLPipelinesPage() {
         .from('etl_pipeline_runs')
         .select('records_success')
         .gte('started_at', today.toISOString())
-        .eq('status', 'completed');
+        .in('status', ['completed', 'partial']);
 
       if (!runsError && todayRuns) {
         const total = todayRuns.reduce((sum, run) => sum + (run.records_success || 0), 0);
         setRecordsIngestedToday(total);
+      }
+
+      const { data: recentRuns, error: recentRunsError } = await supabase
+        .from('etl_pipeline_runs')
+        .select('*')
+        .order('started_at', { ascending: false })
+        .limit(100);
+
+      if (!recentRunsError && recentRuns) {
+        const latestByPipeline: Record<string, PipelineRun> = {};
+        recentRuns.forEach((run: PipelineRun) => {
+          if (!latestByPipeline[run.pipeline_id]) {
+            latestByPipeline[run.pipeline_id] = run;
+          }
+        });
+        setLatestRuns(latestByPipeline);
       }
     } catch (error) {
       console.error('Error loading data:', error);
@@ -236,8 +263,22 @@ export default function ETLPipelinesPage() {
 
       if (error) throw error;
       setPipelineRuns(data || []);
+
+      const { data: eventData, error: eventError } = await supabase
+        .from('etl_ingestion_events')
+        .select('*')
+        .eq('pipeline_id', pipelineId)
+        .order('created_at', { ascending: false })
+        .limit(25);
+
+      if (!eventError) {
+        setIngestionEvents((eventData as IngestionEvent[]) || []);
+      } else {
+        setIngestionEvents([]);
+      }
     } catch (error) {
       console.error('Error loading pipeline runs:', error);
+      setIngestionEvents([]);
     }
   };
 
@@ -616,6 +657,10 @@ export default function ETLPipelinesPage() {
 
   const viewPipelineHistory = async (pipelineId: string) => {
     try {
+      const pipeline = pipelines.find((item) => item.id === pipelineId) || null;
+      setSelectedPipeline(pipeline);
+      await loadPipelineRuns(pipelineId);
+
       const { data, error } = await supabase
         .from('etl_pipeline_runs')
         .select('*')
@@ -629,7 +674,7 @@ export default function ETLPipelinesPage() {
         date: new Date(run.started_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
         duration: run.duration_seconds || 0,
         records: run.records_processed || 0,
-        success: run.status === 'success' ? 1 : 0
+        success: run.status === 'completed' ? 1 : 0
       })) || [];
 
       setPipelineHistory(historyData);
@@ -644,6 +689,34 @@ export default function ETLPipelinesPage() {
     { status: 'Paused', count: pipelines.filter(p => p.status === 'paused').length, color: '#F59E0B' },
     { status: 'Failed', count: pipelines.filter(p => p.status === 'failed').length, color: '#EF4444' }
   ];
+
+  const getRunStatusBadge = (status: string) => {
+    switch (status) {
+      case 'completed':
+        return 'bg-emerald-100 text-emerald-700';
+      case 'partial':
+        return 'bg-amber-100 text-amber-700';
+      case 'running':
+        return 'bg-sky-100 text-sky-700';
+      case 'queued':
+        return 'bg-slate-100 text-slate-600';
+      case 'failed':
+        return 'bg-red-100 text-red-700';
+      default:
+        return 'bg-gray-100 text-gray-600';
+    }
+  };
+
+  const getEventLevelBadge = (level: IngestionEvent['level']) => {
+    switch (level) {
+      case 'error':
+        return 'bg-red-100 text-red-700';
+      case 'warning':
+        return 'bg-amber-100 text-amber-700';
+      default:
+        return 'bg-slate-100 text-slate-600';
+    }
+  };
 
   if (loading) {
     return (
@@ -739,7 +812,7 @@ export default function ETLPipelinesPage() {
 
       {/* Filters */}
       <div className="flex gap-2">
-        {['all', 'active', 'paused', 'draft', 'error'].map((status) => (
+        {['all', 'active', 'paused', 'draft', 'failed'].map((status) => (
           <button
             key={status}
             onClick={() => setFilter(status)}
@@ -779,6 +852,17 @@ export default function ETLPipelinesPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {filteredPipelines.map((pipeline) => (
           <div key={pipeline.id} className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            {latestRuns[pipeline.id] && (
+              <div className="flex items-center justify-between mb-3">
+                <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${getRunStatusBadge(latestRuns[pipeline.id].status)}`}>
+                  {latestRuns[pipeline.id].status}
+                </span>
+                <span className="text-xs text-gray-500">
+                  Last run {new Date(latestRuns[pipeline.id].started_at).toLocaleString()}
+                </span>
+              </div>
+            )}
+
             <div className="flex items-start justify-between mb-4">
               <div className="flex-1">
                 <h3 className="text-lg font-semibold text-gray-900">{pipeline.name}</h3>
@@ -892,6 +976,68 @@ export default function ETLPipelinesPage() {
             </div>
 
             <div className="p-6 space-y-6">
+              <div>
+                <h3 className="text-sm font-semibold text-gray-900 mb-3">Recent Runs</h3>
+                <div className="space-y-3">
+                  {pipelineRuns.map((run) => (
+                    <div key={run.id} className="flex items-start justify-between border border-gray-200 rounded-lg p-3">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold ${getRunStatusBadge(run.status)}`}>
+                            {run.status}
+                          </span>
+                          <span className="text-xs text-gray-500">
+                            {new Date(run.started_at).toLocaleString()}
+                          </span>
+                        </div>
+                        <p className="text-sm text-gray-700 mt-2">
+                          {run.records_success} succeeded, {run.records_failed} failed, {run.records_processed} processed
+                        </p>
+                        {run.error_message && (
+                          <p className="text-xs text-red-600 mt-1">{run.error_message}</p>
+                        )}
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        {run.duration_seconds || 0}s
+                      </div>
+                    </div>
+                  ))}
+                  {pipelineRuns.length === 0 && (
+                    <p className="text-sm text-gray-500">No pipeline runs recorded yet.</p>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <h3 className="text-sm font-semibold text-gray-900 mb-3">Ingestion Events</h3>
+                <div className="space-y-3">
+                  {ingestionEvents.map((event) => (
+                    <div key={event.id} className="border border-gray-200 rounded-lg p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold ${getEventLevelBadge(event.level)}`}>
+                            {event.level}
+                          </span>
+                          <span className="text-xs uppercase tracking-wide text-gray-500">{event.stage}</span>
+                        </div>
+                        <span className="text-xs text-gray-500">
+                          {new Date(event.created_at).toLocaleString()}
+                        </span>
+                      </div>
+                      <p className="text-sm text-gray-800 mt-2">{event.message}</p>
+                      {event.details && Object.keys(event.details).length > 0 && (
+                        <pre className="mt-2 bg-gray-50 rounded p-2 text-xs text-gray-600 overflow-x-auto">
+                          {JSON.stringify(event.details, null, 2)}
+                        </pre>
+                      )}
+                    </div>
+                  ))}
+                  {ingestionEvents.length === 0 && (
+                    <p className="text-sm text-gray-500">No ingestion events available. Run the SQL file for ETL event logging if this stays empty.</p>
+                  )}
+                </div>
+              </div>
+
               {/* Duration Chart */}
               <div>
                 <h3 className="text-sm font-semibold text-gray-900 mb-3">Execution Duration (seconds)</h3>
