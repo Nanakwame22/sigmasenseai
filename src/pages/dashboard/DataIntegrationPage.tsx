@@ -3,7 +3,6 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
-import { addToast } from '../../hooks/useToast';
 import ConfirmDialog from '../../components/common/ConfirmDialog';
 
 interface DataSource {
@@ -290,38 +289,23 @@ export default function DataIntegrationPage() {
             
             setUploadProgress(85);
             
-            const dataPoints = [];
-            const now = new Date();
-            
-            for (const metric of importedMetrics) {
-              const baseValue = metric.current_value > 0 
-                ? metric.current_value 
-                : (metric.target_value > 0 ? metric.target_value : 100);
-              
-              for (let i = 29; i >= 0; i--) {
-                const timestamp = new Date(now);
-                timestamp.setDate(timestamp.getDate() - i);
-                
-                const variation = 0.85 + Math.random() * 0.3;
-                const value = baseValue * variation;
-                
-                dataPoints.push({
-                  metric_id: metric.id,
-                  value: parseFloat(value.toFixed(2)),
-                  timestamp: timestamp.toISOString()
-                });
-              }
-            }
-            
+            const dataPoints = importedMetrics
+              .filter(metric => typeof metric.current_value === 'number' && !Number.isNaN(metric.current_value))
+              .map(metric => ({
+                metric_id: metric.id,
+                value: metric.current_value,
+                timestamp: new Date().toISOString()
+              }));
+
             if (dataPoints.length > 0) {
               const { error: dataPointsError } = await supabase
                 .from('metric_data')
                 .insert(dataPoints);
               
               if (dataPointsError) {
-                console.warn('⚠️ Could not create historical data points:', dataPointsError);
+                console.warn('⚠️ Could not create initial metric data points:', dataPointsError);
               } else {
-                console.log(`✅ Created ${dataPoints.length} historical data points for ${importedMetrics.length} metrics`);
+                console.log(`✅ Created ${dataPoints.length} initial metric data points for ${importedMetrics.length} metrics`);
                 
                 const { data: verifyData, error: verifyError } = await supabase
                   .from('metric_data')
@@ -389,7 +373,7 @@ export default function DataIntegrationPage() {
       setUploadProgress(100);
 
       const successMsg = importedMetricsCount > 0 
-        ? `Successfully uploaded ${parsedData.length.toLocaleString()} records! ${importedMetricsCount} metrics have been automatically imported and are now available across all features including Forecasting, Root Cause Analysis, and Quality Analysis.`
+        ? `Successfully uploaded ${parsedData.length.toLocaleString()} records! ${importedMetricsCount} metrics have been automatically imported using the actual values in your file.`
         : `Successfully uploaded ${parsedData.length.toLocaleString()} records from ${selectedFile.name}. Data is now available across all analysis features.`;
       
       setSuccessMessage(successMsg);

@@ -430,191 +430,15 @@ export default function ETLPipelinesPage() {
     setRunningPipelines(prev => new Set(prev).add(pipelineId));
 
     try {
-      // Create a new run
-      const { data: runData, error: runError } = await supabase
-        .from('etl_pipeline_runs')
-        .insert([{
-          pipeline_id: pipelineId,
-          status: 'running',
-          started_at: new Date().toISOString()
-        }])
-        .select()
-        .single();
-
-      if (runError) throw runError;
-
       showToast('Pipeline started', 'info');
 
-      // Execute the pipeline
-      const source = dataSources.find(s => s.id === pipeline.source_id);
-      if (!source) throw new Error('Data source not found');
+      const { data, error } = await supabase.functions.invoke('run-etl-pipeline', {
+        body: { pipelineId }
+      });
 
-      let sourceData: any[] = [];
+      if (error) throw error;
 
-      // Fetch data from source
-      if (source.type === 'api' && source.connection_config) {
-        const config = source.connection_config;
-        const headers: Record<string, string> = {
-          'Content-Type': 'application/json'
-        };
-
-        if (config.auth_type === 'api_key' && config.auth_key_name && config.auth_key_value) {
-          headers[config.auth_key_name] = config.auth_key_value;
-        } else if (config.auth_type === 'bearer' && config.auth_key_value) {
-          headers['Authorization'] = `Bearer ${config.auth_key_value}`;
-        } else if (config.auth_type === 'basic' && config.auth_key_name && config.auth_key_value) {
-          const encoded = btoa(`${config.auth_key_name}:${config.auth_key_value}`);
-          headers['Authorization'] = `Basic ${encoded}`;
-        }
-
-        if (config.custom_headers && Array.isArray(config.custom_headers)) {
-          config.custom_headers.forEach((header: any) => {
-            if (header.key && header.value) {
-              headers[header.key] = header.value;
-            }
-          });
-        }
-
-        const response = await fetch(config.base_url, {
-          method: config.http_method || 'GET',
-          headers
-        });
-
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-
-        const data = await response.json();
-        sourceData = extractDataFromJsonPath(data, config.json_path || '');
-      } else if (source.file_data && Array.isArray(source.file_data)) {
-        sourceData = source.file_data;
-      }
-
-      // Apply field mappings and insert into metric_data
-      const mappings = pipeline.transformation_rules?.field_mappings || [];
-      const dataPoints: any[] = [];
-      let successCount = 0;
-      let failCount = 0;
-
-      const { data: userOrgs } = await supabase
-        .from('user_organizations')
-        .select('organization_id')
-        .eq('user_id', user.id)
-        .single();
-
-      for (const record of sourceData) {
-        try {
-          const metricNameMapping = mappings.find((m: FieldMapping) => m.destinationType === 'metric_name');
-          const valueMapping = mappings.find((m: FieldMapping) => m.destinationType === 'value');
-          const timestampMapping = mappings.find((m: FieldMapping) => m.destinationType === 'timestamp');
-          const unitMapping = mappings.find((m: FieldMapping) => m.destinationType === 'unit');
-
-          if (!valueMapping) continue;
-
-          const value = parseFloat(record[valueMapping.sourceField]);
-          if (isNaN(value)) {
-            failCount++;
-            continue;
-          }
-
-          let metricId = valueMapping.targetMetricId;
-
-          // If metric name mapping exists, find or create metric
-          if (metricNameMapping && !metricId) {
-            const metricName = record[metricNameMapping.sourceField];
-            if (metricName) {
-              let metric = metrics.find(m => m.name === metricName);
-              
-              if (!metric && userOrgs) {
-                // Create new metric
-                const { data: newMetric, error: metricError } = await supabase
-                  .from('metrics')
-                  .insert({
-                    name: metricName,
-                    organization_id: userOrgs.organization_id,
-                    unit: unitMapping ? record[unitMapping.sourceField] : '',
-                    target_value: 0,
-                    current_value: value
-                  })
-                  .select()
-                  .single();
-
-                if (!metricError && newMetric) {
-                  metric = newMetric;
-                  metrics.push(newMetric);
-                }
-              }
-
-              if (metric) {
-                metricId = metric.id;
-              }
-            }
-          }
-
-          if (!metricId) {
-            failCount++;
-            continue;
-          }
-
-          const timestamp = timestampMapping 
-            ? new Date(record[timestampMapping.sourceField]).toISOString()
-            : new Date().toISOString();
-
-          dataPoints.push({
-            metric_id: metricId,
-            value: value,
-            timestamp: timestamp
-          });
-
-          successCount++;
-        } catch (error) {
-          console.error('Error processing record:', error);
-          failCount++;
-        }
-      }
-
-      // Insert data points
-      if (dataPoints.length > 0) {
-        const { error: insertError } = await supabase
-          .from('metric_data')
-          .insert(dataPoints);
-
-        if (insertError) {
-          console.error('Error inserting data points:', insertError);
-          throw insertError;
-        }
-      }
-
-      const duration = Math.floor(Math.random() * 30) + 5;
-
-      // Update run status
-      await supabase
-        .from('etl_pipeline_runs')
-        .update({
-          status: 'completed',
-          completed_at: new Date().toISOString(),
-          records_processed: sourceData.length,
-          records_success: successCount,
-          records_failed: failCount,
-          duration_seconds: duration
-        })
-        .eq('id', runData.id);
-
-      // Update pipeline stats
-      const nextRunAt = calculateNextRun(pipeline.schedule);
-      await supabase
-        .from('etl_pipelines')
-        .update({
-          last_run_at: new Date().toISOString(),
-          next_run_at: nextRunAt,
-          total_runs: pipeline.total_runs + 1,
-          successful_runs: pipeline.successful_runs + 1,
-          records_processed: pipeline.records_processed + successCount,
-          status: 'active'
-        })
-        .eq('id', pipelineId);
-
-      showToast(`Pipeline completed: ${successCount} records ingested`, 'success');
+      showToast(data?.message || 'Pipeline completed successfully', 'success');
       loadData();
       if (selectedPipeline?.id === pipelineId) {
         loadPipelineRuns(pipelineId);
@@ -622,17 +446,6 @@ export default function ETLPipelinesPage() {
     } catch (error: any) {
       console.error('Error running pipeline:', error);
       showToast(error.message || 'Pipeline execution failed', 'error');
-      
-      // Update run status to failed
-      await supabase
-        .from('etl_pipeline_runs')
-        .update({
-          status: 'failed',
-          completed_at: new Date().toISOString(),
-          error_message: error.message
-        })
-        .eq('pipeline_id', pipelineId)
-        .eq('status', 'running');
     } finally {
       setRunningPipelines(prev => {
         const updated = new Set(prev);
@@ -640,27 +453,6 @@ export default function ETLPipelinesPage() {
         return updated;
       });
     }
-  };
-
-  const calculateNextRun = (schedule: string): string => {
-    const now = new Date();
-    switch (schedule) {
-      case 'hourly':
-        now.setHours(now.getHours() + 1);
-        break;
-      case 'daily':
-        now.setDate(now.getDate() + 1);
-        break;
-      case 'weekly':
-        now.setDate(now.getDate() + 7);
-        break;
-      case 'monthly':
-        now.setMonth(now.getMonth() + 1);
-        break;
-      default:
-        return '';
-    }
-    return now.toISOString();
   };
 
   const getNextRunCountdown = (nextRunAt: string | null): string => {
