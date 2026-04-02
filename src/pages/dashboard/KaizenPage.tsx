@@ -4,6 +4,8 @@ import { supabase } from '../../lib/supabase';
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid, LineChart, Line } from 'recharts';
 import { useToast } from '../../hooks/useToast';
 import ConfirmDialog from '../../components/common/ConfirmDialog';
+import InsightSummary from '../../components/common/InsightSummary';
+import { downloadTemplate } from '../../utils/exportUtils';
 
 interface KaizenItem {
   id: string;
@@ -335,6 +337,20 @@ export default function KaizenPage() {
       }, 0) / Math.max(1, items.filter(i => i.completion_date).length) / (1000 * 60 * 60 * 24) // Convert to days
   };
 
+  const benefitsData = getBenefitsData(items);
+  const totalExpectedBenefit = benefitsData.reduce((sum, row) => sum + row.expected, 0);
+  const totalActualBenefit = benefitsData.reduce((sum, row) => sum + row.actual, 0);
+  const topCategory = getCategoryDistribution(items)[0]?.category;
+  const summaryText = items.length === 0
+    ? 'There are no Kaizen or CAPA items yet, so this workspace is ready but still empty. Once ideas and corrective actions start flowing in, this page becomes your operational improvement backlog.'
+    : `There are ${items.length} active improvement records, with ${stats.completed} completed and ${stats.inProgress} currently in progress. This gives you a live view of how much improvement work is moving versus waiting.`;
+  const summaryDriver = items.length > 0
+    ? `${topCategory ? `${topCategory} is the busiest category right now.` : 'The backlog is now active.'} Expected tracked benefit totals $${Math.round(totalExpectedBenefit).toLocaleString()}, and actual recorded benefit totals $${Math.round(totalActualBenefit).toLocaleString()}.`
+    : undefined;
+  const summaryGuidance = stats.critical > 0
+    ? `You have ${stats.critical} critical item${stats.critical === 1 ? '' : 's'} in the queue, so review those first before adding lower-priority improvement work.`
+    : 'Use the charts below to see whether improvement ideas are converting into completed outcomes quickly enough, then remove blockers from anything stuck in review or implementation.';
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -361,6 +377,13 @@ export default function KaizenPage() {
           <span className="text-sm font-medium">Submit Idea</span>
         </button>
       </div>
+
+      <InsightSummary
+        title="What This Means In Plain English"
+        summary={summaryText}
+        driver={summaryDriver}
+        guidance={summaryGuidance}
+      />
 
       {/* Enhanced Stats Cards */}
       <div className="grid grid-cols-6 gap-4">
@@ -488,8 +511,8 @@ export default function KaizenPage() {
         {/* Benefits Tracking */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Expected vs Actual Benefits</h3>
-          <ResponsiveContainer width="100%" height={250}>
-            <LineChart data={getBenefitsData(items)}>
+              <ResponsiveContainer width="100%" height={250}>
+            <LineChart data={benefitsData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
               <XAxis dataKey="month" stroke="#6b7280" style={{ fontSize: '11px' }} />
               <YAxis stroke="#6b7280" style={{ fontSize: '12px' }} />
@@ -500,7 +523,7 @@ export default function KaizenPage() {
                   borderRadius: '8px',
                   fontSize: '12px'
                 }}
-                formatter={(value) => `$${value.toLocaleString()}`}
+                formatter={(value: number) => `$${Math.round(value).toLocaleString()}`}
               />
               <Legend wrapperStyle={{ fontSize: '12px' }} />
               <Line type="monotone" dataKey="expected" stroke="#3b82f6" strokeWidth={2} name="Expected" strokeDasharray="5 5" />
@@ -1266,12 +1289,32 @@ function getCategoryDistribution(items: any[]) {
 
 // Helper function to get benefits data
 function getBenefitsData(items: any[]) {
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
-  return months.map((month, index) => ({
+  const monthlyTotals = new Map<string, { expected: number; actual: number }>();
+
+  items
+    .filter((item: any) => item.created_at)
+    .forEach((item: any) => {
+      const monthKey = new Date(item.created_at).toLocaleDateString('en-US', { month: 'short' });
+      const existing = monthlyTotals.get(monthKey) || { expected: 0, actual: 0 };
+
+      const expectedFromCost = typeof item.cost_estimate === 'number' ? item.cost_estimate : 0;
+      const actualFromCost = typeof item.actual_cost === 'number' ? item.actual_cost : 0;
+      const expectedFallback = item.expected_benefit ? 1 : 0;
+      const actualFallback = item.actual_benefit ? 1 : 0;
+
+      monthlyTotals.set(monthKey, {
+        expected: existing.expected + expectedFromCost + expectedFallback,
+        actual: existing.actual + actualFromCost + actualFallback,
+      });
+    });
+
+  if (monthlyTotals.size === 0) {
+    return [];
+  }
+
+  return Array.from(monthlyTotals.entries()).map(([month, totals]) => ({
     month,
-    expected: 15000 + (index * 5000) + Math.random() * 3000,
-    actual: 12000 + (index * 5500) + Math.random() * 4000
+    expected: totals.expected,
+    actual: totals.actual,
   }));
 }
-
-import { downloadTemplate } from '../../utils/exportUtils';
