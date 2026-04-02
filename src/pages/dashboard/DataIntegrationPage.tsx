@@ -14,6 +14,43 @@ interface DataSource {
   records_count: number;
   file_data?: any[];
   connection_config?: any;
+  health_status?: 'healthy' | 'warning' | 'critical' | 'idle';
+  linked_pipelines?: number;
+  recent_records_processed?: number;
+  last_success_at?: string | null;
+  last_failure_at?: string | null;
+  last_run_status?: string | null;
+  last_error_message?: string | null;
+  attention_message?: string | null;
+  recent_event_count?: number;
+}
+
+interface SourcePipeline {
+  id: string;
+  source_id: string | null;
+  status: string;
+}
+
+interface SourcePipelineRun {
+  id: string;
+  pipeline_id: string;
+  status: string;
+  started_at: string;
+  completed_at: string | null;
+  records_processed: number | null;
+  records_success: number | null;
+  records_failed: number | null;
+  error_message: string | null;
+  duration_seconds: number | null;
+}
+
+interface SourceIngestionEvent {
+  id: string;
+  source_id: string | null;
+  pipeline_id: string;
+  level: 'info' | 'warning' | 'error';
+  message: string;
+  created_at: string;
 }
 
 type TabType = 'file' | 'api';
@@ -52,6 +89,34 @@ export default function DataIntegrationPage() {
   const [syncTargetId, setSyncTargetId] = useState<string | null>(null);
   const [syncingIds, setSyncingIds] = useState<Set<string>>(new Set());
 
+  const healthSummary = dataSources.reduce(
+    (summary, source) => {
+      summary.total += 1;
+      summary.records += source.records_count || 0;
+      summary.events += source.recent_event_count || 0;
+
+      if (source.health_status === 'healthy') summary.healthy += 1;
+      if (source.health_status === 'warning') summary.warning += 1;
+      if (source.health_status === 'critical') summary.critical += 1;
+      if (source.health_status === 'idle') summary.idle += 1;
+
+      if (source.last_success_at) summary.recentSuccesses += 1;
+      if (source.last_failure_at) summary.recentFailures += 1;
+      return summary;
+    },
+    {
+      total: 0,
+      healthy: 0,
+      warning: 0,
+      critical: 0,
+      idle: 0,
+      recentSuccesses: 0,
+      recentFailures: 0,
+      records: 0,
+      events: 0,
+    }
+  );
+
   useEffect(() => {
     if (organizationId) {
       fetchDataSources();
@@ -67,24 +132,171 @@ export default function DataIntegrationPage() {
     }
 
     try {
-      const { data, error } = await supabase
-        .from('data_sources')
-        .select('*')
-        .eq('organization_id', organizationId)
-        .order('created_at', { ascending: false });
+      const [{ data: sourcesData, error: sourcesError }, { data: pipelineData, error: pipelineError }] = await Promise.all([
+        supabase
+          .from('data_sources')
+          .select('*')
+          .eq('organization_id', organizationId)
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('etl_pipelines')
+          .select('id, source_id, status')
+          .eq('organization_id', organizationId),
+      ]);
 
-      if (error) {
-        console.error('Error fetching data sources:', error);
+      if (sourcesError || pipelineError) {
+        console.error('Error fetching data sources:', sourcesError || pipelineError);
         setErrorMessage('Failed to load data sources');
-      } else {
-        setDataSources(data || []);
+        return;
       }
+
+      const sources = (sourcesData || []) as DataSource[];
+      const pipelines = (pipelineData || []) as SourcePipeline[];
+      const pipelineIds = pipelines.map((pipeline) => pipeline.id);
+
+      let runs: SourcePipelineRun[] = [];
+      let events: SourceIngestionEvent[] = [];
+
+      if (pipelineIds.length > 0) {
+        const since = new Date();
+        since.setDate(since.getDate() - 7);
+
+        const [{ data: runData, error: runError }, { data: eventData, error: eventError }] = await Promise.all([
+          supabase
+            .from('etl_pipeline_runs')
+            .select('id, pipeline_id, status, started_at, completed_at, records_processed, records_success, records_failed, error_message, duration_seconds')
+            .in('pipeline_id', pipelineIds)
+            .order('started_at', { ascending: false })
+            .limit(300),
+          supabase
+            .from('etl_ingestion_events')
+            .select('id, source_id, pipeline_id, level, message, created_at')
+            .eq('organization_id', organizationId)
+            .gte('created_at', since.toISOString())
+            .order('created_at', { ascending: false })
+            .limit(300),
+        ]);
+
+        if (runError) {
+          console.error('Error fetching pipeline runs:', runError);
+        } else {
+          runs = (runData || []) as SourcePipelineRun[];
+        }
+
+        if (eventError) {
+          console.warn('Integration Health Center event feed unavailable:', eventError.message);
+        } else {
+          events = (eventData || []) as SourceIngestionEvent[];
+        }
+      }
+
+      const pipelinesBySource = new Map<string, SourcePipeline[]>();
+      pipelines.forEach((pipeline) => {
+        if (!pipeline.source_id) return;
+        const sourcePipelines = pipelinesBySource.get(pipeline.source_id) || [];
+        sourcePipelines.push(pipeline);
+        pipelinesBySource.set(pipeline.source_id, sourcePipelines);
+      });
+
+      const runsByPipeline = new Map<string, SourcePipelineRun[]>();
+      runs.forEach((run) => {
+        const pipelineRuns = runsByPipeline.get(run.pipeline_id) || [];
+        pipelineRuns.push(run);
+        runsByPipeline.set(run.pipeline_id, pipelineRuns);
+      });
+
+      const eventsBySource = new Map<string, SourceIngestionEvent[]>();
+      events.forEach((event) => {
+        if (!event.source_id) return;
+        const sourceEvents = eventsBySource.get(event.source_id) || [];
+        sourceEvents.push(event);
+        eventsBySource.set(event.source_id, sourceEvents);
+      });
+
+      const last24Hours = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+      const enrichedSources = sources.map((source) => {
+        const linkedPipelines = pipelinesBySource.get(source.id) || [];
+        const linkedRuns = linkedPipelines.flatMap((pipeline) => runsByPipeline.get(pipeline.id) || []);
+        const linkedEvents = eventsBySource.get(source.id) || [];
+
+        const latestRun = linkedRuns[0];
+        const lastSuccess = linkedRuns.find((run) => run.status === 'completed' || run.status === 'partial');
+        const lastFailure = linkedRuns.find((run) => run.status === 'failed');
+        const recentRecordsProcessed = linkedRuns
+          .filter((run) => new Date(run.started_at).getTime() >= last24Hours.getTime())
+          .reduce((sum, run) => sum + (run.records_success || run.records_processed || 0), 0);
+
+        let healthStatus: DataSource['health_status'] = 'idle';
+        let attentionMessage = 'Waiting for the first successful sync.';
+
+        if (linkedPipelines.length === 0) {
+          healthStatus = 'idle';
+          attentionMessage = 'No ETL pipeline is attached to this source yet.';
+        } else if (latestRun?.status === 'failed') {
+          healthStatus = 'critical';
+          attentionMessage = latestRun.error_message || 'Latest ETL run failed. Review the run history.';
+        } else if (linkedEvents.some((event) => event.level === 'error')) {
+          healthStatus = 'critical';
+          attentionMessage = linkedEvents.find((event) => event.level === 'error')?.message || 'Recent ingestion errors need attention.';
+        } else if (latestRun?.status === 'partial' || linkedEvents.some((event) => event.level === 'warning')) {
+          healthStatus = 'warning';
+          attentionMessage = linkedEvents.find((event) => event.level === 'warning')?.message || 'Recent runs completed with warnings.';
+        } else if (latestRun?.status === 'completed' || source.status === 'active') {
+          healthStatus = 'healthy';
+          attentionMessage = 'Source is connected and recent runs are landing successfully.';
+        }
+
+        return {
+          ...source,
+          health_status: healthStatus,
+          linked_pipelines: linkedPipelines.length,
+          recent_records_processed: recentRecordsProcessed,
+          last_success_at: lastSuccess?.completed_at || lastSuccess?.started_at || source.last_sync || null,
+          last_failure_at: lastFailure?.completed_at || lastFailure?.started_at || null,
+          last_run_status: latestRun?.status || null,
+          last_error_message: latestRun?.status === 'failed' ? latestRun.error_message : null,
+          attention_message: attentionMessage,
+          recent_event_count: linkedEvents.length,
+        } as DataSource;
+      });
+
+      setDataSources(enrichedSources);
     } catch (error) {
       console.error('Error fetching data sources:', error);
       setErrorMessage('Failed to load data sources');
     } finally {
       setLoading(false);
     }
+  };
+
+  const getHealthBadgeClasses = (healthStatus?: DataSource['health_status']) => {
+    switch (healthStatus) {
+      case 'healthy':
+        return 'bg-emerald-50 text-emerald-700 border border-emerald-200';
+      case 'warning':
+        return 'bg-amber-50 text-amber-700 border border-amber-200';
+      case 'critical':
+        return 'bg-red-50 text-red-700 border border-red-200';
+      default:
+        return 'bg-slate-100 text-slate-600 border border-slate-200';
+    }
+  };
+
+  const formatDateTime = (value?: string | null) => {
+    if (!value) return 'Never';
+    return new Date(value).toLocaleString();
+  };
+
+  const formatRelativeSyncWindow = (value?: string | null) => {
+    if (!value) return 'No recent sync';
+    const deltaMs = Date.now() - new Date(value).getTime();
+    const minutes = Math.max(1, Math.round(deltaMs / (1000 * 60)));
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.round(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.round(hours / 24);
+    return `${days}d ago`;
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -842,10 +1054,68 @@ export default function DataIntegrationPage() {
         </div>
       )}
 
+      {/* Integration Health Center */}
+      {dataSources.length > 0 && (
+        <div className="mb-8">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-xl font-bold text-slate-900">Integration Health Center</h2>
+              <p className="text-sm text-slate-600 mt-1">Live operational status across connectors, ETL runs, and ingestion events.</p>
+            </div>
+            <div className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-600">
+              <span className="font-semibold text-slate-900">{healthSummary.events}</span> logged events in the last 7 days
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
+            <div className="bg-white rounded-xl border border-slate-200 p-5">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-slate-600">Healthy Sources</span>
+                <div className="w-10 h-10 bg-emerald-50 rounded-lg flex items-center justify-center">
+                  <i className="ri-heart-pulse-line text-emerald-600 text-xl"></i>
+                </div>
+              </div>
+              <div className="text-3xl font-bold text-slate-900">{healthSummary.healthy}</div>
+              <p className="text-xs text-slate-500 mt-1">{healthSummary.total} connected sources monitored</p>
+            </div>
+            <div className="bg-white rounded-xl border border-slate-200 p-5">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-slate-600">Needs Attention</span>
+                <div className="w-10 h-10 bg-amber-50 rounded-lg flex items-center justify-center">
+                  <i className="ri-error-warning-line text-amber-600 text-xl"></i>
+                </div>
+              </div>
+              <div className="text-3xl font-bold text-slate-900">{healthSummary.warning + healthSummary.critical}</div>
+              <p className="text-xs text-slate-500 mt-1">{healthSummary.critical} critical, {healthSummary.warning} warning</p>
+            </div>
+            <div className="bg-white rounded-xl border border-slate-200 p-5">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-slate-600">Recent Sync Wins</span>
+                <div className="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center">
+                  <i className="ri-check-double-line text-blue-600 text-xl"></i>
+                </div>
+              </div>
+              <div className="text-3xl font-bold text-slate-900">{healthSummary.recentSuccesses}</div>
+              <p className="text-xs text-slate-500 mt-1">{healthSummary.recentFailures} sources have recent failed runs</p>
+            </div>
+            <div className="bg-white rounded-xl border border-slate-200 p-5">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-slate-600">Records Observed</span>
+                <div className="w-10 h-10 bg-purple-50 rounded-lg flex items-center justify-center">
+                  <i className="ri-database-2-line text-purple-600 text-xl"></i>
+                </div>
+              </div>
+              <div className="text-3xl font-bold text-slate-900">{healthSummary.records.toLocaleString()}</div>
+              <p className="text-xs text-slate-500 mt-1">Tracked across all integrated sources</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Data Sources Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {dataSources.map((source) => (
-          <div key={source.id} className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <div key={source.id} className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
             <div className="flex items-start justify-between mb-4">
               <div className="flex items-center">
                 <div className={`w-12 h-12 ${source.type === 'api' ? 'bg-purple-100' : 'bg-teal-100'} rounded-lg flex items-center justify-center`}>
@@ -875,9 +1145,38 @@ export default function DataIntegrationPage() {
               </div>
             </div>
 
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold capitalize ${getHealthBadgeClasses(source.health_status)}`}>
+                {source.health_status || 'idle'}
+              </span>
+              <span className="text-xs text-slate-500">
+                {source.linked_pipelines || 0} linked pipeline{source.linked_pipelines === 1 ? '' : 's'}
+              </span>
+            </div>
+
+            <div className="mb-4 p-3 rounded-lg bg-slate-50 border border-slate-200">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">Operational signal</p>
+              <p className="text-sm text-slate-700">{source.attention_message}</p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              <div className="rounded-lg bg-slate-50 px-3 py-3">
+                <p className="text-xs text-slate-500">Last run</p>
+                <p className="mt-1 text-sm font-semibold text-slate-900 capitalize">
+                  {source.last_run_status || source.status}
+                </p>
+              </div>
+              <div className="rounded-lg bg-slate-50 px-3 py-3">
+                <p className="text-xs text-slate-500">Records (24h)</p>
+                <p className="mt-1 text-sm font-semibold text-slate-900">
+                  {(source.recent_records_processed || 0).toLocaleString()}
+                </p>
+              </div>
+            </div>
+
             <div className="space-y-2">
               <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Status:</span>
+                <span className="text-gray-600">Source status:</span>
                 <span className={`font-medium ${source.status === 'active' ? 'text-green-600' : 'text-gray-600'}`}>
                   {source.status}
                 </span>
@@ -889,11 +1188,31 @@ export default function DataIntegrationPage() {
                 </span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Last Sync:</span>
+                <span className="text-gray-600">Last success:</span>
                 <span className="font-medium text-gray-900">
-                  {source.last_sync ? new Date(source.last_sync).toLocaleDateString() : 'Never'}
+                  {formatRelativeSyncWindow(source.last_success_at)}
                 </span>
               </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">Last failure:</span>
+                <span className={`font-medium ${source.last_failure_at ? 'text-red-600' : 'text-slate-500'}`}>
+                  {source.last_failure_at ? formatRelativeSyncWindow(source.last_failure_at) : 'None'}
+                </span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">Recent events:</span>
+                <span className="font-medium text-gray-900">
+                  {(source.recent_event_count || 0).toLocaleString()}
+                </span>
+              </div>
+            </div>
+
+            <div className="mt-4 pt-4 border-t border-slate-200 space-y-1">
+              <p className="text-xs text-slate-500">Last sync timestamp</p>
+              <p className="text-sm text-slate-700">{formatDateTime(source.last_sync)}</p>
+              {source.last_error_message && (
+                <p className="text-xs text-red-600 mt-2">{source.last_error_message}</p>
+              )}
             </div>
           </div>
         ))}
