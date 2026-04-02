@@ -114,6 +114,144 @@ function computeHealth(current: number | null, target: number | null, lowerIsBet
   };
 }
 
+function buildLiveFeed(metrics: MetricRecord[], metricPoints: MetricPointRecord[]): CPIFeedItem[] {
+  if (!metrics.length) return [];
+
+  const metricsByName = new Map(metrics.map((metric) => [normalizeName(metric.name), metric]));
+  const pointMap = new Map<string, MetricPointRecord[]>();
+  metricPoints.forEach((point) => {
+    const existing = pointMap.get(point.metric_id) || [];
+    existing.push(point);
+    pointMap.set(point.metric_id, existing);
+  });
+
+  const getLatestValues = (metricName: string) => {
+    const metric = metricsByName.get(normalizeName(metricName));
+    if (!metric) {
+      return { metric: null as MetricRecord | null, current: null as number | null, previous: null as number | null, latestAt: null as string | null };
+    }
+    const points = [...(pointMap.get(metric.id) || [])].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    return {
+      metric,
+      current: points[0]?.value ?? metric.current_value ?? null,
+      previous: points[1]?.value ?? points[0]?.value ?? null,
+      latestAt: points[0]?.timestamp ?? null,
+    };
+  };
+
+  const wait = getLatestValues('ED Wait Time');
+  const bedsAvailable = getLatestValues('Available Beds');
+  const bedsOccupied = getLatestValues('Occupied Beds');
+  const patientsPerNurse = getLatestValues('Patients Per Nurse');
+  const readmission = getLatestValues('Readmission Risk');
+  const discharges = getLatestValues('Discharges Pending');
+  const criticalLabs = getLatestValues('Critical Labs Unacknowledged');
+  const los = getLatestValues('LOS Average Hours');
+
+  const totalBeds = (bedsOccupied.current || 0) + (bedsAvailable.current || 0);
+  const occupancyPct = totalBeds > 0 ? Math.round(((bedsOccupied.current || 0) / totalBeds) * 100) : null;
+
+  const candidates: Array<CPIFeedItem | null> = [
+    wait.current !== null ? {
+      id: 'live-feed:ed-wait',
+      category: 'ed',
+      severity: wait.current > 45 ? 'critical' : wait.current > 30 ? 'warning' : 'info',
+      title: wait.current > 45 ? 'ED Congestion Risk Rising' : 'ED Throughput Update',
+      body: wait.current > 45
+        ? `ED wait time is ${formatMetricValue(wait.current, wait.metric?.unit)} against a ${formatMetricValue(wait.metric?.target_value ?? 30, wait.metric?.unit)} target. Throughput pressure is likely building.`
+        : `ED wait time is ${formatMetricValue(wait.current, wait.metric?.unit)}. Flow is ${wait.current <= (wait.metric?.target_value ?? 30) ? 'within target' : 'above target and should be watched'}.`,
+      action_label: 'Open ED surge workflow',
+      icon: 'ri-hospital-line',
+      acknowledged: false,
+      acknowledged_at: null,
+      created_at: wait.latestAt ?? new Date().toISOString(),
+    } : null,
+    bedsAvailable.current !== null ? {
+      id: 'live-feed:beds-capacity',
+      category: 'beds',
+      severity: (bedsAvailable.current || 0) < 8 ? 'critical' : (bedsAvailable.current || 0) < 10 ? 'warning' : 'info',
+      title: (bedsAvailable.current || 0) < 8 ? 'Predicted Bed Shortage' : 'Bed Capacity Update',
+      body: (bedsAvailable.current || 0) < 8
+        ? `Only ${formatMetricValue(bedsAvailable.current, bedsAvailable.metric?.unit)} are available with occupancy at ${occupancyPct ?? '—'}%. Capacity may fall below the preferred safety buffer.`
+        : `Bed availability is ${formatMetricValue(bedsAvailable.current, bedsAvailable.metric?.unit)} with occupancy at ${occupancyPct ?? '—'}%.`,
+      action_label: 'Open bed management workflow',
+      icon: 'ri-hotel-bed-line',
+      acknowledged: false,
+      acknowledged_at: null,
+      created_at: bedsAvailable.latestAt ?? new Date().toISOString(),
+    } : null,
+    criticalLabs.current !== null ? {
+      id: 'live-feed:lab-critical',
+      category: 'lab',
+      severity: (criticalLabs.current || 0) > 0 ? 'critical' : 'info',
+      title: (criticalLabs.current || 0) > 0 ? 'Lab Escalation Not Acknowledged' : 'Lab Escalation Status',
+      body: (criticalLabs.current || 0) > 0
+        ? `${Math.round(criticalLabs.current || 0)} critical lab results remain unacknowledged and may need escalation.`
+        : 'No critical lab backlog is currently visible in the live KPI layer.',
+      action_label: 'Run lab escalation review',
+      icon: 'ri-test-tube-line',
+      acknowledged: false,
+      acknowledged_at: null,
+      created_at: criticalLabs.latestAt ?? new Date().toISOString(),
+    } : null,
+    readmission.current !== null ? {
+      id: 'live-feed:readmission-risk',
+      category: 'readmission',
+      severity: (readmission.current || 0) > 0.14 ? 'critical' : (readmission.current || 0) > 0.12 ? 'warning' : 'info',
+      title: (readmission.current || 0) > 0.12 ? 'Readmission Risk Above Target' : 'Readmission Risk Check',
+      body: (readmission.current || 0) > 0.12
+        ? `Average readmission risk is ${formatMetricValue(readmission.current, readmission.metric?.unit)} versus a ${formatMetricValue(readmission.metric?.target_value ?? 0.12, readmission.metric?.unit)} target.`
+        : `Readmission risk is ${formatMetricValue(readmission.current, readmission.metric?.unit)} and currently within the expected threshold.`,
+      action_label: 'Review readmission case list',
+      icon: 'ri-refresh-line',
+      acknowledged: false,
+      acknowledged_at: null,
+      created_at: readmission.latestAt ?? new Date().toISOString(),
+    } : null,
+    discharges.current !== null ? {
+      id: 'live-feed:discharge-backlog',
+      category: 'discharge',
+      severity: (discharges.current || 0) > 6 ? 'warning' : 'info',
+      title: (discharges.current || 0) > 6 ? 'Discharge Backlog Increasing' : 'Discharge Operations Check',
+      body: `${Math.round(discharges.current || 0)} patients are pending discharge completion. ${((discharges.current || 0) > 6) ? 'Coordination delay may affect bed turnover.' : 'Discharge operations are moving within target levels.'}`,
+      action_label: 'Open discharge coordination',
+      icon: 'ri-door-open-line',
+      acknowledged: false,
+      acknowledged_at: null,
+      created_at: discharges.latestAt ?? new Date().toISOString(),
+    } : null,
+    patientsPerNurse.current !== null ? {
+      id: 'live-feed:staffing-load',
+      category: 'staffing',
+      severity: (patientsPerNurse.current || 0) > 5 ? 'warning' : 'info',
+      title: (patientsPerNurse.current || 0) > 5 ? 'Staffing Load Above Preferred Range' : 'Staffing Load Check',
+      body: `Patients per nurse is ${formatMetricValue(patientsPerNurse.current, patientsPerNurse.metric?.unit)}. ${((patientsPerNurse.current || 0) > 5) ? 'This suggests staffing strain and may warrant rebalancing.' : 'Coverage is within the preferred operating range.'}`,
+      action_label: 'Review staffing assignment',
+      icon: 'ri-team-line',
+      acknowledged: false,
+      acknowledged_at: null,
+      created_at: patientsPerNurse.latestAt ?? new Date().toISOString(),
+    } : null,
+    los.current !== null ? {
+      id: 'live-feed:los',
+      category: 'inpatient',
+      severity: (los.current || 0) > 36 ? 'warning' : 'info',
+      title: (los.current || 0) > 36 ? 'Length of Stay Pressure' : 'Inpatient LOS Check',
+      body: `Average LOS is ${formatMetricValue(los.current, los.metric?.unit)}. ${((los.current || 0) > 36) ? 'Inpatient throughput friction may be building.' : 'LOS is within a manageable operating range.'}`,
+      action_label: 'Review inpatient flow',
+      icon: 'ri-hotel-bed-line',
+      acknowledged: false,
+      acknowledged_at: null,
+      created_at: los.latestAt ?? new Date().toISOString(),
+    } : null,
+  ];
+
+  return candidates
+    .filter((item): item is CPIFeedItem => Boolean(item))
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    .slice(0, 8);
+}
+
 function buildLiveDomains(metrics: MetricRecord[], metricPoints: MetricPointRecord[]): CPIDomainSnapshot[] {
   if (!metrics.length) return [];
 
@@ -352,6 +490,16 @@ export function useCPIData(): UseCPIDataReturn {
   const [loadingFeed, setLoadingFeed] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const applySyntheticAcknowledge = useCallback((id: string, acknowledgedAt: string) => {
+    setFeed(prev =>
+      prev.map(item =>
+        item.id === id
+          ? { ...item, acknowledged: true, acknowledged_at: acknowledgedAt }
+          : item
+      )
+    );
+  }, []);
+
   const fetchDomains = useCallback(async () => {
     setLoadingDomains(true);
     const { data, error: err } = await supabase
@@ -403,49 +551,79 @@ export function useCPIData(): UseCPIDataReturn {
       .order('created_at', { ascending: false })
       .limit(50);
 
+    let mergedFeed = (data as CPIFeedItem[]) ?? [];
+
+    if (organizationId) {
+      const { data: metricRows, error: metricsError } = await supabase
+        .from('metrics')
+        .select('id, name, unit, current_value, target_value')
+        .eq('organization_id', organizationId)
+        .in('name', LIVE_METRIC_PRIORITY);
+
+      if (!metricsError && metricRows && metricRows.length > 0) {
+        const metricIds = metricRows.map((metric) => metric.id);
+        const { data: pointRows, error: pointsError } = await supabase
+          .from('metric_data')
+          .select('metric_id, value, timestamp')
+          .in('metric_id', metricIds)
+          .order('timestamp', { ascending: false })
+          .limit(500);
+
+        if (!pointsError) {
+          const liveFeed = buildLiveFeed(metricRows as MetricRecord[], (pointRows as MetricPointRecord[]) || []);
+          if (liveFeed.length > 0) {
+            const existingIds = new Set(liveFeed.map(item => item.id));
+            mergedFeed = [...liveFeed, ...mergedFeed.filter(item => !existingIds.has(item.id))];
+          }
+        }
+      }
+    }
+
     if (err) {
       setError(err.message);
     } else {
-      setFeed((data as CPIFeedItem[]) ?? []);
+      setFeed(mergedFeed);
     }
     setLoadingFeed(false);
-  }, []);
+  }, [organizationId]);
 
   const acknowledgeFeedItem = useCallback(async (id: string) => {
+    const now = new Date().toISOString();
+    if (id.startsWith('live-feed:')) {
+      applySyntheticAcknowledge(id, now);
+      return;
+    }
+
     const { error: err } = await supabase
       .from('cpi_feed')
-      .update({ acknowledged: true, acknowledged_at: new Date().toISOString() })
+      .update({ acknowledged: true, acknowledged_at: now })
       .eq('id', id);
 
     if (!err) {
-      setFeed(prev =>
-        prev.map(item =>
-          item.id === id
-            ? { ...item, acknowledged: true, acknowledged_at: new Date().toISOString() }
-            : item
-        )
-      );
+      applySyntheticAcknowledge(id, now);
     }
-  }, []);
+  }, [applySyntheticAcknowledge]);
 
   const silenceFeedCategory = useCallback(async (category: string) => {
     const now = new Date().toISOString();
+    setFeed(prev =>
+      prev.map(item =>
+        item.category === category && !item.acknowledged
+          ? { ...item, acknowledged: true, acknowledged_at: now }
+          : item
+      )
+    );
+
     const { error: err } = await supabase
       .from('cpi_feed')
       .update({ acknowledged: true, acknowledged_at: now })
       .eq('category', category)
       .eq('acknowledged', false);
 
-    if (!err) {
-      setFeed(prev =>
-        prev.map(item =>
-          item.category === category && !item.acknowledged
-            ? { ...item, acknowledged: true, acknowledged_at: now }
-            : item
-        )
-      );
+    if (err) {
+      fetchFeed();
     }
-  }, []);
+  }, [fetchFeed]);
 
   useEffect(() => {
     fetchDomains();
@@ -457,19 +635,7 @@ export function useCPIData(): UseCPIDataReturn {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'cpi_feed' },
-        (payload) => {
-          if (payload.eventType === 'INSERT') {
-            setFeed(prev => [payload.new as CPIFeedItem, ...prev]);
-          } else if (payload.eventType === 'UPDATE') {
-            setFeed(prev =>
-              prev.map(item =>
-                item.id === (payload.new as CPIFeedItem).id
-                  ? (payload.new as CPIFeedItem)
-                  : item
-              )
-            );
-          }
-        }
+        () => { fetchFeed(); }
       )
       .subscribe();
 
@@ -479,17 +645,7 @@ export function useCPIData(): UseCPIDataReturn {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'cpi_domain_snapshots' },
-        (payload) => {
-          if (payload.eventType === 'UPDATE') {
-            setDomains(prev =>
-              prev.map(d =>
-                d.id === (payload.new as CPIDomainSnapshot).id
-                  ? (payload.new as CPIDomainSnapshot)
-                  : d
-              )
-            );
-          }
-        }
+        () => { fetchDomains(); }
       )
       .subscribe();
 
