@@ -3,6 +3,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../hooks/useToast';
 import { supabase } from '../../lib/supabase';
 import ConfirmDialog from '../../components/common/ConfirmDialog';
+import InsightSummary from '../../components/common/InsightSummary';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 
 interface ForecastPoint {
@@ -297,6 +298,15 @@ export default function SimulationsPage() {
     }
   };
 
+  const getSeverityWeight = (severity: string) => {
+    switch (severity?.toLowerCase()) {
+      case 'critical': return 1;
+      case 'high': return 0.75;
+      case 'medium': return 0.5;
+      default: return 0.25;
+    }
+  };
+
   const calculateModelAccuracy = () => {
     if (forecastData.length === 0) return null;
 
@@ -326,6 +336,47 @@ export default function SimulationsPage() {
   ).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()).slice(0, 30);
 
   const modelAccuracy = calculateModelAccuracy();
+
+  const trendDrivers = metrics
+    .map((metric) => {
+      const metricForecast = forecastData.find((forecast) => forecast.metric_id === metric.id);
+      const points = metricForecast?.forecast_data || [];
+      const firstPoint = points[0]?.predicted_value ?? metric.current_value ?? 0;
+      const lastPoint = points[points.length - 1]?.predicted_value ?? firstPoint;
+      const forecastChangePct = firstPoint !== 0 ? ((lastPoint - firstPoint) / Math.abs(firstPoint)) * 100 : 0;
+      const metricAnomalies = anomalies.filter((anomaly) => anomaly.metric_id === metric.id);
+      const anomalyPressure = metricAnomalies.reduce(
+        (sum, anomaly) => sum + Math.abs(anomaly.deviation || 0) * getSeverityWeight(anomaly.severity),
+        0
+      );
+      const score = Math.abs(forecastChangePct) * 0.65 + anomalyPressure * 0.35;
+
+      return {
+        metricId: metric.id,
+        metricName: metric.name,
+        forecastChangePct,
+        anomalyCount: metricAnomalies.length,
+        anomalyPressure,
+        score,
+      };
+    })
+    .filter((driver) => driver.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 5);
+
+  const maxTrendDriverScore = Math.max(...trendDrivers.map((driver) => driver.score), 0);
+  const topDriver = trendDrivers[0];
+  const criticalAnomalies = anomalies.filter((anomaly) => anomaly.severity?.toLowerCase() === 'critical').length;
+  const summaryTitle = forecastData.length > 0 ? 'What This Means In Plain English' : 'Simulation Readiness Summary';
+  const summaryText = forecastData.length > 0
+    ? `The platform has active forecasts for ${forecastData.length} metric${forecastData.length === 1 ? '' : 's'} and is tracking ${anomalies.length} recent anomaly${anomalies.length === 1 ? '' : 'ies'}. Overall model accuracy is ${modelAccuracy ? `${modelAccuracy.accuracy.toFixed(1)}%` : 'still being established'}, so this page is useful for spotting directional risk and emerging pressure points.`
+    : `This page is ready to support predictive simulations, but it needs more trained forecasts before it can show strong forward-looking guidance.`;
+  const summaryDriver = topDriver
+    ? `${topDriver.metricName} is the strongest current driver, showing a projected ${topDriver.forecastChangePct >= 0 ? 'increase' : 'decrease'} of ${Math.abs(topDriver.forecastChangePct).toFixed(1)}% and ${topDriver.anomalyCount} recent anomaly${topDriver.anomalyCount === 1 ? '' : 'ies'}.`
+    : 'No single metric is standing out yet as a dominant driver, which usually means the predictive layer needs more history or more trained forecasts.';
+  const summaryGuidance = criticalAnomalies > 0
+    ? `There ${criticalAnomalies === 1 ? 'is' : 'are'} ${criticalAnomalies} critical anomal${criticalAnomalies === 1 ? 'y' : 'ies'} in the recent window, so treat the forecast as an early warning system and review those signals first.`
+    : 'Use the driver ranking below to decide which metric needs attention first, then retrain models after new data arrives so the outlook stays current.';
 
   if (loading) {
     return (
@@ -401,6 +452,13 @@ export default function SimulationsPage() {
           )}
         </button>
       </div>
+
+      <InsightSummary
+        title={summaryTitle}
+        summary={summaryText}
+        driver={summaryDriver}
+        guidance={summaryGuidance}
+      />
 
       {/* Model Accuracy Overview */}
       {modelAccuracy && (
@@ -544,13 +602,14 @@ export default function SimulationsPage() {
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
           <h2 className="text-xl font-semibold text-gray-900 mb-4">Trend Analysis — Key Drivers</h2>
           <div className="space-y-3">
-            {metrics.slice(0, 5).map((metric, index) => {
-              const impact = Math.max(10, 50 - index * 8);
-              return (
-                <div key={metric.id}>
+            {trendDrivers.length > 0 ? (
+              trendDrivers.map((driver) => {
+                const impact = maxTrendDriverScore > 0 ? Math.max(8, (driver.score / maxTrendDriverScore) * 100) : 0;
+                return (
+                <div key={driver.metricId}>
                   <div className="flex justify-between text-sm mb-1">
-                    <span className="text-gray-700">{metric.name}</span>
-                    <span className="font-medium text-gray-900">{impact}%</span>
+                    <span className="text-gray-700">{driver.metricName}</span>
+                    <span className="font-medium text-gray-900">{impact.toFixed(0)}%</span>
                   </div>
                   <div className="w-full bg-gray-200 rounded-full h-2">
                     <div
@@ -558,9 +617,22 @@ export default function SimulationsPage() {
                       style={{ width: `${impact}%` }}
                     ></div>
                   </div>
+                  <div className="flex justify-between text-xs text-gray-500 mt-1">
+                    <span>
+                      Forecast movement: {driver.forecastChangePct >= 0 ? '+' : ''}{driver.forecastChangePct.toFixed(1)}%
+                    </span>
+                    <span>
+                      {driver.anomalyCount} anomaly{driver.anomalyCount === 1 ? '' : 'ies'}
+                    </span>
+                  </div>
                 </div>
               );
-            })}
+              })
+            ) : (
+              <div className="text-sm text-gray-500">
+                Trend drivers will appear here once forecasts and anomalies are available for your metrics.
+              </div>
+            )}
           </div>
         </div>
       )}
