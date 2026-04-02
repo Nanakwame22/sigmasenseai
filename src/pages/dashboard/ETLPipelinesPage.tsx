@@ -66,6 +66,13 @@ interface PipelineValidationResult {
   issues: string[];
 }
 
+interface FieldInsight {
+  field: string;
+  numericRatio: number;
+  sampleCount: number;
+  mostlyNumeric: boolean;
+}
+
 export default function ETLPipelinesPage() {
   const { user } = useAuth();
   const { showToast } = useToast();
@@ -83,6 +90,7 @@ export default function ETLPipelinesPage() {
   const [currentStep, setCurrentStep] = useState(1);
   const [sourcePreview, setSourcePreview] = useState<any[]>([]);
   const [sourceFields, setSourceFields] = useState<string[]>([]);
+  const [fieldInsights, setFieldInsights] = useState<FieldInsight[]>([]);
   const [fieldMappings, setFieldMappings] = useState<FieldMapping[]>([]);
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [runningPipelines, setRunningPipelines] = useState<Set<string>>(new Set());
@@ -287,6 +295,49 @@ export default function ETLPipelinesPage() {
     }
   };
 
+  const inferFieldInsights = (previewData: any[], fields: string[]): FieldInsight[] => {
+    return fields.map((field) => {
+      const values = previewData
+        .map((row) => row?.[field])
+        .filter((value) => value !== null && value !== undefined && String(value).trim() !== '');
+
+      const numericValues = values.filter((value) => {
+        if (typeof value === 'number') return !Number.isNaN(value);
+        const normalized = String(value).replace(/,/g, '').trim();
+        return normalized !== '' && !Number.isNaN(Number(normalized));
+      });
+
+      const sampleCount = values.length;
+      const numericRatio = sampleCount > 0 ? numericValues.length / sampleCount : 0;
+
+      return {
+        field,
+        sampleCount,
+        numericRatio,
+        mostlyNumeric: numericRatio >= 0.6,
+      };
+    });
+  };
+
+  const getValueCandidateFields = (fields: string[], insights: FieldInsight[]): string[] => {
+    const ranked = [...fields].sort((a, b) => {
+      const insightA = insights.find((item) => item.field === a);
+      const insightB = insights.find((item) => item.field === b);
+      const scoreA = insightA?.numericRatio ?? 0;
+      const scoreB = insightB?.numericRatio ?? 0;
+
+      if (scoreA !== scoreB) return scoreB - scoreA;
+
+      const nameBoostA = /(value|amount|score|count|rate|total|number|qty)/i.test(a) ? 1 : 0;
+      const nameBoostB = /(value|amount|score|count|rate|total|number|qty)/i.test(b) ? 1 : 0;
+
+      if (nameBoostA !== nameBoostB) return nameBoostB - nameBoostA;
+      return a.localeCompare(b);
+    });
+
+    return ranked;
+  };
+
   const loadSourcePreview = async (sourceId: string) => {
     if (!sourceId) return;
 
@@ -346,17 +397,21 @@ export default function ETLPipelinesPage() {
       setSourcePreview(previewData);
       setSourceFields(fields);
 
+      const insights = inferFieldInsights(previewData, fields);
+      setFieldInsights(insights);
+
       // Initialize field mappings if empty
       if (fieldMappings.length === 0 && fields.length > 0) {
         const initialMappings: FieldMapping[] = [];
+        const valueCandidates = getValueCandidateFields(fields, insights);
         
         // Auto-detect common field names
         const nameField = fields.find(f => 
           f.toLowerCase().includes('name') || f.toLowerCase().includes('metric')
         );
-        const valueField = fields.find(f => 
+        const valueField = valueCandidates.find(f => 
           f.toLowerCase().includes('value') || f.toLowerCase().includes('amount')
-        );
+        ) || valueCandidates[0];
         const timestampField = fields.find(f => 
           f.toLowerCase().includes('date') || f.toLowerCase().includes('time')
         );
@@ -662,6 +717,7 @@ export default function ETLPipelinesPage() {
     setCurrentStep(1);
     setSourcePreview([]);
     setSourceFields([]);
+    setFieldInsights([]);
     setFieldMappings([]);
   };
 
@@ -1292,6 +1348,28 @@ export default function ETLPipelinesPage() {
                         </div>
                       )}
 
+                      {fieldInsights.some((insight) => insight.mostlyNumeric) && (
+                        <div className="mb-4 rounded-lg border border-teal-200 bg-teal-50 px-3 py-3">
+                          <p className="text-sm font-semibold text-teal-900">Suggested numeric fields for value mappings</p>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {getValueCandidateFields(sourceFields, fieldInsights)
+                              .filter((field) => fieldInsights.find((insight) => insight.field === field)?.mostlyNumeric)
+                              .slice(0, 4)
+                              .map((field) => {
+                                const insight = fieldInsights.find((item) => item.field === field);
+                                return (
+                                  <span
+                                    key={field}
+                                    className="inline-flex items-center rounded-full bg-white px-2.5 py-1 text-xs font-medium text-teal-700 border border-teal-200"
+                                  >
+                                    {field} {insight ? `(${Math.round(insight.numericRatio * 100)}% numeric)` : ''}
+                                  </span>
+                                );
+                              })}
+                          </div>
+                        </div>
+                      )}
+
                       <div>
                         <div className="flex items-center justify-between mb-2">
                           <label className="block text-sm font-medium text-gray-700">Field Mappings</label>
@@ -1314,9 +1392,22 @@ export default function ETLPipelinesPage() {
                                   className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
                                 >
                                   <option value="">Select field...</option>
-                                  {sourceFields.map(field => (
-                                    <option key={field} value={field}>{field}</option>
-                                  ))}
+                                  {(mapping.destinationType === 'value'
+                                    ? getValueCandidateFields(sourceFields, fieldInsights)
+                                    : sourceFields
+                                  ).map(field => {
+                                    const insight = fieldInsights.find((item) => item.field === field);
+                                    const isNumericHint = mapping.destinationType === 'value' && insight?.mostlyNumeric;
+
+                                    return (
+                                      <option key={field} value={field}>
+                                        {field}{isNumericHint ? ` - ${Math.round((insight?.numericRatio || 0) * 100)}% numeric` : ''}
+                                      </option>
+                                    );
+                                  })}
+                                  {sourceFields.length === 0 && (
+                                    <option value="" disabled>No fields available</option>
+                                  )}
                                 </select>
                               </div>
                               <div className="w-8 h-8 flex items-center justify-center text-gray-400">
