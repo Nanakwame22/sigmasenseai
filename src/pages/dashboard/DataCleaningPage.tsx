@@ -34,6 +34,24 @@ interface CleaningLog {
   executed_at: string;
 }
 
+type SupportedTargetRow =
+  | {
+      id: string;
+      organization_id?: string;
+      name?: string | null;
+      unit?: string | null;
+      category?: string | null;
+      current_value?: number | null;
+      target_value?: number | null;
+      actual_value?: number | null;
+    }
+  | {
+      id: string;
+      metric_id: string;
+      timestamp: string;
+      value: number | null;
+    };
+
 export default function DataCleaningPage() {
   const { user } = useAuth();
   const { showToast } = useToast();
@@ -188,10 +206,182 @@ export default function DataCleaningPage() {
       const rule = rules.find(r => r.id === ruleId);
       if (!rule) return;
 
-      // Simulate cleaning operation
-      const recordsScanned = Math.floor(Math.random() * 1000) + 100;
-      const recordsCleaned = Math.floor(recordsScanned * 0.15);
-      const recordsRemoved = Math.floor(recordsCleaned * 0.3);
+      const getRowsForTarget = async (): Promise<SupportedTargetRow[]> => {
+        if (rule.target_table === 'metrics') {
+          const { data, error } = await supabase
+            .from('metrics')
+            .select('id, organization_id, name, unit, category, current_value, target_value, actual_value')
+            .eq('organization_id', userOrgs.organization_id);
+
+          if (error) throw error;
+          return (data || []) as SupportedTargetRow[];
+        }
+
+        if (rule.target_table === 'metric_data') {
+          const { data: metricsData, error: metricsError } = await supabase
+            .from('metrics')
+            .select('id')
+            .eq('organization_id', userOrgs.organization_id);
+
+          if (metricsError) throw metricsError;
+
+          const metricIds = (metricsData || []).map((metric) => metric.id);
+          if (metricIds.length === 0) return [];
+
+          const { data, error } = await supabase
+            .from('metric_data')
+            .select('id, metric_id, timestamp, value')
+            .in('metric_id', metricIds);
+
+          if (error) throw error;
+          return (data || []) as SupportedTargetRow[];
+        }
+
+        throw new Error(`Unsupported target table "${rule.target_table}". Use metrics or metric_data.`);
+      };
+
+      const rows = await getRowsForTarget();
+      const field = rule.conditions?.field || (rule.target_table === 'metrics' ? 'name' : 'value');
+      const recordsScanned = rows.length;
+      let recordsCleaned = 0;
+      let recordsRemoved = 0;
+      let duplicates = 0;
+      let missingValues = 0;
+      let invalidFormats = 0;
+      let flagged = 0;
+
+      const updateMetricsField = async (ids: string[], value: unknown) => {
+        for (const id of ids) {
+          const { error } = await supabase
+            .from('metrics')
+            .update({ [field]: value })
+            .eq('id', id);
+          if (error) throw error;
+        }
+      };
+
+      const updateMetricDataField = async (ids: string[], value: unknown) => {
+        for (const id of ids) {
+          const { error } = await supabase
+            .from('metric_data')
+            .update({ [field]: value })
+            .eq('id', id);
+          if (error) throw error;
+        }
+      };
+
+      if (rule.rule_type === 'remove_duplicates') {
+        const seen = new Map<string, string>();
+        const duplicateIds: string[] = [];
+
+        rows.forEach((row) => {
+          const duplicateKey =
+            rule.target_table === 'metric_data'
+              ? `${(row as any).metric_id}:${(row as any).timestamp}:${String((row as any)[field] ?? '')}`
+              : String((row as any)[field] ?? '').trim().toLowerCase();
+
+          if (!duplicateKey) return;
+          if (seen.has(duplicateKey)) {
+            duplicateIds.push(row.id);
+          } else {
+            seen.set(duplicateKey, row.id);
+          }
+        });
+
+        duplicates = duplicateIds.length;
+        if (duplicates > 0 && rule.action?.type === 'remove') {
+          const tableName = rule.target_table === 'metric_data' ? 'metric_data' : 'metrics';
+          const { error } = await supabase
+            .from(tableName)
+            .delete()
+            .in('id', duplicateIds);
+
+          if (error) throw error;
+          recordsRemoved = duplicateIds.length;
+          recordsCleaned = duplicateIds.length;
+        } else {
+          flagged = duplicates;
+        }
+      }
+
+      if (rule.rule_type === 'fill_missing') {
+        const missingIds = rows
+          .filter((row) => {
+            const value = (row as any)[field];
+            return value === null || value === undefined || String(value).trim() === '';
+          })
+          .map((row) => row.id);
+
+        missingValues = missingIds.length;
+        if (missingIds.length > 0 && rule.action?.value !== undefined && rule.action?.value !== '') {
+          if (rule.target_table === 'metrics') {
+            await updateMetricsField(missingIds, rule.action.value);
+          } else {
+            await updateMetricDataField(missingIds, rule.action.value);
+          }
+          recordsCleaned += missingIds.length;
+        } else {
+          flagged += missingIds.length;
+        }
+      }
+
+      if (rule.rule_type === 'standardize') {
+        const normalizedRows = rows.filter((row) => {
+          const value = (row as any)[field];
+          return typeof value === 'string' && value.trim() !== value;
+        });
+
+        if (normalizedRows.length > 0) {
+          const ids = normalizedRows.map((row) => row.id);
+          if (rule.target_table === 'metrics') {
+            for (const row of normalizedRows) {
+              const { error } = await supabase
+                .from('metrics')
+                .update({ [field]: String((row as any)[field]).trim() })
+                .eq('id', row.id);
+              if (error) throw error;
+            }
+          } else {
+            flagged += ids.length;
+          }
+          recordsCleaned += normalizedRows.length;
+        }
+      }
+
+      if (rule.rule_type === 'validate') {
+        const expectedType = String(rule.action?.value || '').toLowerCase();
+        const invalidRows = rows.filter((row) => {
+          const value = (row as any)[field];
+          if (value === null || value === undefined || String(value).trim() === '') return true;
+          if (expectedType === 'number') return Number.isNaN(Number(value));
+          if (expectedType === 'date') return Number.isNaN(new Date(String(value)).getTime());
+          return false;
+        });
+
+        invalidFormats = invalidRows.length;
+        flagged += invalidRows.length;
+      }
+
+      if (rule.rule_type === 'transform') {
+        const matchingRows = rows.filter((row) => {
+          const value = (row as any)[field];
+          if (rule.conditions?.operator === 'equals') return String(value ?? '') === String(rule.conditions?.value ?? '');
+          if (rule.conditions?.operator === 'contains') return String(value ?? '').includes(String(rule.conditions?.value ?? ''));
+          return true;
+        });
+
+        if (matchingRows.length > 0 && rule.action?.value !== undefined && rule.action?.value !== '') {
+          const ids = matchingRows.map((row) => row.id);
+          if (rule.target_table === 'metrics') {
+            await updateMetricsField(ids, rule.action.value);
+          } else {
+            await updateMetricDataField(ids, rule.action.value);
+          }
+          recordsCleaned += ids.length;
+        } else {
+          flagged += matchingRows.length;
+        }
+      }
 
       const logData = {
         rule_id: ruleId,
@@ -201,14 +391,14 @@ export default function DataCleaningPage() {
         records_cleaned: recordsCleaned,
         records_removed: recordsRemoved,
         issues_found: {
-          duplicates: Math.floor(Math.random() * 50),
-          missing_values: Math.floor(Math.random() * 30),
-          invalid_formats: Math.floor(Math.random() * 20)
+          duplicates,
+          missing_values: missingValues,
+          invalid_formats: invalidFormats
         },
         actions_taken: {
           removed: recordsRemoved,
           updated: recordsCleaned - recordsRemoved,
-          flagged: Math.floor(Math.random() * 10)
+          flagged
         },
         status: 'completed',
         executed_by: user.id
