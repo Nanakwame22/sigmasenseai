@@ -24,6 +24,7 @@ interface DecisionCase {
   tags: string[];
   resolved_at: string | null;
   created_at: string;
+  updated_at?: string | null;
 }
 
 interface MetricRecord {
@@ -90,6 +91,56 @@ function formatMetricValue(value: number | null | undefined, unit: string | null
   if (normalizedUnit === 'ratio') return `${value.toFixed(1)}`;
   if (normalizedUnit === 'probability') return `${Math.round(value * 100)}%`;
   return `${value.toFixed(1)}`;
+}
+
+function getCaseOwner(caseItem: DecisionCase) {
+  return caseItem.role.split('—')[0]?.trim() || caseItem.role;
+}
+
+function getCaseDueMeta(caseItem: DecisionCase) {
+  if (caseItem.status === 'resolved') {
+    return {
+      label: 'Closed',
+      tone: 'bg-emerald-50 text-emerald-700 border-emerald-100',
+      icon: 'ri-checkbox-circle-line',
+    };
+  }
+
+  if (caseItem.signal_severity === 'critical') {
+    return {
+      label: 'Due now',
+      tone: 'bg-rose-50 text-rose-700 border-rose-100',
+      icon: 'ri-alarm-warning-line',
+    };
+  }
+
+  if (caseItem.tags.some(tag => ['capacity', 'discharge', 'beds', 'staffing'].includes(tag.toLowerCase()))) {
+    return {
+      label: 'Due this shift',
+      tone: 'bg-amber-50 text-amber-700 border-amber-100',
+      icon: 'ri-time-line',
+    };
+  }
+
+  return {
+    label: 'Due < 1h',
+    tone: 'bg-sky-50 text-sky-700 border-sky-100',
+    icon: 'ri-timer-line',
+  };
+}
+
+function getCaseAuditMeta(caseItem: DecisionCase) {
+  const lastTouched = caseItem.resolved_at || caseItem.updated_at || caseItem.created_at;
+  const stateLabel = caseItem.resolved_at
+    ? `Resolved ${timeAgo(caseItem.resolved_at)}`
+    : caseItem.updated_at && caseItem.updated_at !== caseItem.created_at
+      ? `Updated ${timeAgo(caseItem.updated_at)}`
+      : `Logged ${timeAgo(caseItem.created_at)}`;
+
+  return {
+    label: stateLabel,
+    timestamp: lastTouched,
+  };
 }
 
 function buildLiveCases(metrics: MetricRecord[], metricPoints: MetricPointRecord[]): DecisionCase[] {
@@ -297,6 +348,7 @@ function buildTrackedCaseFromLiveCase(caseItem: DecisionCase) {
     steps: caseItem.steps,
     status: 'active',
     tags: caseItem.tags,
+    updated_at: new Date().toISOString(),
   };
 }
 
@@ -343,6 +395,7 @@ function LogCaseModal({ onClose, onSaved }: LogCaseModalProps) {
       ],
       status: 'active',
       tags: tags.split(',').map(t => t.trim()).filter(Boolean),
+      updated_at: new Date().toISOString(),
     });
     setSaving(false);
     if (err) { setError(err.message); return; }
@@ -889,6 +942,9 @@ export default function WorkflowDecisionSupport() {
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
           {filtered.map(c => {
             const isOpen = expandedId === c.id;
+            const owner = getCaseOwner(c);
+            const dueMeta = getCaseDueMeta(c);
+            const auditMeta = getCaseAuditMeta(c);
             return (
               <div
                 key={c.id}
@@ -958,6 +1014,17 @@ export default function WorkflowDecisionSupport() {
                       ))}
                     </div>
                     <span className="text-xs text-slate-400 whitespace-nowrap">{timeAgo(c.created_at)}</span>
+                  </div>
+
+                  <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-100">
+                    <div className="flex items-center space-x-2 min-w-0">
+                      <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Owner</span>
+                      <span className="text-xs font-medium text-slate-700 truncate">{owner}</span>
+                    </div>
+                    <div className={`flex items-center space-x-1.5 px-2.5 py-1 rounded-full border text-xs font-semibold ${dueMeta.tone}`}>
+                      <i className={`${dueMeta.icon} text-xs`}></i>
+                      <span>{dueMeta.label}</span>
+                    </div>
                   </div>
                 </div>
 
@@ -1030,6 +1097,18 @@ export default function WorkflowDecisionSupport() {
                         </div>
                       </div>
                     )}
+
+                    <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Audit Trail</p>
+                        <p className="text-xs text-slate-600 mt-1 truncate">
+                          {auditMeta.label} · Owner: {owner}
+                        </p>
+                      </div>
+                      <span className="text-xs text-slate-400 whitespace-nowrap">
+                        {auditMeta.timestamp ? new Date(auditMeta.timestamp).toLocaleString() : '—'}
+                      </span>
+                    </div>
                   </div>
                 )}
               </div>
