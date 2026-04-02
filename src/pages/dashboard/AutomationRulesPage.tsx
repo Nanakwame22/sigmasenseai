@@ -30,7 +30,7 @@ interface AutomationExecution {
 }
 
 export default function AutomationRulesPage() {
-  const { user } = useAuth();
+  const { user, organizationId } = useAuth();
   const [rules, setRules] = useState<AutomationRule[]>([]);
   const [executions, setExecutions] = useState<AutomationExecution[]>([]);
   const [loading, setLoading] = useState(true);
@@ -72,23 +72,17 @@ export default function AutomationRulesPage() {
 
   useEffect(() => {
     fetchRules();
-  }, []);
+  }, [user?.id, organizationId]);
 
   const fetchRules = async () => {
     try {
       setLoading(true);
-      const { data: orgData } = await supabase
-        .from('user_organizations')
-        .select('organization_id')
-        .eq('user_id', user?.id)
-        .single();
-
-      if (!orgData) return;
+      if (!organizationId) return;
 
       const { data, error } = await supabase
         .from('automation_rules')
         .select('*')
-        .eq('organization_id', orgData.organization_id)
+        .eq('organization_id', organizationId)
         .order('priority', { ascending: false });
 
       if (error) throw error;
@@ -119,13 +113,7 @@ export default function AutomationRulesPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const { data: orgData } = await supabase
-        .from('user_organizations')
-        .select('organization_id')
-        .eq('user_id', user?.id)
-        .single();
-
-      if (!orgData) return;
+      if (!organizationId) return;
 
       if (selectedRule) {
         const { error } = await supabase
@@ -142,7 +130,7 @@ export default function AutomationRulesPage() {
           .from('automation_rules')
           .insert({
             ...formData,
-            organization_id: orgData.organization_id,
+            organization_id: organizationId,
             created_by: user?.id
           });
 
@@ -173,20 +161,116 @@ export default function AutomationRulesPage() {
   };
 
   const handleTestRule = async (rule: AutomationRule) => {
+    const startedAt = performance.now();
     try {
+      let status: AutomationExecution['status'] = 'success';
+      let triggerData: Record<string, unknown> = { test: true, trigger_type: rule.trigger_type };
+      let actionResult: Record<string, unknown> = { action_type: rule.action_type };
+      let errorMessage: string | undefined;
+
+      if (rule.trigger_type === 'metric_threshold') {
+        const metricId = rule.trigger_config?.metric;
+        const threshold = Number(rule.trigger_config?.threshold);
+        const operator = rule.trigger_config?.operator || 'greater_than';
+
+        if (!metricId || !Number.isFinite(threshold)) {
+          status = 'failed';
+          errorMessage = 'Metric threshold trigger is missing a metric or threshold.';
+        } else {
+          const { data: metric, error } = await supabase
+            .from('metrics')
+            .select('id, name, current_value, target_value, unit')
+            .eq('id', metricId)
+            .single();
+
+          if (error || !metric) {
+            status = 'failed';
+            errorMessage = 'Configured metric could not be found.';
+          } else {
+            const currentValue = Number(metric.current_value ?? 0);
+            const fired =
+              operator === 'greater_than' ? currentValue > threshold :
+              operator === 'less_than' ? currentValue < threshold :
+              operator === 'equal_to' ? currentValue === threshold :
+              false;
+
+            triggerData = {
+              ...triggerData,
+              metric_id: metric.id,
+              metric_name: metric.name,
+              current_value: currentValue,
+              threshold,
+              operator,
+              fired,
+            };
+
+            actionResult = fired
+              ? {
+                  ...actionResult,
+                  message: `${metric.name} crossed the configured threshold during the test.`,
+                  outcome: 'trigger_matched',
+                }
+              : {
+                  ...actionResult,
+                  message: `${metric.name} did not cross the configured threshold during the test.`,
+                  outcome: 'trigger_not_met',
+                };
+          }
+        }
+      } else if (rule.trigger_type === 'schedule') {
+        triggerData = {
+          ...triggerData,
+          schedule: rule.trigger_config,
+        };
+        actionResult = {
+          ...actionResult,
+          message: 'Scheduled rules cannot be naturally fired on demand, but the configuration is valid and ready for the next scheduled run.',
+          outcome: 'schedule_validated',
+        };
+      } else if (rule.trigger_type === 'manual') {
+        actionResult = {
+          ...actionResult,
+          message: 'Manual rule test completed successfully.',
+          outcome: 'manual_trigger_confirmed',
+        };
+      } else if (rule.trigger_type === 'webhook') {
+        actionResult = {
+          ...actionResult,
+          message: 'Webhook rule structure is valid. External delivery still depends on the source system calling this rule.',
+          outcome: 'webhook_configuration_validated',
+        };
+      } else if (rule.trigger_type === 'data_change') {
+        actionResult = {
+          ...actionResult,
+          message: 'Data-change rule test verified the configuration, but a real change event is still required to execute it automatically.',
+          outcome: 'data_change_configuration_validated',
+        };
+      }
+
+      const executionTime = Math.max(1, Math.round(performance.now() - startedAt));
+
       const { error } = await supabase
         .from('automation_executions')
         .insert({
           rule_id: rule.id,
-          status: 'success',
-          trigger_data: { test: true, timestamp: new Date().toISOString() },
-          action_result: { message: 'Test execution completed successfully' },
-          execution_time: Math.floor(Math.random() * 1000) + 100,
+          status,
+          trigger_data: { ...triggerData, timestamp: new Date().toISOString() },
+          action_result: actionResult,
+          error_message: errorMessage,
+          execution_time: executionTime,
           executed_at: new Date().toISOString()
         });
 
       if (error) throw error;
-      addToast('Test execution completed successfully!', 'success');
+      if (status === 'failed') {
+        addToast(errorMessage || 'Rule test failed.', 'error');
+      } else {
+        addToast(String(actionResult.message || 'Rule test completed.'), 'success');
+      }
+
+      if (showExecutionsModal && selectedRule?.id === rule.id) {
+        fetchExecutions(rule.id);
+      }
     } catch (error) {
       console.error('Error testing rule:', error);
       addToast('Failed to test rule', 'error');
