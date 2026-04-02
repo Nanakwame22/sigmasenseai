@@ -48,6 +48,24 @@ interface IngestionEvent {
   created_at: string;
 }
 
+interface PipelineRunResponse {
+  success: boolean;
+  status: string;
+  pipelineId: string;
+  runId: string;
+  records_processed?: number;
+  records_success?: number;
+  records_failed?: number;
+  batch_records_processed?: number;
+  batch_records_success?: number;
+  batch_records_failed?: number;
+  total_records_available?: number;
+  next_batch_offset?: number;
+  has_more?: boolean;
+  batch_size?: number;
+  message?: string;
+}
+
 interface DataSource {
   id: string;
   name: string;
@@ -613,18 +631,34 @@ export default function ETLPipelinesPage() {
         'info'
       );
 
-      const { data, error } = await supabase.functions.invoke('run-etl-pipeline', {
-        body: {
-          pipelineId,
-          replayRunId: replayRunId || null,
-          windowStart: windowStart || null,
-          windowEnd: windowEnd || null,
-        }
-      });
+      let nextBatchOffset = 0;
+      let existingRunId: string | null = null;
+      let finalResponse: PipelineRunResponse | null = null;
+      let hasMore = true;
+      const batchSize = 1000;
 
-      if (error) throw error;
+      while (hasMore) {
+        const { data, error } = await supabase.functions.invoke('run-etl-pipeline', {
+          body: {
+            pipelineId,
+            replayRunId: replayRunId || null,
+            windowStart: windowStart || null,
+            windowEnd: windowEnd || null,
+            existingRunId,
+            batchOffset: nextBatchOffset,
+            batchSize,
+          }
+        });
 
-      showToast(data?.message || 'Pipeline completed successfully', 'success');
+        if (error) throw error;
+
+        finalResponse = data as PipelineRunResponse;
+        existingRunId = finalResponse.runId;
+        hasMore = Boolean(finalResponse.has_more);
+        nextBatchOffset = finalResponse.next_batch_offset || 0;
+      }
+
+      showToast(finalResponse?.message || 'Pipeline completed successfully', 'success');
       loadData();
       if (selectedPipeline?.id === pipelineId) {
         loadPipelineRuns(pipelineId);

@@ -24,6 +24,7 @@ interface Pipeline {
 type EventLevel = 'info' | 'warning' | 'error';
 type EventStage = 'queued' | 'startup' | 'fetch' | 'transform' | 'load' | 'complete' | 'failure';
 type RunStatus = 'queued' | 'running' | 'completed' | 'partial' | 'failed';
+const DEFAULT_BATCH_SIZE = 1000;
 
 interface DataSource {
   id: string;
@@ -58,6 +59,9 @@ interface RunRequestPayload {
   replayRunId?: string | null;
   windowStart?: string | null;
   windowEnd?: string | null;
+  existingRunId?: string | null;
+  batchOffset?: number | null;
+  batchSize?: number | null;
 }
 
 function extractDataFromJsonPath(data: unknown, path: string): Record<string, unknown>[] {
@@ -326,11 +330,25 @@ serve(async (req) => {
   let pipeline: Pipeline | null = null;
   let organizationId: string | null = null;
   let sourceId: string | null = null;
+  let pipelineRunStartingTotals = {
+    records_processed: 0,
+    records_success: 0,
+    records_failed: 0,
+  };
+  let shouldIncrementPipelineTotals = false;
 
   try {
     await authClient.auth.getUser();
 
-    const { pipelineId, replayRunId, windowStart, windowEnd } = await req.json() as RunRequestPayload;
+    const {
+      pipelineId,
+      replayRunId,
+      windowStart,
+      windowEnd,
+      existingRunId,
+      batchOffset: rawBatchOffset,
+      batchSize: rawBatchSize,
+    } = await req.json() as RunRequestPayload;
     if (!pipelineId) {
       return new Response(JSON.stringify({ error: 'pipelineId is required' }), {
         status: 400,
@@ -376,53 +394,79 @@ serve(async (req) => {
       });
     }
 
-    const { data: runData, error: runError } = await adminClient
-      .from('etl_pipeline_runs')
-      .insert({
+    const batchOffset = Math.max(0, rawBatchOffset ?? 0);
+    const batchSize = Math.max(100, Math.min(rawBatchSize ?? DEFAULT_BATCH_SIZE, 2000));
+    const isInitialBatch = !existingRunId || batchOffset === 0;
+
+    if (existingRunId) {
+      const { data: existingRun, error: existingRunError } = await adminClient
+        .from('etl_pipeline_runs')
+        .select('id, records_processed, records_success, records_failed')
+        .eq('id', existingRunId)
+        .single();
+
+      if (existingRunError || !existingRun?.id) {
+        throw new Error(existingRunError?.message ?? 'Existing pipeline run not found');
+      }
+
+      runId = existingRun.id as string;
+      pipelineRunStartingTotals = {
+        records_processed: Number(existingRun.records_processed) || 0,
+        records_success: Number(existingRun.records_success) || 0,
+        records_failed: Number(existingRun.records_failed) || 0,
+      };
+    } else {
+      const { data: runData, error: runError } = await adminClient
+        .from('etl_pipeline_runs')
+        .insert({
+          pipeline_id: pipelineId,
+          status: 'queued',
+          started_at: new Date().toISOString(),
+        })
+        .select('id')
+        .single();
+
+      if (runError || !runData?.id) {
+        throw new Error(runError?.message ?? 'Failed to create pipeline run');
+      }
+
+      runId = runData.id as string;
+
+      await logIngestionEvent(adminClient, {
+        organization_id: organizationId,
         pipeline_id: pipelineId,
-        status: 'queued',
-        started_at: new Date().toISOString(),
-      })
-      .select('id')
-      .single();
-
-    if (runError || !runData?.id) {
-      throw new Error(runError?.message ?? 'Failed to create pipeline run');
+        run_id: runId,
+        source_id: sourceId,
+        level: 'info',
+        stage: 'queued',
+        message: 'Pipeline run queued for execution',
+        details: { schedule: pipeline.schedule },
+      });
     }
-
-    runId = runData.id as string;
-
-    await logIngestionEvent(adminClient, {
-      organization_id: organizationId,
-      pipeline_id: pipelineId,
-      run_id: runId,
-      source_id: sourceId,
-      level: 'info',
-      stage: 'queued',
-      message: 'Pipeline run queued for execution',
-      details: { schedule: pipeline.schedule },
-    });
 
     await adminClient
       .from('etl_pipeline_runs')
-      .update({ status: 'running' })
+      .update({ status: 'running', error_message: null })
       .eq('id', runId);
 
-    await logIngestionEvent(adminClient, {
-      organization_id: organizationId,
-      pipeline_id: pipelineId,
-      run_id: runId,
-      source_id: sourceId,
-      level: 'info',
-      stage: 'startup',
-      message: 'Pipeline execution started',
-      details: {
-        recovery_mode: replayRunId ? 'replay' : windowStart || windowEnd ? 'backfill' : 'standard',
-        replay_run_id: replayRunId ?? null,
-        window_start: windowStart ?? null,
-        window_end: windowEnd ?? null,
-      },
-    });
+    if (isInitialBatch) {
+      await logIngestionEvent(adminClient, {
+        organization_id: organizationId,
+        pipeline_id: pipelineId,
+        run_id: runId,
+        source_id: sourceId,
+        level: 'info',
+        stage: 'startup',
+        message: 'Pipeline execution started',
+        details: {
+          recovery_mode: replayRunId ? 'replay' : windowStart || windowEnd ? 'backfill' : 'standard',
+          replay_run_id: replayRunId ?? null,
+          window_start: windowStart ?? null,
+          window_end: windowEnd ?? null,
+          batch_size: batchSize,
+        },
+      });
+    }
 
     const source = sourceData as DataSource;
     let records: Record<string, unknown>[] = [];
@@ -484,7 +528,7 @@ serve(async (req) => {
     const operationResult = applyTransformationOperations(records, operations);
     records = operationResult.records;
 
-    if (operationResult.operationsApplied > 0) {
+    if (operationResult.operationsApplied > 0 && isInitialBatch) {
       await logIngestionEvent(adminClient, {
         organization_id: organizationId,
         pipeline_id: pipelineId,
@@ -510,7 +554,7 @@ serve(async (req) => {
     );
     records = backfillResult.records;
 
-    if (replayRunId || backfillResult.applied) {
+    if ((replayRunId || backfillResult.applied) && isInitialBatch) {
       await logIngestionEvent(adminClient, {
         organization_id: organizationId,
         pipeline_id: pipelineId,
@@ -535,6 +579,11 @@ serve(async (req) => {
       throw new Error('Pipeline is missing a value mapping');
     }
 
+    const totalRecordsAfterFilters = records.length;
+    const batchRecords = records.slice(batchOffset, batchOffset + batchSize);
+    const hasMore = batchOffset + batchRecords.length < totalRecordsAfterFilters;
+    records = batchRecords;
+
     const { data: metricsData } = await adminClient
       .from('metrics')
       .select('id, name')
@@ -555,8 +604,11 @@ serve(async (req) => {
       level: 'info',
       stage: 'transform',
       message: 'Transforming source records into metric datapoints',
-        details: {
+      details: {
           records_received: records.length,
+          total_records_available: totalRecordsAfterFilters,
+          batch_offset: batchOffset,
+          batch_size: batchSize,
           mapping_count: mappings.length,
           operations_applied: operationResult.operationsApplied,
           recovery_mode: replayRunId ? 'replay' : windowStart || windowEnd ? 'backfill' : 'standard',
@@ -738,10 +790,47 @@ serve(async (req) => {
       }
     }
 
+    const cumulativeProcessed = pipelineRunStartingTotals.records_processed + records.length;
+    const cumulativeSuccess = pipelineRunStartingTotals.records_success + recordsSuccess;
+    const cumulativeFailed = pipelineRunStartingTotals.records_failed + recordsFailed;
     const durationSeconds = Math.max(1, Math.round((Date.now() - startedAt) / 1000));
-    const runStatus: RunStatus = recordsFailed > 0 && recordsSuccess > 0
+    if (hasMore) {
+      await adminClient
+        .from('etl_pipeline_runs')
+        .update({
+          status: 'running',
+          records_processed: cumulativeProcessed,
+          records_success: cumulativeSuccess,
+          records_failed: cumulativeFailed,
+          duration_seconds: durationSeconds,
+        })
+        .eq('id', runId);
+
+      return new Response(JSON.stringify({
+        success: true,
+        status: 'running',
+        pipelineId,
+        runId,
+        batch_records_processed: records.length,
+        batch_records_success: recordsSuccess,
+        batch_records_failed: recordsFailed,
+        records_processed: cumulativeProcessed,
+        records_success: cumulativeSuccess,
+        records_failed: cumulativeFailed,
+        total_records_available: totalRecordsAfterFilters,
+        next_batch_offset: batchOffset + batchRecords.length,
+        has_more: true,
+        batch_size: batchSize,
+        message: `Processed ${cumulativeProcessed} of ${totalRecordsAfterFilters} records`,
+      }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const runStatus: RunStatus = cumulativeFailed > 0 && cumulativeSuccess > 0
       ? 'partial'
-      : recordsFailed > 0 && recordsSuccess === 0
+      : cumulativeFailed > 0 && cumulativeSuccess === 0
         ? 'failed'
         : 'completed';
 
@@ -750,13 +839,14 @@ serve(async (req) => {
       .update({
         status: runStatus,
         completed_at: new Date().toISOString(),
-        records_processed: records.length,
-        records_success: recordsSuccess,
-        records_failed: recordsFailed,
+        records_processed: cumulativeProcessed,
+        records_success: cumulativeSuccess,
+        records_failed: cumulativeFailed,
         duration_seconds: durationSeconds,
       })
       .eq('id', runId);
 
+    shouldIncrementPipelineTotals = true;
     await adminClient
       .from('etl_pipelines')
       .update({
@@ -765,7 +855,7 @@ serve(async (req) => {
         total_runs: (pipeline.total_runs || 0) + 1,
         successful_runs: (pipeline.successful_runs || 0) + (runStatus === 'completed' ? 1 : 0),
         failed_runs: (pipeline.failed_runs || 0) + (runStatus === 'failed' ? 1 : 0),
-        records_processed: (pipeline.records_processed || 0) + recordsSuccess,
+        records_processed: (pipeline.records_processed || 0) + cumulativeSuccess,
         status: runStatus === 'failed' ? 'failed' : 'active',
       })
       .eq('id', pipelineId)
@@ -781,9 +871,9 @@ serve(async (req) => {
       message: runStatus === 'partial' ? 'Pipeline completed with partial success' : 'Pipeline completed successfully',
       details: {
         status: runStatus,
-        records_processed: records.length,
-        records_success: recordsSuccess,
-        records_failed: recordsFailed,
+        records_processed: cumulativeProcessed,
+        records_success: cumulativeSuccess,
+        records_failed: cumulativeFailed,
         excluded_by_operations: operationResult.excludedRecords,
         excluded_by_backfill: backfillResult.excludedRecords,
         operations_applied: operationResult.operationsApplied,
@@ -796,16 +886,17 @@ serve(async (req) => {
       status: runStatus,
       pipelineId,
       runId,
-      records_processed: records.length,
-      records_success: recordsSuccess,
-      records_failed: recordsFailed,
+      records_processed: cumulativeProcessed,
+      records_success: cumulativeSuccess,
+      records_failed: cumulativeFailed,
       excluded_by_operations: operationResult.excludedRecords,
       excluded_by_backfill: backfillResult.excludedRecords,
       operations_applied: operationResult.operationsApplied,
       duration_seconds: durationSeconds,
+      has_more: false,
       message: runStatus === 'partial'
-        ? `Pipeline completed with warnings: ${recordsSuccess} records ingested, ${recordsFailed} failed`
-        : `Pipeline completed: ${recordsSuccess} records ingested`,
+        ? `Pipeline completed with warnings: ${cumulativeSuccess} records ingested, ${cumulativeFailed} failed`
+        : `Pipeline completed: ${cumulativeSuccess} records ingested`,
     }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -838,7 +929,7 @@ serve(async (req) => {
       });
     }
 
-    if (pipeline?.id) {
+    if (pipeline?.id && !shouldIncrementPipelineTotals) {
       await adminClient
         .from('etl_pipelines')
         .update({
