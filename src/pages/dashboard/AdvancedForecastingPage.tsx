@@ -45,6 +45,104 @@ const getConfidenceMultiplier = (confidenceLevel: number) => {
   return 1.28;
 };
 
+const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+
+const getMetricLabel = (metricId: string | null, metrics: Metric[]) =>
+  metrics.find(metric => metric.id === metricId)?.name ?? 'Selected metric';
+
+const getModelDisplayName = (modelType: string) => {
+  switch (modelType) {
+    case 'arima':
+      return 'ARIMA';
+    case 'prophet':
+      return 'Prophet';
+    case 'exponential':
+      return 'Exponential Smoothing';
+    default:
+      return modelType;
+  }
+};
+
+const getRecommendedModel = (historicalData: any[], metricName: string) => {
+  if (!historicalData?.length) {
+    return {
+      model: 'arima',
+      label: 'ARIMA',
+      reason: 'A steady trend model is the safest default until more history is available.',
+    };
+  }
+
+  const values = historicalData.map((point) => Number(point.value) || 0);
+  const volatility = average(values) === 0 ? 0 : standardDeviation(values) / Math.max(average(values), 1);
+  const metricHint = metricName.toLowerCase();
+
+  if (metricHint.includes('wait') || metricHint.includes('arrival') || metricHint.includes('discharge') || volatility > 0.28) {
+    return {
+      model: 'prophet',
+      label: 'Prophet',
+      reason: 'This signal looks cyclical or operationally spiky, so a seasonal model is the best fit.',
+    };
+  }
+
+  if (metricHint.includes('risk') || metricHint.includes('occupancy') || metricHint.includes('capacity')) {
+    return {
+      model: 'exponential',
+      label: 'Exponential Smoothing',
+      reason: 'Recent values matter most for this kind of pressure signal, so a recency-weighted model is the best fit.',
+    };
+  }
+
+  return {
+    model: 'arima',
+    label: 'ARIMA',
+    reason: 'The history looks stable enough that a trend-focused baseline model should perform well.',
+  };
+};
+
+const getForecastHealth = (forecast: Forecast) => {
+  const historical = Array.isArray(forecast.historical_data) ? forecast.historical_data : [];
+  const forecastData = Array.isArray(forecast.forecast_data) ? forecast.forecast_data : [];
+  const historicalValues = historical.map((point: any) => Number(point.value) || 0);
+  const mape = parseFloat(forecast.accuracy_metrics?.mape || '100');
+  const rSquared = parseFloat(forecast.accuracy_metrics?.r_squared || '0');
+  const horizonPenalty = forecast.forecast_horizon > 90 ? 18 : forecast.forecast_horizon > 45 ? 10 : forecast.forecast_horizon > 30 ? 5 : 0;
+  const dataDepthScore = clamp((historical.length / 30) * 30, 6, 30);
+  const accuracyScore = clamp(38 - mape * 1.5, 0, 38);
+  const fitScore = clamp(rSquared * 22, 0, 22);
+  const volatility = historicalValues.length > 1 && average(historicalValues) !== 0
+    ? standardDeviation(historicalValues) / Math.max(average(historicalValues), 1)
+    : 0;
+  const volatilityScore = clamp(18 - volatility * 45, 0, 18);
+  const score = clamp(Math.round(dataDepthScore + accuracyScore + fitScore + volatilityScore - horizonPenalty), 0, 100);
+
+  let level = 'Weak';
+  let tone = 'text-rose-700 bg-rose-50 border-rose-100';
+  let warning = 'Use this forecast only as an early directional signal.';
+
+  if (score >= 80) {
+    level = 'Strong';
+    tone = 'text-emerald-700 bg-emerald-50 border-emerald-100';
+    warning = 'This forecast is strong enough for planning conversations, but it should still be reviewed against fresh actuals regularly.';
+  } else if (score >= 60) {
+    level = 'Moderate';
+    tone = 'text-amber-700 bg-amber-50 border-amber-100';
+    warning = 'This forecast is useful for planning, but the uncertainty is still material enough that teams should validate it frequently.';
+  }
+
+  const widthSeries = forecastData.slice(0, 7).map((point: any) => Math.max(0, (Number(point.upper) || 0) - (Number(point.lower) || 0)));
+  const avgBandWidth = widthSeries.length > 0 ? average(widthSeries) : 0;
+
+  return {
+    score,
+    level,
+    tone,
+    warning,
+    avgBandWidth,
+    volatility,
+    historyPoints: historical.length,
+  };
+};
+
 export default function AdvancedForecastingPage() {
   const { organization } = useAuth();
   const { showToast } = useToast();
@@ -488,6 +586,12 @@ export default function AdvancedForecastingPage() {
     };
   };
 
+  const selectedMetricName = getMetricLabel(formData.metric_id, metrics);
+  const selectedMetricHistory = formData.metric_id
+    ? forecasts.find(forecast => forecast.metric_id === formData.metric_id)?.historical_data || []
+    : [];
+  const recommendedModel = getRecommendedModel(selectedMetricHistory, selectedMetricName);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -801,6 +905,36 @@ export default function AdvancedForecastingPage() {
             {/* Accuracy Metrics with Interpretations */}
             {forecast.accuracy_metrics && (
               <div className="space-y-4 mb-4">
+                {(() => {
+                  const health = getForecastHealth(forecast);
+                  const metricName = getMetricLabel(forecast.metric_id, metrics);
+                  const recommendation = getRecommendedModel(forecast.historical_data || [], metricName);
+                  const modelAligned = recommendation.model === forecast.model_type;
+                  return (
+                    <div className={`border rounded-lg p-3 ${health.tone}`}>
+                      <div className="flex items-center justify-between gap-3 mb-2">
+                        <div className="flex items-center gap-2">
+                          <i className="ri-shield-check-line text-sm"></i>
+                          <span className="text-xs font-semibold uppercase tracking-wide">Forecast Health</span>
+                        </div>
+                        <span className="text-sm font-bold">{health.score}/100 · {health.level}</span>
+                      </div>
+                      <p className="text-xs leading-relaxed">{health.warning}</p>
+                      <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
+                        <span className="px-2 py-1 rounded-full bg-white/70 border border-current/15">
+                          {health.historyPoints} history points
+                        </span>
+                        <span className="px-2 py-1 rounded-full bg-white/70 border border-current/15">
+                          Avg range width {health.avgBandWidth.toFixed(1)}
+                        </span>
+                        <span className="px-2 py-1 rounded-full bg-white/70 border border-current/15">
+                          {modelAligned ? getModelDisplayName(forecast.model_type) : `Consider ${recommendation.label}`}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 <div className="grid grid-cols-2 gap-3">
                   <div className="bg-gray-50 rounded-lg p-3">
                     <div className="text-xs text-gray-500">MAPE (Accuracy)</div>
@@ -909,6 +1043,26 @@ export default function AdvancedForecastingPage() {
             </div>
 
             <div className="space-y-4">
+              {formData.metric_id && (
+                <div className="rounded-lg border border-teal-100 bg-teal-50 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-teal-700">SigmaSense Recommendation</p>
+                      <p className="text-sm font-semibold text-teal-900 mt-1">
+                        Use {recommendedModel.label} for {selectedMetricName}
+                      </p>
+                      <p className="text-xs text-teal-700 mt-1">{recommendedModel.reason}</p>
+                    </div>
+                    {formData.model_type !== recommendedModel.model && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold text-amber-700 border border-amber-200 whitespace-nowrap">
+                        <i className="ri-alert-line"></i>
+                        Different model selected
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Forecast Name</label>
                 <input
@@ -1068,6 +1222,42 @@ export default function AdvancedForecastingPage() {
                   </div>
                 </div>
 
+                {(() => {
+                  const health = getForecastHealth(selectedForecast);
+                  const metricName = getMetricLabel(selectedForecast.metric_id, metrics);
+                  const recommendation = getRecommendedModel(selectedForecast.historical_data || [], metricName);
+                  const modelAligned = recommendation.model === selectedForecast.model_type;
+                  return (
+                    <div className={`border rounded-xl p-5 ${health.tone}`}>
+                      <div className="flex items-start justify-between gap-4 mb-3">
+                        <div>
+                          <h3 className="text-base font-semibold">Forecast Health Score</h3>
+                          <p className="text-sm mt-1">{health.score}/100 · {health.level}</p>
+                        </div>
+                        <span className="inline-flex items-center gap-1 rounded-full bg-white/70 px-3 py-1 text-xs font-semibold border border-current/10">
+                          <i className="ri-pulse-line"></i>
+                          {modelAligned ? 'Model aligned to signal' : `${recommendation.label} may fit better`}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+                        <div className="rounded-lg bg-white/60 p-3 border border-current/10">
+                          <div className="text-xs uppercase tracking-wide opacity-70">History Depth</div>
+                          <div className="font-semibold mt-1">{health.historyPoints} points</div>
+                        </div>
+                        <div className="rounded-lg bg-white/60 p-3 border border-current/10">
+                          <div className="text-xs uppercase tracking-wide opacity-70">Volatility</div>
+                          <div className="font-semibold mt-1">{(health.volatility * 100).toFixed(1)}%</div>
+                        </div>
+                        <div className="rounded-lg bg-white/60 p-3 border border-current/10">
+                          <div className="text-xs uppercase tracking-wide opacity-70">Average Range Width</div>
+                          <div className="font-semibold mt-1">{health.avgBandWidth.toFixed(1)}</div>
+                        </div>
+                      </div>
+                      <p className="text-sm mt-4">{health.warning}</p>
+                    </div>
+                  );
+                })()}
+
                 {/* Comprehensive Analysis Interpretation */}
                 <div className="bg-gradient-to-br from-gray-50 to-blue-50 rounded-xl p-6">
                   <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
@@ -1169,6 +1359,27 @@ export default function AdvancedForecastingPage() {
                         )}
                       </div>
                     </div>
+
+                    {(() => {
+                      const metricName = getMetricLabel(selectedForecast.metric_id, metrics);
+                      const recommendation = getRecommendedModel(selectedForecast.historical_data || [], metricName);
+                      const modelAligned = recommendation.model === selectedForecast.model_type;
+                      return (
+                        <div className={`rounded-lg p-4 border ${modelAligned ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'}`}>
+                          <h4 className={`font-medium mb-2 ${modelAligned ? 'text-emerald-900' : 'text-amber-900'}`}>
+                            {modelAligned ? '✅ Model choice looks appropriate' : '⚠️ SigmaSense would recommend a different model'}
+                          </h4>
+                          <p className={`text-sm ${modelAligned ? 'text-emerald-800' : 'text-amber-800'}`}>
+                            {recommendation.reason}
+                          </p>
+                          {!modelAligned && (
+                            <p className="text-xs text-amber-700 mt-2">
+                              Suggested alternative: <strong>{recommendation.label}</strong>
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })()}
 
                     {/* Action Recommendations */}
                     <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
