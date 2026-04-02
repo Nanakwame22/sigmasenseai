@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import InsightSummary from '../../components/common/InsightSummary';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import {
   twoSampleTTest,
@@ -44,6 +45,26 @@ interface Metric {
   id: string;
   name: string;
 }
+
+const getHypothesisNarrative = (test: HypothesisTest) => {
+  const pValue = test.p_value ?? 1;
+  const significance = test.significance_level ?? 0.05;
+  const evidenceStrength =
+    pValue < significance / 10 ? 'very strong' :
+    pValue < significance ? 'strong enough' :
+    pValue < significance * 2 ? 'weak' :
+    'not convincing';
+
+  return {
+    summary: test.result === 'reject_null'
+      ? `The observed difference is unlikely to be due to random chance alone. In plain terms, the data gives ${evidenceStrength} evidence that something real is happening.`
+      : `The test did not find enough evidence to confidently say there is a real difference. In plain terms, the observed gap may just be normal variation in the data.`,
+    driver: `The p-value is ${pValue.toFixed(4)} compared with a significance threshold of ${significance}. Lower p-values mean stronger evidence that the pattern is real rather than accidental.`,
+    guidance: test.result === 'reject_null'
+      ? 'This is strong enough to justify deeper action or follow-up, but you should still consider sample size, business context, and practical impact before making a major decision.'
+      : 'This does not prove there is no effect. It means the current data is not strong enough yet, so the next step may be collecting more data or refining the question being tested.',
+  };
+};
 
 export default function HypothesisTestingPage() {
   const { user } = useAuth();
@@ -669,6 +690,14 @@ export default function HypothesisTestingPage() {
                 </div>
               </div>
             </div>
+
+            <InsightSummary
+              className="mt-4"
+              title="What this means"
+              summary={getHypothesisNarrative(test).summary}
+              driver={getHypothesisNarrative(test).driver}
+              guidance={getHypothesisNarrative(test).guidance}
+            />
 
             {/* Sample Info */}
             <div className="mt-4 flex items-center gap-6 text-xs text-gray-500">

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import InsightSummary from '../../components/common/InsightSummary';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { useToast } from '../../hooks/useToast';
 import ConfirmDialog from '../../components/common/ConfirmDialog';
@@ -608,15 +609,11 @@ export default function ClassificationPage() {
               Trained {new Date(model.created_at).toLocaleDateString()}
             </div>
 
-            <div className="mt-4 bg-slate-50 border border-slate-200 rounded-lg p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <i className="ri-chat-1-line text-teal-600"></i>
-                <span className="text-sm font-semibold text-slate-900">What this means</span>
-              </div>
-              <p className="text-sm text-slate-700 leading-relaxed">
-                {getClassificationNarrative(model).summary}
-              </p>
-            </div>
+            <InsightSummary
+              className="mt-4"
+              title="What this means"
+              summary={getClassificationNarrative(model).summary}
+            />
           </div>
         ))}
       </div>
@@ -840,17 +837,12 @@ export default function ClassificationPage() {
               </div>
             </div>
 
-            <div className="bg-gradient-to-br from-teal-50 to-cyan-50 border border-teal-200 rounded-lg p-5 mb-6">
-              <div className="flex items-center gap-2 mb-3">
-                <i className="ri-chat-quote-line text-teal-600"></i>
-                <h3 className="font-semibold text-slate-900">Plain-English Summary</h3>
-              </div>
-              <div className="space-y-3 text-sm text-slate-700 leading-relaxed">
-                <p>{getClassificationNarrative(selectedModel).summary}</p>
-                <p>{getClassificationNarrative(selectedModel).driver}</p>
-                <p>{getClassificationNarrative(selectedModel).guidance}</p>
-              </div>
-            </div>
+            <InsightSummary
+              className="mb-6"
+              summary={getClassificationNarrative(selectedModel).summary}
+              driver={getClassificationNarrative(selectedModel).driver}
+              guidance={getClassificationNarrative(selectedModel).guidance}
+            />
 
             {/* Confusion Matrix */}
             {selectedModel.confusion_matrix && (

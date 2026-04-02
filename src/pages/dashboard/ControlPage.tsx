@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import DashboardLayout from '../../components/layout/DashboardLayout';
+import InsightSummary from '../../components/common/InsightSummary';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 
@@ -646,17 +647,13 @@ const ControlPage = () => {
                 <span>Target: 95%</span>
               </div>
 
-              <div className="mt-6 p-5 bg-gradient-to-br from-teal-50 to-cyan-50 rounded-xl border border-teal-200">
-                <div className="flex items-center gap-2 mb-3">
-                  <i className="ri-chat-quote-line text-teal-600"></i>
-                  <h3 className="text-sm font-bold text-slate-900">What this means in plain English</h3>
-                </div>
-                <div className="space-y-2 text-sm text-slate-700 leading-relaxed">
-                  <p>{getControlNarrative(forecastState).summary}</p>
-                  <p>{getControlNarrative(forecastState).trend}</p>
-                  <p>{getControlNarrative(forecastState).guidance}</p>
-                </div>
-              </div>
+              <InsightSummary
+                className="mt-6"
+                title="What this means in plain English"
+                summary={getControlNarrative(forecastState).summary}
+                driver={getControlNarrative(forecastState).trend}
+                guidance={getControlNarrative(forecastState).guidance}
+              />
             </div>
           </div>
 
