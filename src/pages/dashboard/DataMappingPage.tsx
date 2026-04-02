@@ -11,6 +11,13 @@ interface FieldMapping {
   targetMetricId?: string;
 }
 
+interface TransformationOperation {
+  type: 'filter';
+  field: string;
+  condition: 'equals' | 'not_equals' | 'contains' | 'greater_than' | 'less_than';
+  value: string;
+}
+
 interface DataSourceRow {
   id: string;
   name: string;
@@ -35,7 +42,7 @@ interface Pipeline {
   status: string;
   destination_type: string;
   transformation_rules?: {
-    operations?: Array<Record<string, unknown>>;
+    operations?: TransformationOperation[];
     field_mappings?: FieldMapping[];
   };
   updated_at?: string;
@@ -60,6 +67,14 @@ const destinationLabels: Record<FieldMapping['destinationType'], string> = {
   value: 'Value',
   timestamp: 'Timestamp',
   unit: 'Unit',
+};
+
+const operationTypeLabels: Record<TransformationOperation['condition'], string> = {
+  equals: 'Equals',
+  not_equals: 'Does not equal',
+  contains: 'Contains',
+  greater_than: 'Greater than',
+  less_than: 'Less than',
 };
 
 function extractDataFromJsonPath(data: unknown, path: string): Record<string, unknown>[] {
@@ -166,6 +181,7 @@ export default function DataMappingPage() {
   const [sourceFields, setSourceFields] = useState<string[]>([]);
   const [fieldInsights, setFieldInsights] = useState<FieldInsight[]>([]);
   const [fieldMappings, setFieldMappings] = useState<FieldMapping[]>([]);
+  const [transformationOperations, setTransformationOperations] = useState<TransformationOperation[]>([]);
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [creatingPipeline, setCreatingPipeline] = useState(false);
   const [newPipelineName, setNewPipelineName] = useState('');
@@ -178,7 +194,10 @@ export default function DataMappingPage() {
 
   useEffect(() => {
     const selectedPipeline = pipelines.find((pipeline) => pipeline.id === selectedPipelineId) || null;
-    if (!selectedPipeline) return;
+    if (!selectedPipeline) {
+      setTransformationOperations([]);
+      return;
+    }
 
     if (selectedPipeline.source_id && selectedPipeline.source_id !== selectedSourceId) {
       setSelectedSourceId(selectedPipeline.source_id);
@@ -187,12 +206,16 @@ export default function DataMappingPage() {
     const mappings = Array.isArray(selectedPipeline.transformation_rules?.field_mappings)
       ? selectedPipeline.transformation_rules?.field_mappings
       : [];
+    const operations = Array.isArray(selectedPipeline.transformation_rules?.operations)
+      ? selectedPipeline.transformation_rules?.operations
+      : [];
 
     setFieldMappings(
       mappings.length > 0
         ? mappings
         : [{ sourceField: '', destinationType: 'value' }]
     );
+    setTransformationOperations(operations);
   }, [selectedPipelineId, pipelines]);
 
   useEffect(() => {
@@ -397,6 +420,7 @@ export default function DataMappingPage() {
       if (selectedPipeline) {
         const nextRules = {
           ...(selectedPipeline.transformation_rules || {}),
+          operations: transformationOperations,
           field_mappings: fieldMappings,
         };
 
@@ -461,7 +485,7 @@ export default function DataMappingPage() {
       destination_type: 'metrics',
       schedule: newPipelineSchedule,
       transformation_rules: {
-        operations: [],
+        operations: transformationOperations,
         field_mappings: fieldMappings,
       },
       status: 'draft',
@@ -488,6 +512,31 @@ export default function DataMappingPage() {
 
   const addMappingRule = () => {
     setFieldMappings((current) => [...current, { sourceField: '', destinationType: 'value' }]);
+  };
+
+  const addTransformationOperation = () => {
+    setTransformationOperations((current) => [
+      ...current,
+      { type: 'filter', field: '', condition: 'equals', value: '' },
+    ]);
+  };
+
+  const removeTransformationOperation = (index: number) => {
+    setTransformationOperations((current) => current.filter((_, itemIndex) => itemIndex !== index));
+  };
+
+  const updateTransformationOperation = (
+    index: number,
+    field: keyof TransformationOperation,
+    value: string
+  ) => {
+    setTransformationOperations((current) =>
+      current.map((operation, itemIndex) =>
+        itemIndex === index
+          ? { ...operation, [field]: value }
+          : operation
+      )
+    );
   };
 
   const removeMappingRule = (index: number) => {
@@ -753,10 +802,10 @@ export default function DataMappingPage() {
                   </a>
                   <button
                     onClick={saveMappings}
-                    disabled={saving || !selectedPipelineId}
+                    disabled={saving || (!selectedPipelineId && !creatingPipeline)}
                     className="px-4 py-2 bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-teal-700 transition-colors whitespace-nowrap disabled:opacity-60"
                   >
-                    {saving ? 'Saving...' : 'Save Mapping Rules'}
+                    {saving ? 'Saving...' : selectedPipelineId ? 'Save Mapping Rules' : 'Create Pipeline & Save Rules'}
                   </button>
                 </div>
               </div>
@@ -857,7 +906,7 @@ export default function DataMappingPage() {
                       {selectedPipeline.status}
                     </span>
                     <span className="px-3 py-1 bg-white border border-slate-200 text-slate-700 text-xs font-medium rounded-full">
-                      {((selectedPipeline.transformation_rules?.operations || []).length)} transform operation{((selectedPipeline.transformation_rules?.operations || []).length) === 1 ? '' : 's'}
+                      {transformationOperations.length} transform operation{transformationOperations.length === 1 ? '' : 's'}
                     </span>
                   </div>
                 </div>
@@ -979,6 +1028,86 @@ export default function DataMappingPage() {
                 </table>
               </div>
 
+              <div className="rounded-xl border border-slate-200 bg-slate-50/40 p-5">
+                <div className="flex items-center justify-between gap-4 mb-4">
+                  <div>
+                    <h3 className="text-lg font-semibold text-slate-900">Transformation Operations</h3>
+                    <p className="text-sm text-slate-600 mt-1">These rules are saved into the pipeline's live `transformation_rules.operations` array and used to describe preprocessing intent.</p>
+                  </div>
+                  <button
+                    onClick={addTransformationOperation}
+                    className="px-4 py-2 border border-slate-300 text-slate-700 text-sm font-medium rounded-lg hover:bg-white transition-colors whitespace-nowrap"
+                  >
+                    <i className="ri-add-line mr-2"></i>
+                    Add Operation
+                  </button>
+                </div>
+
+                {transformationOperations.length === 0 ? (
+                  <div className="rounded-lg border border-dashed border-slate-300 bg-white px-4 py-6 text-sm text-slate-600 text-center">
+                    No transformation operations saved yet. Add filters here to make this a full mapping-and-transform pipeline definition.
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {transformationOperations.map((operation, index) => (
+                      <div key={`operation-${index}`} className="grid grid-cols-1 lg:grid-cols-[120px,1fr,1fr,1fr,48px] gap-3 items-end rounded-lg border border-slate-200 bg-white p-4">
+                        <div>
+                          <label className="block text-xs font-medium text-slate-500 mb-2">Type</label>
+                          <div className="px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-700 bg-slate-50">
+                            Filter
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-slate-500 mb-2">Field</label>
+                          <select
+                            value={operation.field}
+                            onChange={(event) => updateTransformationOperation(index, 'field', event.target.value)}
+                            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                          >
+                            <option value="">Select field...</option>
+                            {sourceFields.map((field) => (
+                              <option key={field} value={field}>
+                                {field}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-slate-500 mb-2">Condition</label>
+                          <select
+                            value={operation.condition}
+                            onChange={(event) => updateTransformationOperation(index, 'condition', event.target.value)}
+                            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                          >
+                            {Object.entries(operationTypeLabels).map(([value, label]) => (
+                              <option key={value} value={value}>
+                                {label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-slate-500 mb-2">Value</label>
+                          <input
+                            type="text"
+                            value={operation.value}
+                            onChange={(event) => updateTransformationOperation(index, 'value', event.target.value)}
+                            placeholder="Comparison value"
+                            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                          />
+                        </div>
+                        <button
+                          onClick={() => removeTransformationOperation(index)}
+                          className="w-10 h-10 flex items-center justify-center text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                        >
+                          <i className="ri-delete-bin-line"></i>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               <div className="flex items-center justify-between">
                 <button
                   onClick={addMappingRule}
@@ -1055,6 +1184,21 @@ export default function DataMappingPage() {
 
                     {transformedPreview ? (
                       <div className="space-y-3">
+                        {transformationOperations.length > 0 && (
+                          <div className="rounded-lg border border-slate-200 bg-white p-4">
+                            <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">Active transform operations</div>
+                            <div className="space-y-2">
+                              {transformationOperations.map((operation, index) => (
+                                <div key={`preview-operation-${index}`} className="flex flex-wrap items-center gap-2 text-sm text-slate-700">
+                                  <span className="px-2.5 py-1 bg-slate-100 rounded-full font-medium">Filter</span>
+                                  <span className="font-medium">{operation.field || 'field'}</span>
+                                  <span>{operationTypeLabels[operation.condition]}</span>
+                                  <span className="px-2.5 py-1 bg-teal-50 text-teal-700 rounded-full">{operation.value || 'value'}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                         {fieldMappings.map((mapping, index) => {
                           const metricName = mapping.targetMetricId
                             ? metrics.find((metric) => metric.id === mapping.targetMetricId)?.name
