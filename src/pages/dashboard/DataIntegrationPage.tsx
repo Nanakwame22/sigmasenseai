@@ -60,6 +60,20 @@ interface SourceIngestionEvent {
   level: 'info' | 'warning' | 'error';
   message: string;
   created_at: string;
+  details?: Record<string, unknown> | null;
+}
+
+interface SourceDetailRun {
+  id: string;
+  pipeline_id: string;
+  status: string;
+  started_at: string;
+  completed_at: string | null;
+  records_processed: number | null;
+  records_success: number | null;
+  records_failed: number | null;
+  duration_seconds: number | null;
+  error_message: string | null;
 }
 
 type TabType = 'file' | 'api';
@@ -97,6 +111,11 @@ export default function DataIntegrationPage() {
   const [syncConfirmOpen, setSyncConfirmOpen] = useState(false);
   const [syncTargetId, setSyncTargetId] = useState<string | null>(null);
   const [syncingIds, setSyncingIds] = useState<Set<string>>(new Set());
+  const [selectedSource, setSelectedSource] = useState<DataSource | null>(null);
+  const [sourceDetailRuns, setSourceDetailRuns] = useState<SourceDetailRun[]>([]);
+  const [sourceDetailEvents, setSourceDetailEvents] = useState<SourceIngestionEvent[]>([]);
+  const [sourceDetailPipelines, setSourceDetailPipelines] = useState<SourcePipeline[]>([]);
+  const [loadingSourceDetail, setLoadingSourceDetail] = useState(false);
 
   const healthSummary = dataSources.reduce(
     (summary, source) => {
@@ -406,6 +425,69 @@ export default function DataIntegrationPage() {
   const averageReliability = healthSummary.total > 0
     ? Math.round(healthSummary.reliability / healthSummary.total)
     : 0;
+
+  const loadSourceDetail = async (source: DataSource) => {
+    setSelectedSource(source);
+    setLoadingSourceDetail(true);
+
+    try {
+      const { data: pipelinesData, error: pipelinesError } = await supabase
+        .from('etl_pipelines')
+        .select('id, source_id, status')
+        .eq('organization_id', organizationId)
+        .eq('source_id', source.id);
+
+      if (pipelinesError) throw pipelinesError;
+
+      const livePipelines = (pipelinesData || []) as SourcePipeline[];
+      setSourceDetailPipelines(livePipelines);
+
+      const pipelineIds = livePipelines.map((pipeline) => pipeline.id);
+
+      if (pipelineIds.length === 0) {
+        setSourceDetailRuns([]);
+        setSourceDetailEvents([]);
+        return;
+      }
+
+      const [{ data: runsData, error: runsError }, { data: eventsData, error: eventsError }] = await Promise.all([
+        supabase
+          .from('etl_pipeline_runs')
+          .select('id, pipeline_id, status, started_at, completed_at, records_processed, records_success, records_failed, duration_seconds, error_message')
+          .in('pipeline_id', pipelineIds)
+          .order('started_at', { ascending: false })
+          .limit(12),
+        supabase
+          .from('etl_ingestion_events')
+          .select('id, source_id, pipeline_id, level, message, created_at, details')
+          .eq('organization_id', organizationId)
+          .eq('source_id', source.id)
+          .order('created_at', { ascending: false })
+          .limit(15),
+      ]);
+
+      if (runsError) throw runsError;
+      if (eventsError) throw eventsError;
+
+      setSourceDetailRuns((runsData || []) as SourceDetailRun[]);
+      setSourceDetailEvents((eventsData || []) as SourceIngestionEvent[]);
+    } catch (error) {
+      console.error('Error loading source detail:', error);
+      setErrorMessage('Failed to load source details');
+      setSourceDetailRuns([]);
+      setSourceDetailEvents([]);
+      setSourceDetailPipelines([]);
+    } finally {
+      setLoadingSourceDetail(false);
+    }
+  };
+
+  const closeSourceDetail = () => {
+    setSelectedSource(null);
+    setSourceDetailRuns([]);
+    setSourceDetailEvents([]);
+    setSourceDetailPipelines([]);
+  };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1309,6 +1391,13 @@ export default function DataIntegrationPage() {
               </div>
               <div className="flex space-x-2">
                 <button
+                  onClick={() => loadSourceDetail(source)}
+                  className="text-gray-400 hover:text-blue-600 cursor-pointer"
+                  title="Open source detail"
+                >
+                  <i className="ri-layout-right-2-line"></i>
+                </button>
+                <button
                   onClick={() => handleSync(source.id)}
                   disabled={syncingIds.has(source.id)}
                   className="text-gray-400 hover:text-teal-600 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
@@ -1461,6 +1550,190 @@ export default function DataIntegrationPage() {
           >
             Add Data Source
           </button>
+        </div>
+      )}
+
+      {selectedSource && (
+        <div className="fixed inset-0 z-50 flex justify-end bg-black/30">
+          <div className="h-full w-full max-w-2xl bg-white shadow-2xl border-l border-slate-200 overflow-y-auto">
+            <div className="sticky top-0 bg-white border-b border-slate-200 px-6 py-5 flex items-start justify-between gap-4 z-10">
+              <div>
+                <div className="flex items-center gap-3">
+                  <div className={`w-11 h-11 ${selectedSource.type === 'api' ? 'bg-purple-100' : 'bg-teal-100'} rounded-xl flex items-center justify-center`}>
+                    <i className={`${selectedSource.type === 'api' ? 'ri-cloud-line text-purple-600' : 'ri-file-text-line text-teal-600'} text-xl`}></i>
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold text-slate-900">{selectedSource.name}</h2>
+                    <p className="text-sm text-slate-600 capitalize">{selectedSource.type} connector detail</p>
+                  </div>
+                </div>
+                <p className="text-sm text-slate-700 mt-3">{selectedSource.ai_health_summary}</p>
+              </div>
+              <button
+                onClick={closeSourceDetail}
+                className="w-9 h-9 flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+              >
+                <i className="ri-close-line text-xl"></i>
+              </button>
+            </div>
+
+            <div className="p-6 space-y-6">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="rounded-xl bg-slate-50 border border-slate-200 p-4">
+                  <p className="text-xs text-slate-500">Reliability</p>
+                  <p className="mt-1 text-xl font-bold text-slate-900">{selectedSource.reliability_score || 0}%</p>
+                </div>
+                <div className="rounded-xl bg-slate-50 border border-slate-200 p-4">
+                  <p className="text-xs text-slate-500">Linked pipelines</p>
+                  <p className="mt-1 text-xl font-bold text-slate-900">{sourceDetailPipelines.length}</p>
+                </div>
+                <div className="rounded-xl bg-slate-50 border border-slate-200 p-4">
+                  <p className="text-xs text-slate-500">Auth health</p>
+                  <p className={`mt-1 text-sm font-semibold capitalize ${selectedSource.auth_health === 'missing' ? 'text-red-600' : 'text-slate-900'}`}>
+                    {selectedSource.auth_health === 'configured' ? 'configured' : selectedSource.auth_health === 'missing' ? 'missing' : 'not required'}
+                  </p>
+                </div>
+                <div className="rounded-xl bg-slate-50 border border-slate-200 p-4">
+                  <p className="text-xs text-slate-500">Avg latency</p>
+                  <p className="mt-1 text-xl font-bold text-slate-900">{selectedSource.avg_duration_seconds ? `${selectedSource.avg_duration_seconds}s` : 'N/A'}</p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-3">
+                <button
+                  onClick={() => handleSync(selectedSource.id)}
+                  className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors"
+                >
+                  Sync Source
+                </button>
+                <a
+                  href="/dashboard/data-mapping"
+                  className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
+                >
+                  Open Mapping
+                </a>
+                <a
+                  href="/dashboard/etl-pipelines"
+                  className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
+                >
+                  Open ETL
+                </a>
+              </div>
+
+              <div className="rounded-xl border border-slate-200 p-5">
+                <div className="flex items-center justify-between gap-3 mb-3">
+                  <h3 className="text-sm font-semibold text-slate-900">Schema History</h3>
+                  <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                    selectedSource.schema_drift_status === 'drift'
+                      ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                      : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                  }`}>
+                    {selectedSource.schema_drift_status || 'unknown'}
+                  </span>
+                </div>
+                <p className="text-sm text-slate-600">Expected fields: {getExpectedSchemaFields(selectedSource).length || 0} · Current fields: {selectedSource.schema_field_count || 0}</p>
+                {selectedSource.schema_drift_status === 'drift' ? (
+                  <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="rounded-lg bg-amber-50 border border-amber-200 p-4">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-amber-800 mb-2">Missing fields</p>
+                      <div className="flex flex-wrap gap-2">
+                        {(selectedSource.missing_fields || []).map((field) => (
+                          <span key={field} className="px-2.5 py-1 rounded-full bg-white border border-amber-200 text-xs text-amber-800">{field}</span>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="rounded-lg bg-blue-50 border border-blue-200 p-4">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-blue-800 mb-2">New fields</p>
+                      <div className="flex flex-wrap gap-2">
+                        {(selectedSource.new_fields || []).map((field) => (
+                          <span key={field} className="px-2.5 py-1 rounded-full bg-white border border-blue-200 text-xs text-blue-800">{field}</span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-slate-700 mt-4">No structural changes detected relative to the saved schema baseline.</p>
+                )}
+              </div>
+
+              <div className="rounded-xl border border-slate-200 p-5">
+                <h3 className="text-sm font-semibold text-slate-900 mb-3">Recent Runs</h3>
+                {loadingSourceDetail ? (
+                  <div className="flex items-center justify-center py-8">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div>
+                  </div>
+                ) : sourceDetailRuns.length === 0 ? (
+                  <p className="text-sm text-slate-500">No ETL runs recorded for this source yet.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {sourceDetailRuns.map((run) => (
+                      <div key={run.id} className="rounded-lg border border-slate-200 p-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-2">
+                            <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
+                              run.status === 'completed'
+                                ? 'bg-emerald-100 text-emerald-700'
+                                : run.status === 'partial'
+                                  ? 'bg-amber-100 text-amber-700'
+                                  : run.status === 'failed'
+                                    ? 'bg-red-100 text-red-700'
+                                    : 'bg-slate-100 text-slate-600'
+                            }`}>
+                              {run.status}
+                            </span>
+                            <span className="text-xs text-slate-500">{new Date(run.started_at).toLocaleString()}</span>
+                          </div>
+                          <span className="text-xs text-slate-500">{run.duration_seconds || 0}s</span>
+                        </div>
+                        <p className="text-sm text-slate-700 mt-2">
+                          {run.records_success || 0} succeeded, {run.records_failed || 0} failed, {run.records_processed || 0} processed
+                        </p>
+                        {run.error_message && <p className="text-xs text-red-600 mt-2">{run.error_message}</p>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded-xl border border-slate-200 p-5">
+                <h3 className="text-sm font-semibold text-slate-900 mb-3">Event Timeline</h3>
+                {loadingSourceDetail ? (
+                  <div className="flex items-center justify-center py-8">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div>
+                  </div>
+                ) : sourceDetailEvents.length === 0 ? (
+                  <p className="text-sm text-slate-500">No ingestion events captured for this source yet.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {sourceDetailEvents.map((event) => (
+                      <div key={event.id} className="rounded-lg border border-slate-200 p-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-2">
+                            <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
+                              event.level === 'error'
+                                ? 'bg-red-100 text-red-700'
+                                : event.level === 'warning'
+                                  ? 'bg-amber-100 text-amber-700'
+                                  : 'bg-slate-100 text-slate-600'
+                            }`}>
+                              {event.level}
+                            </span>
+                            <span className="text-xs text-slate-500">{new Date(event.created_at).toLocaleString()}</span>
+                          </div>
+                        </div>
+                        <p className="text-sm text-slate-700 mt-2">{event.message}</p>
+                        {event.details && Object.keys(event.details).length > 0 && (
+                          <pre className="mt-3 bg-slate-50 rounded-lg p-3 text-xs text-slate-600 overflow-x-auto">
+                            {JSON.stringify(event.details, null, 2)}
+                          </pre>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
