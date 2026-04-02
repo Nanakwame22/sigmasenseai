@@ -5,6 +5,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsi
 import { useToast } from '../../hooks/useToast';
 import ConfirmDialog from '../../components/common/ConfirmDialog';
 import { Link } from 'react-router-dom';
+import InsightSummary from '../../components/common/InsightSummary';
 
 interface Forecast {
   id: string;
@@ -59,6 +60,40 @@ export default function AdvancedForecastingPage() {
     forecast_horizon: 30,
     confidence_level: 95
   });
+
+  const getForecastNarrative = (forecast: Forecast | null) => {
+    if (!forecast?.accuracy_metrics || !forecast.forecast_data?.length) {
+      return {
+        summary: 'This forecast does not have enough detail yet to explain the result in plain language.',
+        driver: 'Once a completed forecast includes accuracy metrics and projected values, SigmaSense can translate it into a clearer business takeaway.',
+        guidance: 'Generate or reopen a completed forecast to see a plain-English interpretation.',
+      };
+    }
+
+    const mape = parseFloat(forecast.accuracy_metrics.mape || '0');
+    const firstPoint = forecast.forecast_data[0]?.value ?? 0;
+    const lastPoint = forecast.forecast_data[forecast.forecast_data.length - 1]?.value ?? firstPoint;
+    const direction =
+      lastPoint > firstPoint * 1.02 ? 'increase' :
+      lastPoint < firstPoint * 0.98 ? 'decrease' :
+      'remain fairly stable';
+    const confidenceBand = forecast.confidence_level >= 95 ? 'a tighter reliability standard' : 'a broader planning range';
+
+    let summary = `This forecast suggests the metric will ${direction} over the next ${forecast.forecast_horizon} days, so it is best used as a planning signal rather than a guarantee.`;
+    if (mape <= 10) {
+      summary = `This forecast is relatively dependable for near-term planning and suggests the metric will ${direction} over the next ${forecast.forecast_horizon} days.`;
+    } else if (mape > 20) {
+      summary = `This forecast gives a directional signal, but the accuracy is still loose enough that you should treat it as an early warning rather than a precise commitment.`;
+    }
+
+    return {
+      summary,
+      driver: `The model's recent average error is ${forecast.accuracy_metrics.mape}%, and the forecast is using ${confidenceBand} with a ${forecast.confidence_level}% confidence level.`,
+      guidance: mape > 15
+        ? 'Use the trend to guide staffing, capacity, or risk conversations, but avoid making high-stakes commitments until more history improves forecast accuracy.'
+        : 'Use the projected range to plan ahead, then compare actuals against the forecast regularly so you can adjust quickly if the trend changes.',
+    };
+  };
 
   useEffect(() => {
     if (organization) {
@@ -955,6 +990,13 @@ export default function AdvancedForecastingPage() {
             {/* Enhanced Accuracy Metrics with Detailed Interpretations */}
             {selectedForecast.accuracy_metrics && (
               <div className="space-y-6 mb-6">
+                <InsightSummary
+                  title="What This Means In Plain English"
+                  summary={getForecastNarrative(selectedForecast).summary}
+                  driver={getForecastNarrative(selectedForecast).driver}
+                  guidance={getForecastNarrative(selectedForecast).guidance}
+                />
+
                 <div className="grid grid-cols-4 gap-4">
                   <div className="bg-blue-50 rounded-lg p-4">
                     <div className="text-xs text-blue-600 font-medium">MAPE</div>

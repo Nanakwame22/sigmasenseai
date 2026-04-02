@@ -7,6 +7,7 @@ import type { QueryResult } from '../../services/naturalLanguageQuery';
 import { generatePredictiveAlerts, generateRecommendations, detectPatterns } from '../../services/aiEngine';
 import { LoadingSpinner } from '../../components/common/LoadingSpinner';
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import InsightSummary from '../../components/common/InsightSummary';
 
 interface Message {
   id: string;
@@ -29,6 +30,61 @@ export default function AIInsightsPage() {
   const [patterns, setPatterns] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<'chat' | 'alerts' | 'recommendations' | 'insights'>('chat');
   const [loadingInsights, setLoadingInsights] = useState(true);
+
+  const getAISummary = () => {
+    if (activeTab === 'chat') {
+      return {
+        summary: 'Ask Sigma is best for fast questions in everyday language, so people do not need to know table names or analytics syntax to get useful answers.',
+        driver: messages.length > 0
+          ? `This conversation already has ${messages.length} message${messages.length === 1 ? '' : 's'}, which means the assistant is building context from your questions and the returned data.`
+          : 'You have not asked a question yet, so this is a good place to start with a simple operational prompt like "What changed this week?"',
+        guidance: 'Use it for quick investigation, trend checks, and status questions, then validate important decisions against the recommended actions and source data shown in the response.',
+      };
+    }
+
+    if (activeTab === 'alerts') {
+      const topAlert = predictiveAlerts[0];
+      return {
+        summary: predictiveAlerts.length === 0
+          ? 'There are no predictive alerts right now, which usually means SigmaSense is not seeing a strong short-term risk signal in the monitored data.'
+          : `The AI is flagging ${predictiveAlerts.length} possible issue${predictiveAlerts.length === 1 ? '' : 's'} before they fully happen, so this tab should be treated as an early warning queue.`,
+        driver: topAlert
+          ? `The highest-priority alert is "${topAlert.title}" with ${topAlert.confidence.toFixed(0)}% confidence and a predicted time horizon of ${topAlert.daysUntil} days.`
+          : 'When alerts appear here, they combine recent data patterns with model confidence to estimate what may need attention soon.',
+        guidance: predictiveAlerts.length === 0
+          ? 'Keep refreshing this page as new data arrives, especially before shift changes, operational reviews, or handoffs.'
+          : 'Review the highest-confidence alerts first and decide whether you should monitor, escalate, or act now before the predicted issue becomes operationally visible.',
+      };
+    }
+
+    if (activeTab === 'recommendations') {
+      const topRecommendation = recommendations[0];
+      return {
+        summary: recommendations.length === 0
+          ? 'There are no recommendations right now, which usually means the system does not see a strong improvement opportunity from the current data.'
+          : `These recommendations translate patterns in your data into suggested next steps, so the page acts more like an action queue than a passive report.`,
+        driver: topRecommendation
+          ? `The highest-priority recommendation is "${topRecommendation.title}", rated ${topRecommendation.priority} for priority with ${topRecommendation.effort} effort.`
+          : 'Recommendations typically weigh impact, urgency, and effort so teams can decide what to do next without over-analyzing every metric.',
+        guidance: recommendations.length === 0
+          ? 'Come back after more data or new alerts are available, since recommendations become stronger when the platform has enough context to rank likely actions.'
+          : 'Start with the highest-priority, lowest-friction item first, then use the listed action steps to turn the suggestion into a concrete workflow.',
+      };
+    }
+
+    const topPattern = patterns[0];
+    return {
+      summary: patterns.length === 0
+        ? 'No meaningful recurring pattern is visible yet, so the system does not have enough signal to say a trend is repeating.'
+        : `The AI is detecting ${patterns.length} repeat pattern${patterns.length === 1 ? '' : 's'} in your data, which helps explain whether recent changes are random or part of a larger trend.`,
+      driver: topPattern
+        ? `The strongest visible pattern is a ${topPattern.type} signal with ${topPattern.confidence.toFixed(0)}% confidence${topPattern.period ? ` repeating about every ${topPattern.period} days` : ''}.`
+        : 'Pattern detection gets stronger as the platform sees more historical metric behavior over time.',
+      guidance: patterns.length === 0
+        ? 'Add more historical metric data if you want the system to identify seasonality, recurring spikes, or repeating drops with more confidence.'
+        : 'Use these patterns to decide whether to plan for a recurring condition, investigate a change in operating conditions, or update thresholds before the next cycle.',
+    };
+  };
 
   useEffect(() => {
     if (organizationId) {
@@ -329,6 +385,15 @@ export default function AIInsightsPage() {
               )}
             </button>
           ))}
+        </div>
+
+        <div className="px-6 pt-6">
+          <InsightSummary
+            title="What This Means In Plain English"
+            summary={getAISummary().summary}
+            driver={getAISummary().driver}
+            guidance={getAISummary().guidance}
+          />
         </div>
 
         {/* AI Chat Tab */}
