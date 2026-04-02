@@ -32,7 +32,7 @@ interface DataSource {
 }
 
 export default function ClusteringPage() {
-  const { user } = useAuth();
+  const { user, organizationId } = useAuth();
   const { showToast } = useToast();
   const [analyses, setAnalyses] = useState<ClusteringAnalysis[]>([]);
   const [dataSources, setDataSources] = useState<DataSource[]>([]);
@@ -41,7 +41,6 @@ export default function ClusteringPage() {
   const [selectedAnalysis, setSelectedAnalysis] = useState<ClusteringAnalysis | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [availableColumns, setAvailableColumns] = useState<string[]>([]);
-  const [organizationId, setOrganizationId] = useState<string | null>(null);
 
   // Confirm dialog state
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -67,44 +66,13 @@ export default function ClusteringPage() {
   const COLORS = ['#3B82F6', '#8B5CF6', '#EC4899', '#F59E0B', '#10B981', '#EF4444', '#14B8A6', '#F97316'];
 
   useEffect(() => {
-    if (user) {
-      fetchOrganizationId();
-    }
-  }, [user]);
-
-  useEffect(() => {
     if (organizationId) {
       loadAnalyses();
       loadDataSources();
+    } else {
+      setLoading(false);
     }
   }, [organizationId]);
-
-  const fetchOrganizationId = async () => {
-    if (!user) return;
-
-    try {
-      // Try localStorage first
-      const cachedOrgId = localStorage.getItem('current_organization_id');
-      if (cachedOrgId) {
-        setOrganizationId(cachedOrgId);
-        return;
-      }
-
-      // Fetch from database
-      const { data, error } = await supabase
-        .from('user_organizations')
-        .select('organization_id')
-        .eq('user_id', user.id)
-        .single();
-
-      if (data && !error) {
-        setOrganizationId(data.organization_id);
-        localStorage.setItem('current_organization_id', data.organization_id);
-      }
-    } catch (error) {
-      console.error('Error fetching organization:', error);
-    }
-  };
 
   const loadDataSources = async () => {
     if (!organizationId) return;
@@ -193,8 +161,7 @@ export default function ClusteringPage() {
   ) => {
     const selectedSource = dataSources.find(ds => ds.id === dataSourceId);
     if (!selectedSource || !selectedSource.file_data || selectedSource.file_data.length === 0) {
-      // Fallback to mock data if no real data
-      return generateMockClusters(algorithm, numClusters, features);
+      throw new Error('Selected data source does not contain usable row data');
     }
 
     const rawData = selectedSource.file_data;
@@ -226,7 +193,7 @@ export default function ClusteringPage() {
       .filter(point => point !== null);
 
     if (validDataPoints.length === 0) {
-      return generateMockClusters(algorithm, numClusters, features);
+      throw new Error('Selected features do not contain enough numeric values to cluster');
     }
 
     // Normalize data to 0-100 range for visualization
@@ -242,14 +209,17 @@ export default function ClusteringPage() {
       return ((value - min) / (max - min)) * 100;
     };
 
-    // Simple K-means clustering
-    // Initialize cluster centers randomly
+    const sortedByX = [...validDataPoints].sort((a, b) => a!.x - b!.x);
     const clusterCenters = [];
     for (let i = 0; i < numClusters; i++) {
-      const randomPoint = validDataPoints[Math.floor(Math.random() * validDataPoints.length)]!;
+      const percentileIndex = Math.min(
+        sortedByX.length - 1,
+        Math.floor(((i + 0.5) / numClusters) * sortedByX.length)
+      );
+      const seedPoint = sortedByX[percentileIndex]!;
       clusterCenters.push({
-        x: randomPoint.x,
-        y: randomPoint.y
+        x: seedPoint.x,
+        y: seedPoint.y
       });
     }
 
@@ -313,95 +283,31 @@ export default function ClusteringPage() {
       }
     });
 
-    // Calculate metrics
-    const silhouetteScore = 0.65 + Math.random() * 0.25;
-    const daviesBouldinIndex = 0.5 + Math.random() * 0.5;
+    const averageDistanceToCenter = dataPoints.length > 0
+      ? dataPoints.reduce((sum, point) => {
+          const cluster = clusters[point.cluster];
+          return sum + Math.sqrt(Math.pow(point.x - cluster.center.x, 2) + Math.pow(point.y - cluster.center.y, 2));
+        }, 0) / dataPoints.length
+      : 0;
+    const centerDistances: number[] = [];
+    for (let i = 0; i < clusters.length; i++) {
+      for (let j = i + 1; j < clusters.length; j++) {
+        const a = clusters[i];
+        const b = clusters[j];
+        centerDistances.push(
+          Math.sqrt(Math.pow(a.center.x - b.center.x, 2) + Math.pow(a.center.y - b.center.y, 2))
+        );
+      }
+    }
+    const avgCenterDistance = centerDistances.length > 0
+      ? centerDistances.reduce((sum, value) => sum + value, 0) / centerDistances.length
+      : 1;
+    const silhouetteScore = Math.max(0, Math.min(1, avgCenterDistance / (avgCenterDistance + averageDistanceToCenter + 1)));
+    const daviesBouldinIndex = Number((averageDistanceToCenter / Math.max(avgCenterDistance, 1)).toFixed(3));
     const inertia = dataPoints.reduce((sum, point) => {
       const cluster = clusters[point.cluster];
       return sum + Math.pow(point.x - cluster.center.x, 2) + Math.pow(point.y - cluster.center.y, 2);
     }, 0);
-
-    return {
-      dataPoints,
-      clusters,
-      metrics: {
-        silhouette_score: silhouetteScore.toFixed(3),
-        davies_bouldin_index: daviesBouldinIndex.toFixed(3),
-        inertia: inertia.toFixed(2),
-        num_points: dataPoints.length
-      }
-    };
-  };
-
-  const generateMockClusters = (algorithm: string, numClusters: number, features: string[]) => {
-    const dataPoints = [];
-    const clusters = [];
-
-    // Generate cluster centers
-    for (let i = 0; i < numClusters; i++) {
-      const centerX = Math.random() * 100;
-      const centerY = Math.random() * 100;
-      
-      clusters.push({
-        id: i,
-        name: `Cluster ${i + 1}`,
-        center: { x: centerX, y: centerY },
-        size: 0,
-        color: COLORS[i % COLORS.length],
-        characteristics: []
-      });
-    }
-
-    // Generate data points around cluster centers
-    for (let i = 0; i < 100; i++) {
-      const clusterIndex = Math.floor(Math.random() * numClusters);
-      const cluster = clusters[clusterIndex];
-      
-      const spread = algorithm === 'kmeans' ? 15 : algorithm === 'dbscan' ? 20 : 25;
-      const x = cluster.center.x + (Math.random() - 0.5) * spread;
-      const y = cluster.center.y + (Math.random() - 0.5) * spread;
-
-      dataPoints.push({
-        id: i,
-        x: Math.max(0, Math.min(100, x)),
-        y: Math.max(0, Math.min(100, y)),
-        cluster: clusterIndex,
-        features: {
-          [features[0]]: x,
-          [features[1]]: y
-        }
-      });
-
-      cluster.size++;
-    }
-
-    // Calculate cluster characteristics
-    clusters.forEach(cluster => {
-      const clusterPoints = dataPoints.filter(p => p.cluster === cluster.id);
-      const avgX = clusterPoints.reduce((sum, p) => sum + p.x, 0) / clusterPoints.length;
-      const avgY = clusterPoints.reduce((sum, p) => sum + p.y, 0) / clusterPoints.length;
-
-      if (avgX > 66) {
-        cluster.characteristics.push(`High ${features[0]}`);
-      } else if (avgX < 33) {
-        cluster.characteristics.push(`Low ${features[0]}`);
-      } else {
-        cluster.characteristics.push(`Medium ${features[0]}`);
-      }
-
-      if (avgY > 66) {
-        cluster.characteristics.push(`High ${features[1]}`);
-      } else if (avgY < 33) {
-        cluster.characteristics.push(`Low ${features[1]}`);
-      } else {
-        cluster.characteristics.push(`Medium ${features[1]}`);
-      }
-    });
-
-    // Calculate metrics
-    const silhouetteScore = 0.65 + Math.random() * 0.25;
-    const daviesBouldinIndex = 0.5 + Math.random() * 0.5;
-    const inertia = 1000 + Math.random() * 500;
 
     return {
       dataPoints,
@@ -457,9 +363,13 @@ export default function ClusteringPage() {
         });
         setAvailableColumns([]);
         loadAnalyses();
+        showToast(`Analysis completed on ${metrics.num_points} data points`, 'success');
+      } else {
+        throw error;
       }
     } catch (error) {
       console.error('Error creating analysis:', error);
+      showToast(error instanceof Error ? error.message : 'Failed to run clustering analysis', 'error');
     }
   };
 
