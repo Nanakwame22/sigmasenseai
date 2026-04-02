@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../../lib/supabase';
+import { useAuth } from '../../../contexts/AuthContext';
 
 interface DecisionStep {
   stage: string;
@@ -25,6 +26,31 @@ interface DecisionCase {
   created_at: string;
 }
 
+interface MetricRecord {
+  id: string;
+  name: string;
+  unit: string | null;
+  current_value: number | null;
+  target_value: number | null;
+}
+
+interface MetricPointRecord {
+  metric_id: string;
+  value: number;
+  timestamp: string;
+}
+
+const LIVE_METRIC_PRIORITY = [
+  'ED Wait Time',
+  'Available Beds',
+  'Occupied Beds',
+  'Patients Per Nurse',
+  'Readmission Risk',
+  'Discharges Pending',
+  'LOS Average Hours',
+  'Critical Labs Unacknowledged',
+];
+
 const stageConfig: Record<string, { icon: string; color: string }> = {
   Sense:   { icon: 'ri-radar-line',      color: 'text-teal-600 bg-teal-50' },
   Analyze: { icon: 'ri-brain-line',      color: 'text-indigo-600 bg-indigo-50' },
@@ -49,6 +75,214 @@ function timeAgo(ts: string): string {
   if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
   if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
   return `${Math.floor(diff / 86400)}d ago`;
+}
+
+function normalizeName(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function formatMetricValue(value: number | null | undefined, unit: string | null | undefined) {
+  if (value === null || value === undefined || Number.isNaN(value)) return '—';
+  const normalizedUnit = (unit || '').toLowerCase();
+  if (normalizedUnit === 'minutes' || normalizedUnit === 'min') return `${value.toFixed(1)} minutes`;
+  if (normalizedUnit === 'hours' || normalizedUnit === 'hour' || normalizedUnit === 'h') return `${value.toFixed(1)} hours`;
+  if (normalizedUnit === 'beds' || normalizedUnit === 'count') return `${Math.round(value)}`;
+  if (normalizedUnit === 'ratio') return `${value.toFixed(1)}`;
+  if (normalizedUnit === 'probability') return `${Math.round(value * 100)}%`;
+  return `${value.toFixed(1)}`;
+}
+
+function buildLiveCases(metrics: MetricRecord[], metricPoints: MetricPointRecord[]): DecisionCase[] {
+  if (!metrics.length) return [];
+
+  const metricsByName = new Map(metrics.map((metric) => [normalizeName(metric.name), metric]));
+  const pointMap = new Map<string, MetricPointRecord[]>();
+  metricPoints.forEach((point) => {
+    const existing = pointMap.get(point.metric_id) || [];
+    existing.push(point);
+    pointMap.set(point.metric_id, existing);
+  });
+
+  const getLatestValues = (metricName: string) => {
+    const metric = metricsByName.get(normalizeName(metricName));
+    if (!metric) {
+      return { metric: null as MetricRecord | null, current: null as number | null, previous: null as number | null, latestAt: null as string | null };
+    }
+    const points = [...(pointMap.get(metric.id) || [])].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    return {
+      metric,
+      current: points[0]?.value ?? metric.current_value ?? null,
+      previous: points[1]?.value ?? points[0]?.value ?? null,
+      latestAt: points[0]?.timestamp ?? null,
+    };
+  };
+
+  const wait = getLatestValues('ED Wait Time');
+  const bedsAvailable = getLatestValues('Available Beds');
+  const discharges = getLatestValues('Discharges Pending');
+  const criticalLabs = getLatestValues('Critical Labs Unacknowledged');
+  const readmission = getLatestValues('Readmission Risk');
+  const patientsPerNurse = getLatestValues('Patients Per Nurse');
+
+  const cases: DecisionCase[] = [];
+
+  if (criticalLabs.current !== null && criticalLabs.current > 0) {
+    cases.push({
+      id: 'live-case:lab-escalation',
+      role: 'Lab Supervisor — Central Lab',
+      role_icon: 'ri-test-tube-line',
+      role_color: 'text-teal-600 bg-teal-50 border-teal-100',
+      signal: `${Math.round(criticalLabs.current)} critical lab result${criticalLabs.current === 1 ? '' : 's'} remain unacknowledged`,
+      signal_severity: 'critical',
+      decision: 'Auto-escalate to attending or re-route to covering physician?',
+      action: 'Review and acknowledge critical results, then route any unresolved results to the responsible clinician.',
+      outcome: null,
+      outcome_positive: false,
+      steps: [
+        { stage: 'Sense', description: 'Critical lab backlog detected from imported KPI stream', automated: true },
+        { stage: 'Analyze', description: `Current backlog is ${formatMetricValue(criticalLabs.current, criticalLabs.metric?.unit)} against a zero-backlog target`, automated: true },
+        { stage: 'Decide', description: 'Clinical escalation required if acknowledgement does not clear promptly', automated: true },
+        { stage: 'Act', description: 'Use Log Case to assign and track the response.', automated: false },
+        { stage: 'Learn', description: 'Resolve a logged case to feed the outcome back into CPI learning.', automated: false },
+      ],
+      status: 'active',
+      tags: ['lab', 'escalation', 'critical-result'],
+      resolved_at: null,
+      created_at: criticalLabs.latestAt ?? new Date().toISOString(),
+    });
+  }
+
+  if (discharges.current !== null && discharges.current > 5) {
+    cases.push({
+      id: 'live-case:discharge-backlog',
+      role: 'Discharge Coordinator — Social Work',
+      role_icon: 'ri-door-open-line',
+      role_color: 'text-emerald-600 bg-emerald-50 border-emerald-100',
+      signal: `${Math.round(discharges.current)} patients ready-to-go with discharge bottlenecks identified`,
+      signal_severity: 'warning',
+      decision: 'Which bottlenecks can be cleared first — pharmacy, transport, or SNF placement?',
+      action: 'Prioritize the discharge queue and clear the highest-impact blockers before bed turnover slows further.',
+      outcome: null,
+      outcome_positive: false,
+      steps: [
+        { stage: 'Sense', description: 'Discharge backlog detected from live KPI feed', automated: true },
+        { stage: 'Analyze', description: `${Math.round(discharges.current)} pending discharges remain above the target threshold of 5`, automated: true },
+        { stage: 'Decide', description: 'Select the first discharge bottleneck to remove', automated: true },
+        { stage: 'Act', description: 'Use Log Case to track the chosen operational response.', automated: false },
+        { stage: 'Learn', description: 'Resolve a logged case to capture whether the intervention cleared the backlog.', automated: false },
+      ],
+      status: 'active',
+      tags: ['discharge', 'bottleneck', 'capacity'],
+      resolved_at: null,
+      created_at: discharges.latestAt ?? new Date().toISOString(),
+    });
+  }
+
+  if (wait.current !== null && wait.current > 45) {
+    cases.push({
+      id: 'live-case:ed-surge',
+      role: 'Charge Nurse — Emergency Department',
+      role_icon: 'ri-nurse-line',
+      role_color: 'text-rose-600 bg-rose-50 border-rose-100',
+      signal: `ED wait time is ${formatMetricValue(wait.current, wait.metric?.unit)} and trending above target`,
+      signal_severity: 'critical',
+      decision: 'Should ED flow be rebalanced now or should a surge workflow be activated?',
+      action: 'Review intake and throughput bottlenecks, then trigger ED surge response if congestion persists.',
+      outcome: null,
+      outcome_positive: false,
+      steps: [
+        { stage: 'Sense', description: 'ED wait-time signal exceeded preferred operating range', automated: true },
+        { stage: 'Analyze', description: `Live KPI shows ${formatMetricValue(wait.current, wait.metric?.unit)} versus target ${(wait.metric?.target_value ?? 30)} minutes`, automated: true },
+        { stage: 'Decide', description: 'Choose between local balancing and surge activation', automated: true },
+        { stage: 'Act', description: 'Use Log Case to record the decision taken.', automated: false },
+        { stage: 'Learn', description: 'Resolve the resulting case to measure whether throughput improved.', automated: false },
+      ],
+      status: 'active',
+      tags: ['ed', 'surge', 'throughput'],
+      resolved_at: null,
+      created_at: wait.latestAt ?? new Date().toISOString(),
+    });
+  }
+
+  if (bedsAvailable.current !== null && bedsAvailable.current < 8) {
+    cases.push({
+      id: 'live-case:beds-capacity',
+      role: 'Bed Manager — Capacity Operations',
+      role_icon: 'ri-hotel-bed-line',
+      role_color: 'text-amber-600 bg-amber-50 border-amber-100',
+      signal: `Bed availability has fallen to ${formatMetricValue(bedsAvailable.current, bedsAvailable.metric?.unit)}`,
+      signal_severity: 'warning',
+      decision: 'Which beds can be freed first, and which units can absorb overflow?',
+      action: 'Coordinate discharge acceleration and unit balancing to restore bed buffer.',
+      outcome: null,
+      outcome_positive: false,
+      steps: [
+        { stage: 'Sense', description: 'Capacity signal detected from available-bed KPI', automated: true },
+        { stage: 'Analyze', description: `Available beds are below the preferred target of ${Math.round(bedsAvailable.metric?.target_value ?? 10)}`, automated: true },
+        { stage: 'Decide', description: 'Select near-term capacity recovery actions', automated: true },
+        { stage: 'Act', description: 'Use Log Case to track the recovery plan.', automated: false },
+        { stage: 'Learn', description: 'Resolve a logged case to capture whether the buffer recovered.', automated: false },
+      ],
+      status: 'active',
+      tags: ['capacity', 'beds', 'forecast'],
+      resolved_at: null,
+      created_at: bedsAvailable.latestAt ?? new Date().toISOString(),
+    });
+  }
+
+  if (readmission.current !== null && readmission.current > 0.12) {
+    cases.push({
+      id: 'live-case:readmission',
+      role: 'Care Transition Navigator',
+      role_icon: 'ri-team-line',
+      role_color: 'text-violet-600 bg-violet-50 border-violet-100',
+      signal: `Readmission risk has reached ${formatMetricValue(readmission.current, readmission.metric?.unit)}`,
+      signal_severity: 'warning',
+      decision: 'Which high-risk cohort should receive follow-up intervention first?',
+      action: 'Review at-risk discharges and assign targeted follow-up outreach.',
+      outcome: null,
+      outcome_positive: false,
+      steps: [
+        { stage: 'Sense', description: 'Readmission risk exceeded the expected threshold', automated: true },
+        { stage: 'Analyze', description: `Risk level is ${formatMetricValue(readmission.current, readmission.metric?.unit)} against a target of ${Math.round((readmission.metric?.target_value ?? 0.12) * 100)}%`, automated: true },
+        { stage: 'Decide', description: 'Choose the first intervention target cohort', automated: true },
+        { stage: 'Act', description: 'Use Log Case to document the outreach plan.', automated: false },
+        { stage: 'Learn', description: 'Resolve a logged case to capture outcome effectiveness.', automated: false },
+      ],
+      status: 'active',
+      tags: ['readmission', 'transition', 'risk'],
+      resolved_at: null,
+      created_at: readmission.latestAt ?? new Date().toISOString(),
+    });
+  }
+
+  if (patientsPerNurse.current !== null && patientsPerNurse.current > 5) {
+    cases.push({
+      id: 'live-case:staffing-load',
+      role: 'Staffing Coordinator',
+      role_icon: 'ri-team-line',
+      role_color: 'text-indigo-600 bg-indigo-50 border-indigo-100',
+      signal: `Patients per nurse is ${formatMetricValue(patientsPerNurse.current, patientsPerNurse.metric?.unit)} and above preferred range`,
+      signal_severity: 'warning',
+      decision: 'Should assignments be rebalanced or should float coverage be requested?',
+      action: 'Review assignments and rebalance coverage where patient load is above policy.',
+      outcome: null,
+      outcome_positive: false,
+      steps: [
+        { stage: 'Sense', description: 'Staffing load rose above the preferred threshold', automated: true },
+        { stage: 'Analyze', description: `Patients per nurse is ${formatMetricValue(patientsPerNurse.current, patientsPerNurse.metric?.unit)} against a target of ${patientsPerNurse.metric?.target_value ?? 4}`, automated: true },
+        { stage: 'Decide', description: 'Choose the first staffing correction', automated: true },
+        { stage: 'Act', description: 'Use Log Case to track the staffing response.', automated: false },
+        { stage: 'Learn', description: 'Resolve a logged case to capture whether staffing strain improved.', automated: false },
+      ],
+      status: 'active',
+      tags: ['staffing', 'capacity', 'assignment'],
+      resolved_at: null,
+      created_at: patientsPerNurse.latestAt ?? new Date().toISOString(),
+    });
+  }
+
+  return cases.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 }
 
 // ─── Log Case Modal ────────────────────────────────────────────────────────────
@@ -462,6 +696,7 @@ function LearnFeedBanner({ modelNames, onDismiss }: LearnFeedBannerProps) {
 
 // ─── Main Component ────────────────────────────────────────────────────────────
 export default function WorkflowDecisionSupport() {
+  const { organizationId } = useAuth();
   const [cases, setCases] = useState<DecisionCase[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -476,9 +711,36 @@ export default function WorkflowDecisionSupport() {
       .from('cpi_decision_cases')
       .select('*')
       .order('created_at', { ascending: false });
-    if (data) setCases(data as DecisionCase[]);
+
+    let mergedCases = (data as DecisionCase[]) || [];
+
+    if (organizationId) {
+      const { data: metricRows, error: metricsError } = await supabase
+        .from('metrics')
+        .select('id, name, unit, current_value, target_value')
+        .eq('organization_id', organizationId)
+        .in('name', LIVE_METRIC_PRIORITY);
+
+      if (!metricsError && metricRows && metricRows.length > 0) {
+        const metricIds = metricRows.map(metric => metric.id);
+        const { data: pointRows, error: pointsError } = await supabase
+          .from('metric_data')
+          .select('metric_id, value, timestamp')
+          .in('metric_id', metricIds)
+          .order('timestamp', { ascending: false })
+          .limit(500);
+
+        if (!pointsError) {
+          const liveCases = buildLiveCases(metricRows as MetricRecord[], (pointRows as MetricPointRecord[]) || []);
+          const existingIds = new Set(liveCases.map(item => item.id));
+          mergedCases = [...liveCases, ...mergedCases.filter(item => !existingIds.has(item.id))];
+        }
+      }
+    }
+
+    setCases(mergedCases);
     setLoading(false);
-  }, []);
+  }, [organizationId]);
 
   useEffect(() => {
     fetchCases();
@@ -675,7 +937,7 @@ export default function WorkflowDecisionSupport() {
                   <div className="px-5 pb-5 border-t border-slate-100 pt-4">
                     <div className="flex items-center justify-between mb-3">
                       <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Intelligence Cycle</p>
-                      {c.status === 'active' && (
+                      {c.status === 'active' && !c.id.startsWith('live-case:') && (
                         <button
                           onClick={(e) => { e.stopPropagation(); setResolveCase(c); }}
                           className="flex items-center space-x-1.5 px-3 py-1.5 text-xs font-semibold bg-teal-600 text-white rounded-lg hover:bg-teal-700 cursor-pointer whitespace-nowrap"
@@ -683,6 +945,12 @@ export default function WorkflowDecisionSupport() {
                           <i className="ri-loop-left-line text-sm"></i>
                           <span>Resolve &amp; Feed Models</span>
                         </button>
+                      )}
+                      {c.status === 'active' && c.id.startsWith('live-case:') && (
+                        <span className="text-xs text-amber-600 flex items-center space-x-1">
+                          <i className="ri-information-line"></i>
+                          <span>Use Log Case to track this live signal</span>
+                        </span>
                       )}
                       {c.status === 'resolved' && c.resolved_at && (
                         <span className="text-xs text-emerald-600 flex items-center space-x-1">
