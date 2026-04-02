@@ -1476,17 +1476,19 @@ export default function AdvancedForecastingPage() {
               </div>
             )}
 
-            {/* Confirm Dialog */}
-            <ConfirmDialog
-              isOpen={confirmDialog.isOpen}
-              title={confirmDialog.title}
-              message={confirmDialog.message}
-              onConfirm={confirmDialog.onConfirm}
-              onCancel={() => setConfirmDialog({ ...confirmDialog, isOpen: false })}
-            />
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        confirmText={confirmDialog.confirmText}
+        confirmVariant={confirmDialog.confirmVariant}
+        onConfirm={confirmDialog.onConfirm}
+        onCancel={() => setConfirmDialog((current) => ({ ...current, isOpen: false }))}
+      />
     </div>
   );
 }
