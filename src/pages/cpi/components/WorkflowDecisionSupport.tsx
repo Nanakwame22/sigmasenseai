@@ -285,6 +285,21 @@ function buildLiveCases(metrics: MetricRecord[], metricPoints: MetricPointRecord
   return cases.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 }
 
+function buildTrackedCaseFromLiveCase(caseItem: DecisionCase) {
+  return {
+    role: caseItem.role,
+    role_icon: caseItem.role_icon,
+    role_color: caseItem.role_color,
+    signal: caseItem.signal,
+    signal_severity: caseItem.signal_severity,
+    decision: caseItem.decision,
+    action: caseItem.action,
+    steps: caseItem.steps,
+    status: 'active',
+    tags: caseItem.tags,
+  };
+}
+
 // ─── Log Case Modal ────────────────────────────────────────────────────────────
 interface LogCaseModalProps {
   onClose: () => void;
@@ -705,6 +720,7 @@ export default function WorkflowDecisionSupport() {
   const [resolveCase, setResolveCase] = useState<DecisionCase | null>(null);
   const [tick, setTick] = useState(0);
   const [learnFeed, setLearnFeed] = useState<string[] | null>(null);
+  const [promotingLiveId, setPromotingLiveId] = useState<string | null>(null);
 
   const fetchCases = useCallback(async () => {
     const { data } = await supabase
@@ -767,6 +783,19 @@ export default function WorkflowDecisionSupport() {
   const positiveRate  = resolvedCount > 0
     ? Math.round((cases.filter(c => c.outcome_positive && c.status === 'resolved').length / resolvedCount) * 100)
     : 0;
+
+  const promoteLiveCase = useCallback(async (caseItem: DecisionCase) => {
+    setPromotingLiveId(caseItem.id);
+    try {
+      const { error } = await supabase.from('cpi_decision_cases').insert(buildTrackedCaseFromLiveCase(caseItem));
+      if (error) throw error;
+      await fetchCases();
+    } catch (error) {
+      console.error('Failed to promote live case:', error);
+    } finally {
+      setPromotingLiveId(null);
+    }
+  }, [fetchCases]);
 
   return (
     <div>
@@ -947,10 +976,17 @@ export default function WorkflowDecisionSupport() {
                         </button>
                       )}
                       {c.status === 'active' && c.id.startsWith('live-case:') && (
-                        <span className="text-xs text-amber-600 flex items-center space-x-1">
-                          <i className="ri-information-line"></i>
-                          <span>Log a case to track response and accountability</span>
-                        </span>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void promoteLiveCase(c);
+                          }}
+                          disabled={promotingLiveId === c.id}
+                          className="flex items-center space-x-1.5 px-3 py-1.5 text-xs font-semibold bg-amber-500 text-white rounded-lg hover:bg-amber-600 disabled:opacity-60 cursor-pointer whitespace-nowrap"
+                        >
+                          <i className="ri-file-add-line text-sm"></i>
+                          <span>{promotingLiveId === c.id ? 'Logging case...' : 'Log As Tracked Case'}</span>
+                        </button>
                       )}
                       {c.status === 'resolved' && c.resolved_at && (
                         <span className="text-xs text-emerald-600 flex items-center space-x-1">

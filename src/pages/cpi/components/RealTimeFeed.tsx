@@ -258,6 +258,55 @@ interface FireResult {
   severity?: string;
 }
 
+function buildDecisionCaseFromFeedItem(item: CPIFeedItem) {
+  const roleMap: Record<string, { role: string; icon: string; color: string; tags: string[] }> = {
+    ed: {
+      role: 'Charge Nurse — Emergency Department',
+      icon: 'ri-nurse-line',
+      color: 'text-rose-600 bg-rose-50 border-rose-100',
+      tags: ['ed', 'surge', 'throughput'],
+    },
+    readmission: {
+      role: 'Care Transition Navigator',
+      icon: 'ri-team-line',
+      color: 'text-violet-600 bg-violet-50 border-violet-100',
+      tags: ['readmission', 'transition', 'risk'],
+    },
+    lab: {
+      role: 'Lab Supervisor — Central Lab',
+      icon: 'ri-test-tube-line',
+      color: 'text-teal-600 bg-teal-50 border-teal-100',
+      tags: ['lab', 'escalation', 'critical-result'],
+    },
+  };
+
+  const roleMeta = roleMap[item.category] ?? {
+    role: 'Operations Coordinator',
+    icon: 'ri-user-settings-line',
+    color: 'text-slate-600 bg-slate-50 border-slate-100',
+    tags: ['operations', item.category],
+  };
+
+  return {
+    role: roleMeta.role,
+    role_icon: roleMeta.icon,
+    role_color: roleMeta.color,
+    signal: item.title,
+    signal_severity: item.severity === 'critical' ? 'critical' : 'warning',
+    decision: `Review operational response for ${item.title.toLowerCase()}.`,
+    action: item.body,
+    steps: [
+      { stage: 'Sense', description: 'Feed alert detected and captured from live CPI monitoring.', automated: true },
+      { stage: 'Analyze', description: 'Signal context reviewed against current operational thresholds.', automated: true },
+      { stage: 'Decide', description: `Team reviewed alert and selected follow-through for "${item.title}".`, automated: false },
+      { stage: 'Act', description: item.action_label || 'Document and execute the chosen response.', automated: false },
+      { stage: 'Learn', description: 'Outcome pending — resolve the resulting case to capture learning feedback.', automated: false },
+    ],
+    status: 'active',
+    tags: roleMeta.tags,
+  };
+}
+
 interface QuickFireButtonProps {
   label: string;
   icon: string;
@@ -326,6 +375,8 @@ function FeedCard({ item, onAcknowledge, isNew }: {
   const cfg = severityConfig[item.severity] ?? severityConfig.info;
   const src = getSourceConfig(item.category);
   const [acknowledging, setAcknowledging] = useState(false);
+  const [loggingCase, setLoggingCase] = useState(false);
+  const [actionDone, setActionDone] = useState(false);
 
   const handleAck = useCallback(async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -333,6 +384,21 @@ function FeedCard({ item, onAcknowledge, isNew }: {
     await onAcknowledge(item.id);
     setAcknowledging(false);
   }, [item.id, onAcknowledge]);
+
+  const handleAction = useCallback(async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setLoggingCase(true);
+    try {
+      const { error } = await supabase.from('cpi_decision_cases').insert(buildDecisionCaseFromFeedItem(item));
+      if (error) throw error;
+      await onAcknowledge(item.id);
+      setActionDone(true);
+    } catch (error) {
+      console.error('Failed to create decision case from feed item:', error);
+    } finally {
+      setLoggingCase(false);
+    }
+  }, [item, onAcknowledge]);
 
   return (
     <div className={`px-5 py-4 border-l-4 transition-all duration-500 ${cfg.border} ${
@@ -370,19 +436,19 @@ function FeedCard({ item, onAcknowledge, isNew }: {
           {!item.acknowledged && (
             <div className="flex items-center space-x-2">
               <button
-                onClick={handleAck}
-                disabled={acknowledging}
+                onClick={handleAction}
+                disabled={acknowledging || loggingCase}
                 className={`flex items-center space-x-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer whitespace-nowrap ${cfg.action} disabled:opacity-60`}
               >
                 <i className="ri-flashlight-line text-xs"></i>
-                <span>{acknowledging ? 'Acting...' : item.action_label}</span>
+                <span>{loggingCase ? 'Logging case...' : actionDone ? 'Case logged' : item.action_label}</span>
               </button>
               <button
                 onClick={handleAck}
-                disabled={acknowledging}
+                disabled={acknowledging || loggingCase}
                 className="px-3 py-1.5 text-xs font-medium text-slate-500 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer whitespace-nowrap disabled:opacity-60"
               >
-                Acknowledge
+                {acknowledging ? 'Acknowledging...' : 'Acknowledge'}
               </button>
             </div>
           )}
