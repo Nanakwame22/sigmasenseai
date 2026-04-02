@@ -237,6 +237,46 @@ export default function HypothesisTestingPage() {
       .filter(n => !isNaN(n));
   };
 
+  const runTwoSampleTTestFromSummary = (
+    mean1: number,
+    mean2: number,
+    stdDev1: number,
+    stdDev2: number,
+    sampleSize1: number,
+    sampleSize2: number,
+    alpha: number
+  ) => {
+    if (sampleSize1 < 2 || sampleSize2 < 2) {
+      throw new Error('Each sample must contain at least 2 observations');
+    }
+
+    const pooledVariance = (
+      ((sampleSize1 - 1) * Math.pow(stdDev1, 2)) +
+      ((sampleSize2 - 1) * Math.pow(stdDev2, 2))
+    ) / Math.max(sampleSize1 + sampleSize2 - 2, 1);
+
+    const standardError = Math.sqrt(Math.max(pooledVariance, 0) * (1 / sampleSize1 + 1 / sampleSize2));
+    const meanDifference = mean1 - mean2;
+    const testStatistic = standardError === 0 ? 0 : meanDifference / standardError;
+    const degreesOfFreedom = sampleSize1 + sampleSize2 - 2;
+
+    // Keep the same p-value behavior as the existing test service approximation.
+    const effectSizeDenominator = Math.sqrt(Math.max(pooledVariance, 0.0001));
+    const effectSize = meanDifference / effectSizeDenominator;
+    const pValue = Math.max(0.0001, Math.min(0.99, 1 / (Math.abs(testStatistic) + 1.5)));
+    const marginOfError = 1.96 * standardError;
+
+    return {
+      testStatistic,
+      pValue,
+      degreesOfFreedom,
+      confidenceIntervalLower: meanDifference - marginOfError,
+      confidenceIntervalUpper: meanDifference + marginOfError,
+      result: pValue < alpha ? 'reject_null' as const : 'fail_to_reject' as const,
+      effectSize,
+    };
+  };
+
   const handleCalculate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || !organizationId) return;
@@ -267,15 +307,18 @@ export default function HypothesisTestingPage() {
             testData.sample_size_2 = sample2.length;
             testData.mean_1 = sample1.reduce((a, b) => a + b, 0) / sample1.length;
             testData.mean_2 = sample2.reduce((a, b) => a + b, 0) / sample2.length;
+            testData.std_dev_1 = Math.sqrt(sample1.reduce((sum, value) => sum + Math.pow(value - testData.mean_1, 2), 0) / Math.max(sample1.length, 1));
+            testData.std_dev_2 = Math.sqrt(sample2.reduce((sum, value) => sum + Math.pow(value - testData.mean_2, 2), 0) / Math.max(sample2.length, 1));
           } else {
-            // Generate sample data from summary statistics for testing
-            const sample1 = Array(formData.sample_size_1).fill(0).map(() => 
-              formData.mean_1 + (Math.random() - 0.5) * formData.std_dev_1 * 2
+            result = runTwoSampleTTestFromSummary(
+              formData.mean_1,
+              formData.mean_2,
+              formData.std_dev_1,
+              formData.std_dev_2,
+              formData.sample_size_1,
+              formData.sample_size_2,
+              formData.significance_level
             );
-            const sample2 = Array(formData.sample_size_2).fill(0).map(() => 
-              formData.mean_2 + (Math.random() - 0.5) * formData.std_dev_2 * 2
-            );
-            result = twoSampleTTest(sample1, sample2, formData.significance_level);
             testData.sample_size_1 = formData.sample_size_1;
             testData.sample_size_2 = formData.sample_size_2;
             testData.mean_1 = formData.mean_1;
@@ -438,15 +481,15 @@ export default function HypothesisTestingPage() {
   };
 
   const testTypeDistribution = [
-    { type: 'Two-Sample T-Test', count: tests.filter(t => t.test_type === 'two_sample_t').length },
-    { type: 'Paired T-Test', count: tests.filter(t => t.test_type === 'paired_t').length },
+    { type: 'Two-Sample T-Test', count: tests.filter(t => t.test_type === 't_test').length },
+    { type: 'Paired T-Test', count: tests.filter(t => t.test_type === 'paired_t_test').length },
     { type: 'Z-Test', count: tests.filter(t => t.test_type === 'z_test').length },
     { type: 'Chi-Square', count: tests.filter(t => t.test_type === 'chi_square').length },
     { type: 'ANOVA', count: tests.filter(t => t.test_type === 'anova').length }
   ];
 
   const resultDistribution = [
-    { result: 'Reject H₀', count: tests.filter(t => t.result === 'reject').length, color: '#10B981' },
+    { result: 'Reject H₀', count: tests.filter(t => t.result === 'reject_null').length, color: '#10B981' },
     { result: 'Fail to Reject', count: tests.filter(t => t.result === 'fail_to_reject').length, color: '#6B7280' }
   ];
 
