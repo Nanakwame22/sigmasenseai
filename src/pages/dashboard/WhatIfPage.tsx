@@ -4,6 +4,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell, AreaChart, Area } from 'recharts';
 import { useToast } from '../../hooks/useToast';
 import ConfirmDialog from '../../components/common/ConfirmDialog';
+import InsightSummary from '../../components/common/InsightSummary';
 import { Link } from 'react-router-dom';
 
 interface WhatIfScenario {
@@ -26,6 +27,19 @@ interface WhatIfScenario {
 interface Metric {
   id: string;
   name: string;
+  current_value?: number | null;
+  target_value?: number | null;
+  unit?: string | null;
+}
+
+interface MetricBaseline {
+  id: string;
+  name: string;
+  dataCount: number;
+  latestValue: number | null;
+  averageValue: number | null;
+  targetValue: number | null;
+  unit: string;
 }
 
 const SCENARIO_TEMPLATES = [
@@ -74,7 +88,7 @@ const RISK_FACTORS = [
 ];
 
 export default function WhatIfPage() {
-  const { user } = useAuth();
+  const { user, organizationId } = useAuth();
   const { showToast } = useToast();
   const [scenarios, setScenarios] = useState<WhatIfScenario[]>([]);
   const [metrics, setMetrics] = useState<Metric[]>([]);
@@ -89,7 +103,7 @@ export default function WhatIfPage() {
   const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [scenarioToDelete, setScenarioToDelete] = useState<string | null>(null);
-  const [metricsWithData, setMetricsWithData] = useState<Array<{ id: string; name: string; dataCount: number }>>([]);
+  const [metricsWithData, setMetricsWithData] = useState<MetricBaseline[]>([]);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -108,29 +122,22 @@ export default function WhatIfPage() {
 
   useEffect(() => {
     loadData();
-  }, [user]);
+  }, [user, organizationId]);
 
   const loadData = async () => {
-    if (!user) return;
+    if (!user || !organizationId) return;
 
     try {
-      const orgId = localStorage.getItem('current_organization_id');
-      if (!orgId) {
-        console.warn('No organization selected');
-        setLoading(false);
-        return;
-      }
-
       const [scenariosRes, metricsRes] = await Promise.all([
         supabase
           .from('what_if_scenarios')
           .select('*')
-          .eq('organization_id', orgId)
+          .eq('organization_id', organizationId)
           .order('created_at', { ascending: false }),
         supabase
           .from('metrics')
-          .select('id, name')
-          .eq('organization_id', orgId)
+          .select('id, name, current_value, target_value, unit')
+          .eq('organization_id', organizationId)
       ]);
 
       if (scenariosRes.data) setScenarios(scenariosRes.data);
@@ -140,15 +147,37 @@ export default function WhatIfPage() {
         // Fetch data point counts for each metric
         const metricsWithCounts = await Promise.all(
           metricsRes.data.map(async (metric) => {
-            const { count } = await supabase
-              .from('metric_data')
-              .select('*', { count: 'exact', head: true })
-              .eq('metric_id', metric.id);
+            const [{ count }, { data: historyData }] = await Promise.all([
+              supabase
+                .from('metric_data')
+                .select('*', { count: 'exact', head: true })
+                .eq('metric_id', metric.id),
+              supabase
+                .from('metric_data')
+                .select('value, timestamp')
+                .eq('metric_id', metric.id)
+                .order('timestamp', { ascending: false })
+                .limit(12),
+            ]);
+
+            const numericHistory = (historyData || [])
+              .map((row) => Number(row.value))
+              .filter((value) => Number.isFinite(value));
+            const latestValue =
+              numericHistory[0] ??
+              (typeof metric.current_value === 'number' ? metric.current_value : null);
+            const averageValue = numericHistory.length > 0
+              ? numericHistory.reduce((sum, value) => sum + value, 0) / numericHistory.length
+              : latestValue;
             
             return {
               id: metric.id,
               name: metric.name,
-              dataCount: count || 0
+              dataCount: count || 0,
+              latestValue,
+              averageValue,
+              targetValue: typeof metric.target_value === 'number' ? metric.target_value : null,
+              unit: metric.unit || ''
             };
           })
         );
@@ -268,16 +297,73 @@ export default function WhatIfPage() {
     return { ...results, projection };
   };
 
+  const buildMetricBackedVariables = (metricId: string, currentVariables = formData.variables) => {
+    const metric = metricsWithData.find((entry) => entry.id === metricId);
+    if (!metric) {
+      return currentVariables;
+    }
+
+    const baselineValue = metric.latestValue ?? metric.averageValue ?? 0;
+    const targetValue = metric.targetValue ?? baselineValue * 1.1;
+    const improvementPercent = baselineValue > 0
+      ? ((targetValue - baselineValue) / baselineValue) * 100
+      : 10;
+    const observedVolume = Math.max(metric.dataCount, 1);
+
+    return [
+      {
+        name: metric.name,
+        current: Number(baselineValue.toFixed(2)),
+        scenario: Number(targetValue.toFixed(2)),
+        unit: metric.unit || 'units',
+        weight: 0.5,
+      },
+      {
+        name: 'Expected Change',
+        current: 0,
+        scenario: Number(improvementPercent.toFixed(1)),
+        unit: '%',
+        weight: 0.25,
+      },
+      {
+        name: 'Observed Volume',
+        current: observedVolume,
+        scenario: observedVolume,
+        unit: 'records',
+        weight: 0.25,
+      },
+    ];
+  };
+
+  const handleBaseMetricChange = (metricId: string) => {
+    setFormData((current) => ({
+      ...current,
+      base_metric_id: metricId,
+      variables: metricId ? buildMetricBackedVariables(metricId, current.variables) : current.variables,
+    }));
+  };
+
+  const getScenarioSummary = (scenario: WhatIfScenario) => {
+    const metricLabel = metrics.find((metric) => metric.id === scenario.base_metric_id)?.name;
+    const profitChange = Number(scenario.results?.changes?.profit || 0);
+    const roiChange = Number(scenario.results?.changes?.roi || 0);
+    const riskLevel = scenario.risk_assessment?.overall_risk || 'medium';
+
+    return {
+      summary: metricLabel
+        ? `${scenario.name} tests how ${metricLabel} could move under the proposed assumptions. Based on the current setup, the modeled net impact shifts by about ${Math.abs(profitChange).toFixed(1)}%, ${profitChange >= 0 ? 'in a favorable direction' : 'in a negative direction'}.`
+        : `${scenario.name} compares the current operating picture with the proposed one and estimates the likely downstream impact if those assumptions hold.`,
+      driver: `The strongest directional signal here is a ${roiChange >= 0 ? 'gain' : 'drop'} in return of ${Math.abs(roiChange).toFixed(1)}%, with an overall ${riskLevel} risk profile.`,
+      guidance: riskLevel === 'high'
+        ? 'Treat this as a higher-risk scenario and validate the most sensitive assumptions before acting on it.'
+        : 'Use this as a practical planning aid, then confirm the largest assumption changes with the operational team before execution.',
+    };
+  };
+
   const handleCreate = async () => {
-    if (!user || !formData.name.trim()) return;
+    if (!user || !organizationId || !formData.name.trim()) return;
 
     try {
-      const orgId = localStorage.getItem('current_organization_id');
-      if (!orgId) {
-        showToast('Please select an organization first', 'warning');
-        return;
-      }
-
       const results = calculateAdvancedScenario(
         formData.variables, 
         formData.time_horizon, 
@@ -293,7 +379,7 @@ export default function WhatIfPage() {
       }));
 
       const { error } = await supabase.from('what_if_scenarios').insert({
-        organization_id: orgId,
+        organization_id: organizationId,
         name: formData.name.trim(),
         description: formData.description.trim() || null,
         base_metric_id: formData.base_metric_id || null,
@@ -374,11 +460,10 @@ export default function WhatIfPage() {
 
   const duplicateScenario = async (scenario: WhatIfScenario) => {
     try {
-      const orgId = localStorage.getItem('current_organization_id');
-      if (!orgId) return;
+      if (!organizationId || !user) return;
 
       const { error } = await supabase.from('what_if_scenarios').insert({
-        organization_id: orgId,
+        organization_id: organizationId,
         name: `${scenario.name} (Copy)`,
         description: scenario.description,
         base_metric_id: scenario.base_metric_id,
@@ -386,7 +471,7 @@ export default function WhatIfPage() {
         assumptions: scenario.assumptions,
         results: scenario.results,
         status: 'completed',
-        created_by: user!.id,
+        created_by: user.id,
         tags: scenario.tags || [],
         confidence_level: scenario.confidence_level || 0.7
       });
@@ -930,7 +1015,7 @@ export default function WhatIfPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">Base Metric (Optional)</label>
                   <select
                     value={formData.base_metric_id}
-                    onChange={(e) => setFormData({ ...formData, base_metric_id: e.target.value })}
+                    onChange={(e) => handleBaseMetricChange(e.target.value)}
                     className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent text-sm"
                   >
                     <option value="">Select metric to track</option>
@@ -943,6 +1028,11 @@ export default function WhatIfPage() {
                   {metricsWithData.length > 0 && metricsWithSufficientData.length === 0 && (
                     <p className="text-xs text-orange-600 mt-1">
                       No metrics with sufficient data. Add 3+ data points to metrics to use them as baseline.
+                    </p>
+                  )}
+                  {formData.base_metric_id && metricsWithData.find((metric) => metric.id === formData.base_metric_id) && (
+                    <p className="text-xs text-teal-700 mt-1">
+                      This metric will seed the scenario with the latest live baseline and observed history.
                     </p>
                   )}
                 </div>
@@ -1209,6 +1299,11 @@ export default function WhatIfPage() {
             </div>
 
             {/* Key Metrics Overview */}
+            <InsightSummary
+              {...getScenarioSummary(selectedScenario)}
+              className="mb-6"
+            />
+
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
               <div className="bg-blue-50 rounded-lg p-4">
                 <div className="text-xs text-blue-600 mb-1">Revenue Change</div>
