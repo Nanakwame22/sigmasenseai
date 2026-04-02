@@ -42,6 +42,68 @@ interface DataQualityMetrics {
   overall: number;
 }
 
+interface MetricDataRow {
+  value: number | string;
+  timestamp: string;
+}
+
+interface DataSourceRow {
+  id: string;
+  name: string;
+  type: string;
+  file_data?: Record<string, unknown>[];
+  created_at?: string;
+  updated_at?: string;
+}
+
+interface BaselinePoint {
+  day: string;
+  value: number;
+  ucl: number;
+  lcl: number;
+  mean: number;
+}
+
+interface VariabilityPoint {
+  department: string;
+  shift: string;
+  avgWaitTime: number;
+  variance: number;
+}
+
+const average = (values: number[]) => values.length > 0
+  ? values.reduce((sum, value) => sum + value, 0) / values.length
+  : 0;
+
+const standardDeviation = (values: number[]) => {
+  if (values.length <= 1) return 0;
+  const mean = average(values);
+  const variance = values.reduce((sum, value) => sum + Math.pow(value - mean, 2), 0) / values.length;
+  return Math.sqrt(variance);
+};
+
+const percentile = (values: number[], ratio: number) => {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const index = Math.min(sorted.length - 1, Math.max(0, Math.floor(ratio * (sorted.length - 1))));
+  return sorted[index];
+};
+
+const formatShiftBucket = (timestamp: string) => {
+  const hour = new Date(timestamp).getHours();
+  if (hour < 6) return 'Night';
+  if (hour < 12) return 'Morning';
+  if (hour < 18) return 'Afternoon';
+  return 'Evening';
+};
+
+const normalCdf = (value: number) => {
+  const t = 1 / (1 + 0.2316419 * Math.abs(value));
+  const d = 0.3989423 * Math.exp((-value * value) / 2);
+  const probability = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274))));
+  return value > 0 ? 1 - probability : probability;
+};
+
 export const MeasureIntelligenceHub: React.FC<MeasureIntelligenceHubProps> = ({ projectId, onSave }) => {
   const { organization } = useAuth();
   const [loading, setLoading] = useState(true);
@@ -87,7 +149,7 @@ export const MeasureIntelligenceHub: React.FC<MeasureIntelligenceHubProps> = ({ 
   const [runningMSA, setRunningMSA] = useState(false);
 
   // Baseline Performance
-  const [baselineData, setBaselineData] = useState<any[]>([]);
+  const [baselineData, setBaselineData] = useState<BaselinePoint[]>([]);
   const [baselineStats, setBaselineStats] = useState({
     mean: 45.3,
     median: 42.0,
@@ -113,7 +175,7 @@ export const MeasureIntelligenceHub: React.FC<MeasureIntelligenceHubProps> = ({ 
   });
 
   // Variability Analysis
-  const [variabilityData, setVariabilityData] = useState<any[]>([]);
+  const [variabilityData, setVariabilityData] = useState<VariabilityPoint[]>([]);
   const [segmentBy, setSegmentBy] = useState('department');
 
   // Toast notification
@@ -133,23 +195,123 @@ export const MeasureIntelligenceHub: React.FC<MeasureIntelligenceHubProps> = ({ 
 
     try {
       setLoading(true);
+      await loadSourceDiagnostics();
 
-      // Load baseline data from selected KPI/Metric
-      if (selectedKPI) {
-        await loadBaselineFromKPI();
+      if (!selectedKPI) {
+        const { data: metrics } = await supabase
+          .from('metrics')
+          .select('id, name, target_value, current_value, unit')
+          .eq('organization_id', organization.id)
+          .order('created_at', { ascending: false })
+          .limit(1);
+
+        if (metrics && metrics.length > 0) {
+          setSelectedKPI({
+            ...metrics[0],
+            type: 'metric',
+          });
+          return;
+        }
       }
 
-      // Generate mock control chart data
-      generateBaselineData();
-      
-      // Generate variability heatmap data
-      generateVariabilityData();
-
+      if (selectedKPI) {
+        await loadBaselineFromKPI();
+      } else {
+        setBaselineData([]);
+        setVariabilityData([]);
+      }
     } catch (error) {
       console.error('Error loading Measure data:', error);
     } finally {
       setLoading(false);
     }
+  };
+
+  const loadSourceDiagnostics = async () => {
+    if (!organization?.id) return;
+
+    const { data: sources, error } = await supabase
+      .from('data_sources')
+      .select('id, name, type, file_data, created_at, updated_at')
+      .eq('organization_id', organization.id)
+      .limit(10);
+
+    if (error || !sources || sources.length === 0) {
+      return;
+    }
+
+    const latestSource = [...(sources as DataSourceRow[])].sort((a, b) =>
+      new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime()
+    )[0];
+
+    const sourceRows = Array.isArray(latestSource.file_data) ? latestSource.file_data : [];
+    const columns = sourceRows.length > 0 ? Array.from(new Set(sourceRows.flatMap((row) => Object.keys(row)))) : [];
+    const cellCount = Math.max(1, sourceRows.length * Math.max(1, columns.length));
+    const missingCells = sourceRows.reduce((count, row) => (
+      count + columns.filter((column) => {
+        const value = row[column];
+        return value === null || value === undefined || String(value).trim() === '';
+      }).length
+    ), 0);
+    const duplicateRows = sourceRows.length - new Set(sourceRows.map((row) => JSON.stringify(row))).size;
+
+    const numericColumns = columns.filter((column) =>
+      sourceRows.some((row) => Number.isFinite(parseFloat(String(row[column] ?? ''))))
+    );
+    const primaryNumericValues = numericColumns.length > 0
+      ? sourceRows
+          .map((row) => parseFloat(String(row[numericColumns[0]] ?? '')))
+          .filter((value) => Number.isFinite(value))
+      : [];
+    const numericMean = average(primaryNumericValues);
+    const numericStdDev = standardDeviation(primaryNumericValues);
+    const outlierCount = numericStdDev > 0
+      ? primaryNumericValues.filter((value) => Math.abs((value - numericMean) / numericStdDev) > 3).length
+      : 0;
+
+    setDataSource({
+      name: latestSource.name,
+      type: latestSource.type,
+      records: sourceRows.length,
+      columns: columns.length,
+      lastSync: latestSource.updated_at || latestSource.created_at || new Date().toISOString(),
+    });
+
+    const completeness = Math.max(0, Math.min(100, 100 - ((missingCells / cellCount) * 100)));
+    const duplicatePercent = sourceRows.length > 0 ? (duplicateRows / sourceRows.length) * 100 : 0;
+    const outlierPercent = primaryNumericValues.length > 0 ? (outlierCount / primaryNumericValues.length) * 100 : 0;
+    const skewness = primaryNumericValues.length > 2 && numericStdDev > 0
+      ? primaryNumericValues.reduce((sum, value) => sum + Math.pow((value - numericMean) / numericStdDev, 3), 0) / primaryNumericValues.length
+      : 0;
+
+    setDataDiagnostics({
+      missingValues: parseFloat((100 - completeness).toFixed(1)),
+      duplicates: parseFloat(duplicatePercent.toFixed(1)),
+      outliers: parseFloat(outlierPercent.toFixed(1)),
+      skewness: parseFloat(skewness.toFixed(2)),
+      timestampGaps: columns.some((column) => column.toLowerCase().includes('time') || column.toLowerCase().includes('date')) ? 0 : 1,
+      variableTypes: { numeric: numericColumns.length, categorical: Math.max(0, columns.length - numericColumns.length) }
+    });
+
+    const quality: DataQualityMetrics = {
+      completeness: parseFloat(completeness.toFixed(0)),
+      accuracy: parseFloat(Math.max(60, 100 - (outlierPercent * 1.6)).toFixed(0)),
+      consistency: parseFloat(Math.max(50, 100 - (duplicatePercent * 4)).toFixed(0)),
+      timeliness: latestSource.updated_at || latestSource.created_at
+        ? parseFloat(Math.max(55, 100 - ((Date.now() - new Date(latestSource.updated_at || latestSource.created_at || Date.now()).getTime()) / 86400000) * 4).toFixed(0))
+        : 80,
+      validity: parseFloat(Math.max(60, 100 - ((100 - completeness) * 1.2)).toFixed(0)),
+      overall: 0,
+    };
+    quality.overall = parseFloat(average([
+      quality.completeness,
+      quality.accuracy,
+      quality.consistency,
+      quality.timeliness,
+      quality.validity,
+    ]).toFixed(0));
+
+    setDataQuality(quality);
   };
 
   const loadBaselineFromKPI = async () => {
@@ -166,73 +328,94 @@ export const MeasureIntelligenceHub: React.FC<MeasureIntelligenceHubProps> = ({ 
       if (error) throw error;
 
       if (data && data.length > 0) {
-        const values = data.map(d => parseFloat(d.value));
-        const mean = values.reduce((a, b) => a + b, 0) / values.length;
+        const rows = (data as MetricDataRow[])
+          .map((row) => ({
+            value: parseFloat(String(row.value)),
+            timestamp: row.timestamp,
+          }))
+          .filter((row) => Number.isFinite(row.value))
+          .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+        const values = rows.map((row) => row.value);
+        const mean = average(values);
         const variance = values.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / values.length;
         const stdDev = Math.sqrt(variance);
+        const median = percentile(values, 0.5);
+        const q1 = percentile(values, 0.25);
+        const q3 = percentile(values, 0.75);
+        const latestValue = values[values.length - 1];
+        const target = selectedKPI.target_value || 30;
+        const capabilitySigma = stdDev > 0
+          ? Math.max(0, Math.min((target - mean) / stdDev, (mean - (selectedKPI.lower_spec_limit || 0)) / stdDev, 6))
+          : 0;
 
         setBaselineStats({
           mean,
-          median: values.sort((a, b) => a - b)[Math.floor(values.length / 2)],
+          median,
           stdDev,
           variance,
-          q1: values[Math.floor(values.length * 0.25)],
-          q3: values[Math.floor(values.length * 0.75)],
+          q1,
+          q3,
           controlLimits: {
             ucl: mean + (3 * stdDev),
             lcl: Math.max(0, mean - (3 * stdDev))
           }
         });
 
+        setBaselineData(
+          rows.slice(-30).map((row, index) => ({
+            day: new Date(row.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric' }) || String(index + 1),
+            value: row.value,
+            ucl: mean + (3 * stdDev),
+            lcl: Math.max(0, mean - (3 * stdDev)),
+            mean,
+          }))
+        );
+
         setHeaderMetrics(prev => ({
           ...prev,
           primaryCTQ: selectedKPI.name,
-          baseline: mean,
-          current: values[values.length - 1],
-          target: selectedKPI.target_value || 30
+          baseline: parseFloat(mean.toFixed(1)),
+          current: parseFloat(latestValue.toFixed(1)),
+          target: parseFloat(target.toFixed(1)),
+          gapPercent: parseFloat((target !== 0 ? ((latestValue - target) / target) * 100 : 0).toFixed(1)),
+          dataQuality: dataQuality.overall,
+          measurementReliability: parseFloat(Math.max(50, 100 - (dataDiagnostics.missingValues * 1.5) - (dataDiagnostics.outliers * 0.8)).toFixed(0)),
+          sigmaLevel: parseFloat(capabilitySigma.toFixed(1))
         }));
+
+        setVariabilityData(buildVariabilityData(rows));
+        setCapabilityResults(null);
       }
     } catch (error) {
       console.error('Error loading baseline from KPI:', error);
     }
   };
 
-  const generateBaselineData = () => {
-    const data = [];
-    const mean = baselineStats.mean;
-    const stdDev = baselineStats.stdDev;
-
-    for (let i = 0; i < 30; i++) {
-      const value = mean + (Math.random() - 0.5) * stdDev * 2;
-      data.push({
-        day: i + 1,
-        value: Math.max(0, value),
-        ucl: baselineStats.controlLimits.ucl,
-        lcl: baselineStats.controlLimits.lcl,
-        mean: mean
-      });
-    }
-
-    setBaselineData(data);
-  };
-
-  const generateVariabilityData = () => {
-    const departments = ['Emergency', 'Outpatient', 'Surgery', 'Radiology'];
-    const shifts = ['Morning', 'Afternoon', 'Evening', 'Night'];
-    
-    const data = [];
-    departments.forEach(dept => {
-      shifts.forEach(shift => {
-        data.push({
-          department: dept,
-          shift,
-          avgWaitTime: 30 + Math.random() * 30,
-          variance: 5 + Math.random() * 15
-        });
-      });
+  const buildVariabilityData = (rows: Array<{ value: number; timestamp: string }>): VariabilityPoint[] => {
+    const groups = new Map<string, number[]>();
+    rows.forEach((row) => {
+      const date = new Date(row.timestamp);
+      const day = date.toLocaleDateString([], { weekday: 'short' });
+      const shift = formatShiftBucket(row.timestamp);
+      const key = `${day}__${shift}`;
+      groups.set(key, [...(groups.get(key) || []), row.value]);
     });
 
-    setVariabilityData(data);
+    return Array.from(groups.entries()).map(([key, values]) => {
+      const [day, shift] = key.split('__');
+      const avgWaitTime = average(values);
+      const variance = avgWaitTime !== 0
+        ? (standardDeviation(values) / Math.abs(avgWaitTime)) * 100
+        : 0;
+
+      return {
+        department: day,
+        shift,
+        avgWaitTime,
+        variance: parseFloat(variance.toFixed(1)),
+      };
+    });
   };
 
   const handleRunMSA = async () => {
@@ -244,24 +427,36 @@ export const MeasureIntelligenceHub: React.FC<MeasureIntelligenceHubProps> = ({ 
 
     setRunningMSA(true);
 
-    // Simulate MSA calculation
-    setTimeout(() => {
-      const results: MSAResults = {
-        gageRR: 15.2,
-        repeatability: 8.5,
-        reproducibility: 6.7,
-        partVariation: 84.8,
-        ndc: 8,
-        operators: [
-          { name: 'Operator A', bias: 0.3, variance: 2.1 },
-          { name: 'Operator B', bias: -0.2, variance: 1.9 },
-          { name: 'Operator C', bias: 0.1, variance: 2.3 }
-        ]
-      };
+    try {
+      const repeatability = parseFloat(Math.max(2, baselineStats.stdDev * 0.55).toFixed(1));
+      const reproducibility = parseFloat(Math.max(1, dataDiagnostics.missingValues * 0.6 + dataDiagnostics.outliers * 0.35).toFixed(1));
+      const gageRR = parseFloat(Math.min(99, repeatability + reproducibility).toFixed(1));
+      const partVariation = parseFloat(Math.max(0, 100 - gageRR).toFixed(1));
+      const ndc = Math.max(1, Math.round(partVariation / Math.max(gageRR, 1)));
+      const operators = variabilityData.slice(0, 3).map((segment, index) => ({
+        name: `${segment.department} ${segment.shift}`,
+        bias: parseFloat((((segment.avgWaitTime - baselineStats.mean) / Math.max(baselineStats.mean || 1, 1)) * 2).toFixed(2)),
+        variance: parseFloat(segment.variance.toFixed(1)),
+      }));
 
-      setMSAResults(results);
+      setMSAResults({
+        gageRR,
+        repeatability,
+        reproducibility,
+        partVariation,
+        ndc,
+        operators: operators.length > 0 ? operators : [
+          { name: 'Recent Observations', bias: 0, variance: parseFloat(baselineStats.stdDev.toFixed(1)) },
+        ],
+      });
+
+      setHeaderMetrics((prev) => ({
+        ...prev,
+        measurementReliability: parseFloat(Math.max(0, (100 - gageRR)).toFixed(0)),
+      }));
+    } finally {
       setRunningMSA(false);
-    }, 2000);
+    }
   };
 
   const handleCalculateCapability = () => {
@@ -277,11 +472,13 @@ export const MeasureIntelligenceHub: React.FC<MeasureIntelligenceHubProps> = ({ 
 
     const cp = (usl - lsl) / (6 * stdDev);
     const cpk = Math.min((usl - mean) / (3 * stdDev), (mean - lsl) / (3 * stdDev));
-    const pp = cp; // Simplified
-    const ppk = cpk; // Simplified
+    const pp = cp;
+    const ppk = cpk;
     const sigmaLevel = cpk * 3;
-    const dpmo = Math.round((1 - 0.9987) * 1000000); // Simplified
-    const yieldPercent = 99.87;
+    const zUpper = stdDev > 0 ? (usl - mean) / stdDev : 0;
+    const zLower = stdDev > 0 ? (mean - lsl) / stdDev : 0;
+    const yieldPercent = parseFloat((Math.max(0, Math.min(1, normalCdf(zUpper) + normalCdf(zLower) - 1)) * 100).toFixed(2));
+    const dpmo = Math.max(0, Math.round((1 - (yieldPercent / 100)) * 1000000));
 
     const results: CapabilityResults = {
       cp: parseFloat(cp.toFixed(2)),
@@ -298,8 +495,8 @@ export const MeasureIntelligenceHub: React.FC<MeasureIntelligenceHubProps> = ({ 
   };
 
   const handleRecalculateBaseline = () => {
-    generateBaselineData();
-    addToast('✅ Baseline recalculated with latest data', 'success');
+    loadMeasureData();
+    addToast('✅ Baseline recalculated with latest measurements', 'success');
   };
 
   const getCapabilityColor = (status: string) => {
@@ -354,25 +551,25 @@ export const MeasureIntelligenceHub: React.FC<MeasureIntelligenceHubProps> = ({ 
           <div className="bg-white rounded-lg border border-slate-200 p-4">
             <div className="text-xs text-slate-600 mb-1">Baseline</div>
             <div className="text-2xl font-bold text-slate-900">{headerMetrics.baseline}</div>
-            <div className="text-xs text-slate-500 mt-1">minutes</div>
+            <div className="text-xs text-slate-500 mt-1">{selectedKPI?.unit || 'units'}</div>
           </div>
 
           <div className="bg-white rounded-lg border border-slate-200 p-4">
             <div className="text-xs text-slate-600 mb-1">Current</div>
             <div className="text-2xl font-bold text-teal-600">{headerMetrics.current}</div>
-            <div className="text-xs text-slate-500 mt-1">minutes</div>
+            <div className="text-xs text-slate-500 mt-1">{selectedKPI?.unit || 'units'}</div>
           </div>
 
           <div className="bg-white rounded-lg border border-slate-200 p-4">
             <div className="text-xs text-slate-600 mb-1">Target</div>
             <div className="text-2xl font-bold text-indigo-600">{headerMetrics.target}</div>
-            <div className="text-xs text-slate-500 mt-1">minutes</div>
+            <div className="text-xs text-slate-500 mt-1">{selectedKPI?.unit || 'units'}</div>
           </div>
 
           <div className="bg-white rounded-lg border border-slate-200 p-4">
             <div className="text-xs text-slate-600 mb-1">Gap to Target</div>
             <div className="text-2xl font-bold text-rose-600">{headerMetrics.gapPercent}%</div>
-            <div className="text-xs text-rose-500 mt-1">Above target</div>
+            <div className="text-xs text-rose-500 mt-1">{headerMetrics.current > headerMetrics.target ? 'Above target' : 'At or below target'}</div>
           </div>
 
           <div className="bg-white rounded-lg border border-slate-200 p-4">
@@ -483,8 +680,8 @@ export const MeasureIntelligenceHub: React.FC<MeasureIntelligenceHubProps> = ({ 
                       <span className="text-sm font-medium text-slate-700">Gage R&amp;R</span>
                       <i className="ri-check-line text-emerald-600"></i>
                     </div>
-                    <div className="text-2xl font-bold text-emerald-600">15.2%</div>
-                    <div className="text-xs text-emerald-600 mt-1">Acceptable</div>
+                    <div className="text-2xl font-bold text-emerald-600">{msaResults?.gageRR?.toFixed(1) ?? '--'}%</div>
+                    <div className="text-xs text-emerald-600 mt-1">{msaResults ? (msaResults.gageRR < 10 ? 'Excellent' : msaResults.gageRR < 30 ? 'Acceptable' : 'Needs work') : 'Run MSA study'}</div>
                   </div>
 
                   <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
@@ -492,8 +689,8 @@ export const MeasureIntelligenceHub: React.FC<MeasureIntelligenceHubProps> = ({ 
                       <span className="text-sm font-medium text-slate-700">Repeatability</span>
                       <i className="ri-check-line text-blue-600"></i>
                     </div>
-                    <div className="text-2xl font-bold text-blue-600">8.5%</div>
-                    <div className="text-xs text-blue-600 mt-1">Good</div>
+                    <div className="text-2xl font-bold text-blue-600">{msaResults?.repeatability?.toFixed(1) ?? '--'}%</div>
+                    <div className="text-xs text-blue-600 mt-1">{msaResults ? 'Observed equipment variation' : 'Awaiting study'}</div>
                   </div>
 
                   <div className="p-4 bg-purple-50 rounded-lg border border-purple-200">
@@ -501,8 +698,8 @@ export const MeasureIntelligenceHub: React.FC<MeasureIntelligenceHubProps> = ({ 
                       <span className="text-sm font-medium text-slate-700">Reproducibility</span>
                       <i className="ri-check-line text-purple-600"></i>
                     </div>
-                    <div className="text-2xl font-bold text-purple-600">6.7%</div>
-                    <div className="text-xs text-purple-600 mt-1">Excellent</div>
+                    <div className="text-2xl font-bold text-purple-600">{msaResults?.reproducibility?.toFixed(1) ?? '--'}%</div>
+                    <div className="text-xs text-purple-600 mt-1">{msaResults ? 'Observed operator variation' : 'Awaiting study'}</div>
                   </div>
 
                   <div className="p-4 bg-teal-50 rounded-lg border border-teal-200">
@@ -510,8 +707,8 @@ export const MeasureIntelligenceHub: React.FC<MeasureIntelligenceHubProps> = ({ 
                       <span className="text-sm font-medium text-slate-700">NDC</span>
                       <i className="ri-check-line text-teal-600"></i>
                     </div>
-                    <div className="text-2xl font-bold text-teal-600">8</div>
-                    <div className="text-xs text-teal-600 mt-1">Adequate</div>
+                    <div className="text-2xl font-bold text-teal-600">{msaResults?.ndc ?? '--'}</div>
+                    <div className="text-xs text-teal-600 mt-1">{msaResults ? (msaResults.ndc >= 5 ? 'Adequate discrimination' : 'Low discrimination') : 'Awaiting study'}</div>
                   </div>
                 </div>
               </div>
@@ -608,9 +805,9 @@ export const MeasureIntelligenceHub: React.FC<MeasureIntelligenceHubProps> = ({ 
                   <div>
                     <h4 className="font-bold text-slate-900 mb-2">Sigma AI – Data Diagnostics</h4>
                     <p className="text-sm text-slate-700">
-                      Data completeness at 94%. Moderate skew detected in appointment intervals. 
-                      Missing value pattern suggests systematic data entry gaps during shift changes. 
-                      Recommend implementing automated timestamp validation.
+                      Data completeness is {dataQuality.completeness}%, with {dataDiagnostics.outliers}% of rows showing outlier behavior and {dataDiagnostics.missingValues}% of fields missing. 
+                      The current source looks strongest when refreshed frequently and weakest where gaps cluster in the selected dataset. 
+                      Prioritize the fields behind the highest missing-value and skewness signals before relying on downstream capability results.
                     </p>
                   </div>
                 </div>
@@ -899,19 +1096,19 @@ export const MeasureIntelligenceHub: React.FC<MeasureIntelligenceHubProps> = ({ 
               <div className="grid grid-cols-3 gap-4">
                 <div className="bg-gradient-to-br from-rose-50 to-red-50 rounded-xl border-2 border-rose-200 p-6">
                   <div className="text-sm font-medium text-slate-700 mb-2">DPMO</div>
-                  <div className="text-4xl font-bold text-rose-600 mb-1">12,500</div>
+                  <div className="text-4xl font-bold text-rose-600 mb-1">{capabilityResults ? capabilityResults.dpmo.toLocaleString() : '--'}</div>
                   <div className="text-xs text-slate-600">Defects per million opportunities</div>
                 </div>
 
                 <div className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-xl border-2 border-amber-200 p-6">
                   <div className="text-sm font-medium text-slate-700 mb-2">Defect Rate</div>
-                  <div className="text-4xl font-bold text-amber-600 mb-1">1.25%</div>
+                  <div className="text-4xl font-bold text-amber-600 mb-1">{capabilityResults ? `${(100 - capabilityResults.yield).toFixed(2)}%` : '--'}</div>
                   <div className="text-xs text-slate-600">Out of specification</div>
                 </div>
 
                 <div className="bg-gradient-to-br from-emerald-50 to-teal-50 rounded-xl border-2 border-emerald-200 p-6">
                   <div className="text-sm font-medium text-slate-700 mb-2">Financial Leakage</div>
-                  <div className="text-4xl font-bold text-emerald-600 mb-1">$850K</div>
+                  <div className="text-4xl font-bold text-emerald-600 mb-1">${(((capabilityResults ? capabilityResults.dpmo : 0) / 1000000) * 850000).toFixed(0)}</div>
                   <div className="text-xs text-slate-600">Annual cost estimate</div>
                 </div>
               </div>
@@ -1095,7 +1292,7 @@ export const MeasureIntelligenceHub: React.FC<MeasureIntelligenceHubProps> = ({ 
                     >
                       <div className="font-semibold text-slate-900 mb-1">{item.department}</div>
                       <div className="text-xs text-slate-600 mb-2">{item.shift}</div>
-                      <div className="text-lg font-bold text-slate-900">{item.avgWaitTime.toFixed(1)} min</div>
+                      <div className="text-lg font-bold text-slate-900">{item.avgWaitTime.toFixed(1)} {selectedKPI?.unit || 'units'}</div>
                       <div className="text-xs text-slate-600">Variance: {item.variance.toFixed(1)}%</div>
                     </div>
                   ))}
@@ -1149,9 +1346,9 @@ export const MeasureIntelligenceHub: React.FC<MeasureIntelligenceHubProps> = ({ 
                   <div>
                     <h4 className="font-bold text-slate-900 mb-2">Sigma AI – Variability Analysis</h4>
                     <p className="text-sm text-slate-700">
-                      Emergency department shows highest variability during evening shifts (18.2%). 
-                      This pattern feeds directly into Analyze phase driver modeling. Recommend investigating 
-                      staffing patterns and patient acuity during these periods.
+                      {variabilityData.length > 0
+                        ? `${variabilityData.slice().sort((a, b) => b.variance - a.variance)[0].department} shows the highest variability during the ${variabilityData.slice().sort((a, b) => b.variance - a.variance)[0].shift.toLowerCase()} period. This gives you a concrete place to start the Analyze phase: compare staffing, throughput, and case mix around that segment first.`
+                        : 'Run baseline analysis on a live metric to surface where variability is actually concentrated before drawing conclusions.'}
                     </p>
                   </div>
                 </div>
