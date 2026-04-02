@@ -3029,30 +3029,8 @@ Total Items: ${Object.values(sipocDiagram).reduce((sum, arr) => sum + arr.length
     }
   };
 
-  const handleRunBaseline = () => {
-    if (!selectedBaselineKPI) {
-      showToast('Please select a KPI/Metric first', 'warning');
-      return;
-    }
-
-    // Calculate baseline based on selected metric
-    const mockResults = {
-      capacity: {
-        current: 85,
-        theoretical: 100,
-        utilization: 85,
-        bottleneck: selectedBaselineKPI.name || "Process Bottleneck"
-      },
-      processCapability: {
-        cp: 1.33,
-        cpk: 1.15,
-        pp: 1.28,
-        ppk: 1.10
-      },
-      sigma: 3.8
-    };
-
-    setBaselineResults(mockResults);
+  const handleRunBaseline = async () => {
+    await handleRunBaselineAnalysis();
   };
 
   const handleRunBaselineAnalysis = async () => {
@@ -3061,32 +3039,7 @@ Total Items: ${Object.values(sipocDiagram).reduce((sum, arr) => sum + arr.length
     setIsCalculatingBaseline(true);
     
     try {
-      // Fetch actual data from the selected KPI/Metric
-      let actualData: number[] = [];
-      
-      if (Object.prototype.hasOwnProperty.call(selectedBaselineKPI, 'frequency')) {
-        // It's a KPI - fetch from kpi_data or related table
-        const { data: kpiData, error } = await supabase
-          .from('metric_data')
-          .select('value')
-          .eq('metric_id', selectedBaselineKPI.id)
-          .order('timestamp', { ascending: false })
-          .limit(100);
-        
-        if (error) throw error;
-        actualData = kpiData?.map(d => parseFloat(d.value)) || [];
-      } else {
-        // It's a Metric - fetch from metric_data
-        const { data: metricData, error } = await supabase
-          .from('metric_data')
-          .select('value')
-          .eq('metric_id', selectedBaselineKPI.id)
-          .order('timestamp', { ascending: false })
-          .limit(100);
-        
-        if (error) throw error;
-        actualData = metricData?.map(d => parseFloat(d.value)) || [];
-      }
+      const actualData = await fetchKPIValues(selectedBaselineKPI, 100);
       
       // If no data available, show error
       if (actualData.length === 0) {
