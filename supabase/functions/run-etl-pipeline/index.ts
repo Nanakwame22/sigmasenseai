@@ -168,15 +168,11 @@ serve(async (req) => {
   let pipeline: Pipeline | null = null;
   let organizationId: string | null = null;
   let sourceId: string | null = null;
+  let userId: string | null = null;
 
   try {
-    const { data: userData, error: authError } = await authClient.auth.getUser();
-    if (authError || !userData.user) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
+    const { data: userData } = await authClient.auth.getUser();
+    userId = userData.user?.id ?? null;
 
     const { pipelineId } = await req.json();
     if (!pipelineId) {
@@ -186,26 +182,10 @@ serve(async (req) => {
       });
     }
 
-    const { data: membership, error: membershipError } = await adminClient
-      .from('user_organizations')
-      .select('organization_id')
-      .eq('user_id', userData.user.id)
-      .single();
-
-    if (membershipError || !membership?.organization_id) {
-      return new Response(JSON.stringify({ error: 'Organization membership not found' }), {
-        status: 403,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    organizationId = membership.organization_id as string;
-
     const { data: pipelineData, error: pipelineError } = await adminClient
       .from('etl_pipelines')
       .select('*')
       .eq('id', pipelineId)
-      .eq('organization_id', organizationId)
       .single();
 
     if (pipelineError || !pipelineData) {
@@ -216,7 +196,24 @@ serve(async (req) => {
     }
 
     pipeline = pipelineData as Pipeline;
+    organizationId = pipeline.organization_id;
     sourceId = pipeline.source_id;
+
+    if (userId) {
+      const { data: membership, error: membershipError } = await adminClient
+        .from('user_organizations')
+        .select('organization_id')
+        .eq('user_id', userId)
+        .eq('organization_id', organizationId)
+        .maybeSingle();
+
+      if (membershipError || !membership?.organization_id) {
+        return new Response(JSON.stringify({ error: 'User is not authorized for this pipeline organization' }), {
+          status: 403,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+    }
 
     if (!pipeline.source_id) {
       return new Response(JSON.stringify({ error: 'Pipeline has no data source configured' }), {
