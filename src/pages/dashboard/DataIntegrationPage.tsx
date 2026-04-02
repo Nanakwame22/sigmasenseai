@@ -27,6 +27,11 @@ interface DataSource {
   missing_fields?: string[];
   new_fields?: string[];
   schema_field_count?: number;
+  reliability_score?: number;
+  auth_health?: 'configured' | 'missing' | 'not_required';
+  avg_duration_seconds?: number;
+  failure_trend?: 'improving' | 'stable' | 'degrading' | 'unknown';
+  ai_health_summary?: string;
 }
 
 interface SourcePipeline {
@@ -107,6 +112,7 @@ export default function DataIntegrationPage() {
 
       if (source.last_success_at) summary.recentSuccesses += 1;
       if (source.last_failure_at) summary.recentFailures += 1;
+      summary.reliability += source.reliability_score || 0;
       return summary;
     },
     {
@@ -120,6 +126,7 @@ export default function DataIntegrationPage() {
       recentFailures: 0,
       records: 0,
       events: 0,
+      reliability: 0,
     }
   );
 
@@ -238,6 +245,34 @@ export default function DataIntegrationPage() {
         const recentRecordsProcessed = linkedRuns
           .filter((run) => new Date(run.started_at).getTime() >= last24Hours.getTime())
           .reduce((sum, run) => sum + (run.records_success || run.records_processed || 0), 0);
+        const recentWindowRuns = linkedRuns.slice(0, 6);
+        const successfulWindowRuns = recentWindowRuns.filter((run) => run.status === 'completed' || run.status === 'partial');
+        const failedWindowRuns = recentWindowRuns.filter((run) => run.status === 'failed');
+        const reliabilityBase = recentWindowRuns.length > 0
+          ? Math.round((successfulWindowRuns.length / recentWindowRuns.length) * 100)
+          : linkedPipelines.length > 0 ? 65 : 0;
+        const durationValues = recentWindowRuns
+          .map((run) => run.duration_seconds || 0)
+          .filter((value) => value > 0);
+        const avgDurationSeconds = durationValues.length > 0
+          ? Math.round(durationValues.reduce((sum, value) => sum + value, 0) / durationValues.length)
+          : 0;
+        const newerFailures = recentWindowRuns.slice(0, 3).filter((run) => run.status === 'failed').length;
+        const olderFailures = recentWindowRuns.slice(3, 6).filter((run) => run.status === 'failed').length;
+        const failureTrend: DataSource['failure_trend'] = recentWindowRuns.length < 4
+          ? 'unknown'
+          : newerFailures > olderFailures
+            ? 'degrading'
+            : newerFailures < olderFailures
+              ? 'improving'
+              : 'stable';
+        const authHealth: DataSource['auth_health'] = source.type === 'api'
+          ? source.connection_config?.auth_type && source.connection_config.auth_type !== 'none'
+            ? source.connection_config.auth_key_value
+              ? 'configured'
+              : 'missing'
+            : 'not_required'
+          : 'not_required';
 
         let healthStatus: DataSource['health_status'] = 'idle';
         let attentionMessage = 'Waiting for the first successful sync.';
@@ -262,6 +297,26 @@ export default function DataIntegrationPage() {
           attentionMessage = 'Source is connected and recent runs are landing successfully.';
         }
 
+        const reliabilityPenalty =
+          (hasSchemaDrift ? 15 : 0) +
+          (authHealth === 'missing' ? 25 : 0) +
+          (failedWindowRuns.length > 0 ? Math.min(25, failedWindowRuns.length * 8) : 0) +
+          (linkedEvents.some((event) => event.level === 'warning') ? 5 : 0);
+        const reliabilityScore = Math.max(0, Math.min(100, reliabilityBase - reliabilityPenalty));
+
+        let aiHealthSummary = 'No active operational insight yet.';
+        if (healthStatus === 'critical') {
+          aiHealthSummary = `${source.name} is at risk of interrupting downstream analytics. Focus on the latest failure and connector settings before the next scheduled run.`;
+        } else if (hasSchemaDrift) {
+          aiHealthSummary = `${source.name} is online, but its structure changed. Review missing and new fields before trusting mapped outputs.`;
+        } else if (healthStatus === 'warning') {
+          aiHealthSummary = `${source.name} is still flowing, but recent warnings or partial loads are lowering confidence. Monitor the next run closely.`;
+        } else if (healthStatus === 'healthy') {
+          aiHealthSummary = `${source.name} looks operationally healthy with a ${reliabilityScore}% reliability score and recent successful sync activity.`;
+        } else if (linkedPipelines.length === 0) {
+          aiHealthSummary = `${source.name} is connected, but it is not yet contributing to a live pipeline. Attach it to ETL to make it operational.`;
+        }
+
         return {
           ...source,
           health_status: healthStatus,
@@ -277,6 +332,11 @@ export default function DataIntegrationPage() {
           missing_fields: missingFields,
           new_fields: newFields,
           schema_field_count: currentFields.length,
+          reliability_score: reliabilityScore,
+          auth_health: authHealth,
+          avg_duration_seconds: avgDurationSeconds,
+          failure_trend: failureTrend,
+          ai_health_summary: aiHealthSummary,
         } as DataSource;
       });
 
@@ -342,6 +402,10 @@ export default function DataIntegrationPage() {
     const days = Math.round(hours / 24);
     return `${days}d ago`;
   };
+
+  const averageReliability = healthSummary.total > 0
+    ? Math.round(healthSummary.reliability / healthSummary.total)
+    : 0;
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1166,6 +1230,55 @@ export default function DataIntegrationPage() {
             </div>
           </div>
 
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 mb-6">
+            <div className="xl:col-span-2 rounded-xl border border-slate-200 bg-white p-5">
+              <div className="flex items-center justify-between gap-4 mb-3">
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-900">AI Operations Summary</h3>
+                  <p className="text-sm text-slate-600 mt-1">Plain-language assessment of connector health, auth posture, and reliability.</p>
+                </div>
+                <div className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold ${averageReliability >= 85 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : averageReliability >= 65 ? 'bg-amber-50 text-amber-700 border border-amber-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+                  {averageReliability}% avg reliability
+                </div>
+              </div>
+              <div className="space-y-3">
+                {dataSources.slice(0, 3).map((source) => (
+                  <div key={`summary-${source.id}`} className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+                    <div className="flex items-center justify-between gap-3 mb-1">
+                      <p className="text-sm font-semibold text-slate-900">{source.name}</p>
+                      <span className="text-xs text-slate-500">{source.reliability_score || 0}% reliable</span>
+                    </div>
+                    <p className="text-sm text-slate-700">{source.ai_health_summary}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-slate-200 bg-white p-5">
+              <h3 className="text-sm font-semibold text-slate-900">Connector Signals</h3>
+              <div className="space-y-3 mt-4">
+                <div className="rounded-lg bg-slate-50 px-3 py-3">
+                  <p className="text-xs text-slate-500">Auth issues</p>
+                  <p className="text-2xl font-bold text-slate-900 mt-1">
+                    {dataSources.filter((source) => source.auth_health === 'missing').length}
+                  </p>
+                </div>
+                <div className="rounded-lg bg-slate-50 px-3 py-3">
+                  <p className="text-xs text-slate-500">Degrading sources</p>
+                  <p className="text-2xl font-bold text-slate-900 mt-1">
+                    {dataSources.filter((source) => source.failure_trend === 'degrading').length}
+                  </p>
+                </div>
+                <div className="rounded-lg bg-slate-50 px-3 py-3">
+                  <p className="text-xs text-slate-500">Stable schemas</p>
+                  <p className="text-2xl font-bold text-slate-900 mt-1">
+                    {dataSources.filter((source) => source.schema_drift_status === 'stable').length}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div className="mb-6 rounded-xl border border-slate-200 bg-white p-5">
             <div className="flex items-center justify-between gap-4">
               <div>
@@ -1253,6 +1366,27 @@ export default function DataIntegrationPage() {
               </div>
             </div>
 
+            <div className="grid grid-cols-3 gap-3 mb-4">
+              <div className="rounded-lg bg-slate-50 px-3 py-3">
+                <p className="text-xs text-slate-500">Reliability</p>
+                <p className="mt-1 text-sm font-semibold text-slate-900">
+                  {source.reliability_score || 0}%
+                </p>
+              </div>
+              <div className="rounded-lg bg-slate-50 px-3 py-3">
+                <p className="text-xs text-slate-500">Auth</p>
+                <p className={`mt-1 text-sm font-semibold capitalize ${source.auth_health === 'missing' ? 'text-red-600' : 'text-slate-900'}`}>
+                  {source.auth_health === 'configured' ? 'configured' : source.auth_health === 'missing' ? 'missing' : 'not required'}
+                </p>
+              </div>
+              <div className="rounded-lg bg-slate-50 px-3 py-3">
+                <p className="text-xs text-slate-500">Trend</p>
+                <p className={`mt-1 text-sm font-semibold capitalize ${source.failure_trend === 'degrading' ? 'text-red-600' : source.failure_trend === 'improving' ? 'text-emerald-600' : 'text-slate-900'}`}>
+                  {source.failure_trend || 'unknown'}
+                </p>
+              </div>
+            </div>
+
             <div className="space-y-2">
               <div className="flex justify-between text-sm">
                 <span className="text-gray-600">Source status:</span>
@@ -1284,11 +1418,18 @@ export default function DataIntegrationPage() {
                   {(source.recent_event_count || 0).toLocaleString()}
                 </span>
               </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">Avg latency:</span>
+                <span className="font-medium text-gray-900">
+                  {source.avg_duration_seconds ? `${source.avg_duration_seconds}s` : 'N/A'}
+                </span>
+              </div>
             </div>
 
             <div className="mt-4 pt-4 border-t border-slate-200 space-y-1">
               <p className="text-xs text-slate-500">Last sync timestamp</p>
               <p className="text-sm text-slate-700">{formatDateTime(source.last_sync)}</p>
+              <p className="text-xs text-slate-600 mt-2">{source.ai_health_summary}</p>
               {source.schema_drift_status === 'drift' && (
                 <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
                   <p className="text-xs font-semibold uppercase tracking-wide text-amber-800 mb-2">Schema drift detected</p>
