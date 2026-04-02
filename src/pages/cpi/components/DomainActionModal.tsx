@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { supabase } from '../../../lib/supabase';
-import { CPIDomainSnapshot } from '../../../hooks/useCPIData';
+import type { CPIDomainSnapshot } from '../../../hooks/useCPIData';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 

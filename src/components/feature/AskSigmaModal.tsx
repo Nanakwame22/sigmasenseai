@@ -5,9 +5,8 @@ import { nlQueryService } from '../../services/nlQueryService';
 import {
   generatePredictiveAlerts,
   generateRecommendations,
-  PredictiveAlert,
-  Recommendation,
 } from '../../services/aiEngine';
+import type { PredictiveAlert, Recommendation } from '../../services/aiEngine';
 import {
   LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,

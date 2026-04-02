@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../../../lib/supabase';
 import AddModelModal from './AddModelModal';
-import EditModelPanel, { ModelEditFields } from './EditModelPanel';
+import EditModelPanel from './EditModelPanel';
+import type { ModelEditFields } from './EditModelPanel';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 

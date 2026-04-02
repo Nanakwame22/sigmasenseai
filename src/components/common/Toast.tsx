@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
-import { useToast, Toast as ToastType } from '../../hooks/useToast';
+import { useToast } from '../../hooks/useToast';
+import type { Toast as ToastType } from '../../hooks/useToast';
 
 const Toast = ({ toast, onRemove }: { toast: ToastType; onRemove: (id: string) => void }) => {
   useEffect(() => {

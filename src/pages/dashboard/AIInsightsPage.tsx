@@ -2,8 +2,9 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
-import { executeNaturalLanguageQuery, getQuerySuggestions, generateAIResponse, QueryResult } from '../../services/naturalLanguageQuery';
-import { generatePredictiveAlerts, generateRecommendations, detectPatterns, predictMetricValues } from '../../services/aiEngine';
+import { executeNaturalLanguageQuery, getQuerySuggestions, generateAIResponse } from '../../services/naturalLanguageQuery';
+import type { QueryResult } from '../../services/naturalLanguageQuery';
+import { generatePredictiveAlerts, generateRecommendations, detectPatterns } from '../../services/aiEngine';
 import { LoadingSpinner } from '../../components/common/LoadingSpinner';
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 

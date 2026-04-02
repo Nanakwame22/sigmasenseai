@@ -7,11 +7,8 @@ import {
   generateKPIForecast,
   calculateImpactBreakdown,
   calculateROI,
-  ImpactScenario,
-  ForecastData,
-  ImpactBreakdown,
-  ROIMetrics
 } from '../../../services/impactForecastEngine';
+import type { ImpactScenario, ForecastData, ImpactBreakdown, ROIMetrics } from '../../../services/impactForecastEngine';
 import { LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { exportToCSV, exportToJSON } from '../../../utils/exportUtils';
 import { addToast } from '../../../hooks/useToast';

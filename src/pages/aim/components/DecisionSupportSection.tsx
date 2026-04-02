@@ -6,11 +6,8 @@ import {
   generateRecommendationJustification,
   analyzeTradeOffs,
   calculateConfidenceBreakdown,
-  DecisionScenario,
-  RecommendationJustification,
-  TradeOffAnalysis,
-  ConfidenceFactor
 } from '../../../services/decisionSupportEngine';
+import type { DecisionScenario, RecommendationJustification, TradeOffAnalysis, ConfidenceFactor } from '../../../services/decisionSupportEngine';
 
 const DecisionSupportSection: React.FC = () => {
   const { user } = useAuth();

@@ -10,7 +10,7 @@ import {
   ReferenceLine,
   ResponsiveContainer,
 } from 'recharts';
-import { MetricTrendSeries } from '../../../hooks/useDashboardData';
+import type { MetricTrendSeries } from '../../../hooks/useDashboardData';
 
 interface MetricTrendChartProps {
   series: MetricTrendSeries[];

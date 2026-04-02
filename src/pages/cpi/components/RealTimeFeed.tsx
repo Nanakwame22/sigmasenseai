@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useCPIData, CPIFeedItem } from '../../../hooks/useCPIData';
+import { useCPIData } from '../../../hooks/useCPIData';
+import type { CPIFeedItem } from '../../../hooks/useCPIData';
 import { supabase } from '../../../lib/supabase';
 
 // ─── Config ───────────────────────────────────────────────────────────────────

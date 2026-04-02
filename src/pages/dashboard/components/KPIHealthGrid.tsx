@@ -1,4 +1,4 @@
-import { KPIHealthItem } from '../../../hooks/useDashboardData';
+import type { KPIHealthItem } from '../../../hooks/useDashboardData';
 import { Link } from 'react-router-dom';
 
 interface KPIHealthGridProps {

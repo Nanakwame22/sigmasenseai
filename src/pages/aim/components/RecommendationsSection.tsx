@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { RecommendationsEngine, Recommendation } from '../../../services/recommendationsEngine';
+import { RecommendationsEngine } from '../../../services/recommendationsEngine';
+import type { Recommendation } from '../../../services/recommendationsEngine';
 import { useAuth } from '../../../contexts/AuthContext';
 import { supabase } from '../../../lib/supabase';
 import { addToast } from '../../../hooks/useToast';

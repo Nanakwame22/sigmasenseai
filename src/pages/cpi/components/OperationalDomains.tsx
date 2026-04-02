@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { useCPIData, CPIDomainSnapshot } from '../../../hooks/useCPIData';
+import { useCPIData } from '../../../hooks/useCPIData';
+import type { CPIDomainSnapshot } from '../../../hooks/useCPIData';
 import DomainActionModal from './DomainActionModal';
 
 interface DomainConfig {
