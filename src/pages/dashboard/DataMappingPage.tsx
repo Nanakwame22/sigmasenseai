@@ -2,6 +2,12 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../hooks/useToast';
+import {
+  buildMappingSuggestion,
+  getValueCandidateFields,
+  inferFieldInsights,
+  type FieldInsight,
+} from '../../lib/mappingAssistant';
 
 type ActiveTab = 'sources' | 'mapping' | 'preview';
 
@@ -54,14 +60,6 @@ interface MetricOption {
   unit: string | null;
 }
 
-interface FieldInsight {
-  field: string;
-  sampleCount: number;
-  numericRatio: number;
-  mostlyNumeric: boolean;
-  inferredType: 'number' | 'date' | 'text' | 'mixed' | 'empty';
-}
-
 const destinationLabels: Record<FieldMapping['destinationType'], string> = {
   metric_name: 'Metric Name',
   value: 'Value',
@@ -95,68 +93,6 @@ function extractDataFromJsonPath(data: unknown, path: string): Record<string, un
   }
 
   return Array.isArray(current) ? current as Record<string, unknown>[] : [current];
-}
-
-function inferFieldInsights(previewData: Record<string, unknown>[], fields: string[]): FieldInsight[] {
-  return fields.map((field) => {
-    const values = previewData
-      .map((row) => row?.[field])
-      .filter((value) => value !== null && value !== undefined && String(value).trim() !== '');
-
-    if (values.length === 0) {
-      return {
-        field,
-        sampleCount: 0,
-        numericRatio: 0,
-        mostlyNumeric: false,
-        inferredType: 'empty',
-      };
-    }
-
-    const numericValues = values.filter((value) => {
-      if (typeof value === 'number') return !Number.isNaN(value);
-      const normalized = String(value).replace(/,/g, '').trim();
-      return normalized !== '' && !Number.isNaN(Number(normalized));
-    });
-
-    const dateValues = values.filter((value) => {
-      const date = new Date(String(value));
-      return !Number.isNaN(date.getTime());
-    });
-
-    const numericRatio = numericValues.length / values.length;
-    const dateRatio = dateValues.length / values.length;
-
-    let inferredType: FieldInsight['inferredType'] = 'mixed';
-    if (numericRatio >= 0.8) inferredType = 'number';
-    else if (dateRatio >= 0.8) inferredType = 'date';
-    else if (numericRatio <= 0.2 && dateRatio <= 0.2) inferredType = 'text';
-
-    return {
-      field,
-      sampleCount: values.length,
-      numericRatio,
-      mostlyNumeric: numericRatio >= 0.6,
-      inferredType,
-    };
-  });
-}
-
-function getValueCandidateFields(fields: string[], insights: FieldInsight[]): string[] {
-  return [...fields].sort((a, b) => {
-    const insightA = insights.find((item) => item.field === a);
-    const insightB = insights.find((item) => item.field === b);
-    const scoreA = insightA?.numericRatio ?? 0;
-    const scoreB = insightB?.numericRatio ?? 0;
-
-    if (scoreA !== scoreB) return scoreB - scoreA;
-
-    const nameBoostA = /(value|amount|score|count|rate|total|number|qty|volume|cost)/i.test(a) ? 1 : 0;
-    const nameBoostB = /(value|amount|score|count|rate|total|number|qty|volume|cost)/i.test(b) ? 1 : 0;
-
-    if (nameBoostA !== nameBoostB) return nameBoostB - nameBoostA;
-    return a.localeCompare(b);
-  });
 }
 
 function formatSample(value: unknown): string {
@@ -370,19 +306,7 @@ export default function DataMappingPage() {
         if (current.length > 0 && current.some((mapping) => mapping.sourceField)) {
           return current;
         }
-
-        const valueCandidates = getValueCandidateFields(fields, insights);
-        const nameField = fields.find((field) => /name|metric|measure|kpi/i.test(field));
-        const valueField = valueCandidates[0];
-        const timestampField = fields.find((field) => /date|time|timestamp/i.test(field));
-        const unitField = fields.find((field) => /unit/i.test(field));
-
-        const nextMappings: FieldMapping[] = [];
-        if (nameField) nextMappings.push({ sourceField: nameField, destinationType: 'metric_name' });
-        if (valueField) nextMappings.push({ sourceField: valueField, destinationType: 'value' });
-        if (timestampField) nextMappings.push({ sourceField: timestampField, destinationType: 'timestamp' });
-        if (unitField) nextMappings.push({ sourceField: unitField, destinationType: 'unit' });
-        return nextMappings.length > 0 ? nextMappings : [{ sourceField: '', destinationType: 'value' }];
+        return buildMappingSuggestion(fields, insights, previewData).mappings;
       });
     } catch (error) {
       console.error('Error loading source preview:', error);
@@ -397,6 +321,12 @@ export default function DataMappingPage() {
   const activeMappings = fieldMappings.filter((mapping) => mapping.sourceField);
   const valueCandidates = getValueCandidateFields(sourceFields, fieldInsights);
   const totalOperations = pipelines.reduce((sum, pipeline) => sum + ((pipeline.transformation_rules?.operations || []).length), 0);
+  const mappingSuggestion = buildMappingSuggestion(sourceFields, fieldInsights, sourcePreview);
+
+  const applySuggestedMappings = () => {
+    setFieldMappings(mappingSuggestion.mappings);
+    showToast(`Suggested mappings applied with ${mappingSuggestion.confidence} confidence`, 'success');
+  };
 
   const saveMappings = async () => {
     if (!selectedSourceId) {
@@ -921,21 +851,59 @@ export default function DataMappingPage() {
               )}
 
               {selectedSourceId && sourceFields.length > 0 && (
-                <div className="rounded-xl border border-teal-100 bg-teal-50/50 p-4">
-                  <div className="flex items-center gap-2 mb-3">
-                    <i className="ri-lightbulb-line text-teal-600"></i>
-                    <h3 className="text-sm font-semibold text-teal-900">Suggested numeric fields for value mappings</h3>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {valueCandidates.slice(0, 6).map((field) => {
-                      const insight = getFieldInsight(field);
-                      return (
-                        <span key={field} className="px-3 py-1 bg-white border border-teal-100 text-teal-800 text-xs font-medium rounded-full">
-                          {field}
-                          {insight ? ` • ${Math.round(insight.numericRatio * 100)}% numeric` : ''}
+                <div className="rounded-xl border border-teal-100 bg-teal-50/50 p-4 space-y-4">
+                  <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+                    <div>
+                      <div className="flex items-center gap-2 mb-2">
+                        <i className="ri-ai-generate text-teal-600"></i>
+                        <h3 className="text-sm font-semibold text-teal-900">AI-assisted mapping suggestion</h3>
+                        <span className={`px-2.5 py-1 rounded-full text-[11px] font-semibold ${
+                          mappingSuggestion.confidence === 'high'
+                            ? 'bg-emerald-100 text-emerald-700'
+                            : mappingSuggestion.confidence === 'medium'
+                              ? 'bg-amber-100 text-amber-700'
+                              : 'bg-slate-100 text-slate-600'
+                        }`}>
+                          {mappingSuggestion.confidence} confidence
                         </span>
-                      );
-                    })}
+                      </div>
+                      <p className="text-sm text-teal-900/90">
+                        SigmaSense inspected the live preview and found <span className="font-semibold">{mappingSuggestion.recommendedValueField || 'no clear numeric value field yet'}</span> as the best value signal.
+                      </p>
+                    </div>
+                    <button
+                      onClick={applySuggestedMappings}
+                      className="px-4 py-2 bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-teal-700 transition-colors whitespace-nowrap"
+                    >
+                      Apply suggestion
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-teal-800 mb-2">Why this mapping</p>
+                      <div className="space-y-2">
+                        {mappingSuggestion.rationale.map((reason) => (
+                          <div key={reason} className="text-sm text-slate-700 bg-white rounded-lg px-3 py-2 border border-teal-100">
+                            {reason}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-teal-800 mb-2">Strong numeric candidates</p>
+                      <div className="flex flex-wrap gap-2">
+                        {valueCandidates.slice(0, 6).map((field) => {
+                          const insight = getFieldInsight(field);
+                          return (
+                            <span key={field} className="px-3 py-1 bg-white border border-teal-100 text-teal-800 text-xs font-medium rounded-full">
+                              {field}
+                              {insight ? ` • ${Math.round(insight.numericRatio * 100)}% numeric` : ''}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}
