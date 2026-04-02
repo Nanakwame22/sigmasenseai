@@ -453,16 +453,27 @@ export default function AdvancedForecastingPage() {
       isOpen: true,
       title: 'Delete Forecast',
       message: 'Are you sure you want to delete this forecast? This action cannot be undone.',
+      confirmText: 'Delete Forecast',
+      confirmVariant: 'danger',
       onConfirm: async () => {
         try {
-          await supabase.from('forecasts').delete().eq('id', id);
+          const query = supabase.from('forecasts').delete().eq('id', id);
+          const { error } = organization
+            ? await query.eq('organization_id', organization.id)
+            : await query;
+
+          if (error) {
+            throw error;
+          }
+
           showToast('Forecast deleted successfully', 'success');
-          loadData();
-        } catch (error) {
+          await loadData();
+          setSelectedForecast((current) => (current?.id === id ? null : current));
+        } catch (error: any) {
           console.error('Error deleting forecast:', error);
-          showToast('Failed to delete forecast', 'error');
+          showToast(error.message || 'Failed to delete forecast', 'error');
         }
-        setConfirmDialog({ ...confirmDialog, isOpen: false });
+        setConfirmDialog((current) => ({ ...current, isOpen: false }));
       }
     });
   };
