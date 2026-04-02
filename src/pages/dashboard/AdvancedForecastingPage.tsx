@@ -118,6 +118,13 @@ const getForecastHealth = (forecast: Forecast) => {
   let level = 'Weak';
   let tone = 'text-rose-700 bg-rose-50 border-rose-100';
   let warning = 'Use this forecast only as an early directional signal.';
+  const reasons: string[] = [];
+
+  if (historical.length < 14) reasons.push('limited history depth');
+  if (mape > 20) reasons.push('high recent forecast error');
+  if (rSquared < 0.5) reasons.push('weak model fit');
+  if (volatility > 0.3) reasons.push('high signal volatility');
+  if (forecast.forecast_horizon > 45) reasons.push('long forecast horizon');
 
   if (score >= 80) {
     level = 'Strong';
@@ -137,6 +144,7 @@ const getForecastHealth = (forecast: Forecast) => {
     level,
     tone,
     warning,
+    reasons,
     avgBandWidth,
     volatility,
     historyPoints: historical.length,
@@ -577,7 +585,8 @@ export default function AdvancedForecastingPage() {
     
     const firstValue = forecastData[0]?.value || 0;
     const lastValue = forecastData[forecastData.length - 1]?.value || 0;
-    const change = ((lastValue - firstValue) / firstValue) * 100;
+    const baseline = Math.abs(firstValue) < 0.0001 ? 1 : firstValue;
+    const change = ((lastValue - firstValue) / baseline) * 100;
     
     if (Math.abs(change) < 5) {
       return { trend: 'Stable', color: 'text-gray-600', description: `Expected to remain relatively stable (${change >= 0 ? '+' : ''}${change.toFixed(1)}% change)` };
@@ -941,6 +950,11 @@ export default function AdvancedForecastingPage() {
                         <span className="px-2 py-1 rounded-full bg-white/70 border border-current/15">
                           {modelAligned ? getModelDisplayName(forecast.model_type) : `Consider ${recommendation.label}`}
                         </span>
+                        {health.reasons.slice(0, 2).map((reason) => (
+                          <span key={reason} className="px-2 py-1 rounded-full bg-white/70 border border-current/15">
+                            {reason}
+                          </span>
+                        ))}
                       </div>
                     </div>
                   );
@@ -1264,6 +1278,18 @@ export default function AdvancedForecastingPage() {
                           <div className="font-semibold mt-1">{health.avgBandWidth.toFixed(1)}</div>
                         </div>
                       </div>
+                      {health.reasons.length > 0 && (
+                        <div className="mt-4 rounded-lg bg-white/60 p-3 border border-current/10">
+                          <div className="text-xs uppercase tracking-wide opacity-70 mb-2">Why this score is where it is</div>
+                          <div className="flex flex-wrap gap-2">
+                            {health.reasons.map((reason) => (
+                              <span key={reason} className="px-2 py-1 rounded-full bg-white border border-current/10 text-xs font-medium">
+                                {reason}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                       <p className="text-sm mt-4">{health.warning}</p>
                     </div>
                   );
