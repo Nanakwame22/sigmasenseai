@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../../../lib/supabase';
+import { useAuth } from '../../../contexts/AuthContext';
 import AddModelModal from './AddModelModal';
 import EditModelPanel from './EditModelPanel';
 import type { ModelEditFields } from './EditModelPanel';
@@ -38,6 +39,20 @@ interface RunResult {
   latency_ms: number;
   timestamp: string;
   error?: string;
+}
+
+interface MetricRecord {
+  id: string;
+  name: string;
+  unit: string | null;
+  current_value: number | null;
+  target_value: number | null;
+}
+
+interface MetricPointRecord {
+  metric_id: string;
+  value: number;
+  timestamp: string;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -88,6 +103,172 @@ const MODEL_KEY_TO_FEED_CATEGORY: Record<string, string> = {
   'lab-escalation': 'lab',
   'lab': 'lab',
 };
+
+const LIVE_METRIC_PRIORITY = [
+  'ED Wait Time',
+  'Available Beds',
+  'Occupied Beds',
+  'Patients Per Nurse',
+  'Readmission Risk',
+  'Discharges Pending',
+  'LOS Average Hours',
+  'Critical Labs Unacknowledged',
+];
+
+function normalizeName(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function formatMetricValue(value: number | null | undefined, unit: string | null | undefined) {
+  if (value === null || value === undefined || Number.isNaN(value)) return '—';
+  const normalizedUnit = (unit || '').toLowerCase();
+  if (normalizedUnit === 'minutes' || normalizedUnit === 'min') return `${value.toFixed(1)}m`;
+  if (normalizedUnit === 'hours' || normalizedUnit === 'hour' || normalizedUnit === 'h') return `${value.toFixed(1)}h`;
+  if (normalizedUnit === 'beds' || normalizedUnit === 'count') return `${Math.round(value)}`;
+  if (normalizedUnit === 'ratio') return `${value.toFixed(1)}`;
+  if (normalizedUnit === 'probability') return `${Math.round(value * 100)}%`;
+  return `${value.toFixed(1)}`;
+}
+
+function deriveConfidence(pointCount: number, riskMagnitude: number) {
+  const depthBoost = Math.min(18, pointCount * 0.8);
+  const signalBoost = Math.min(10, riskMagnitude * 0.1);
+  return Math.max(62, Math.min(96, 68 + depthBoost + signalBoost));
+}
+
+function overlayLiveModelSignals(models: CPIModel[], metrics: MetricRecord[], metricPoints: MetricPointRecord[]) {
+  if (!metrics.length) return models;
+
+  const metricsByName = new Map(metrics.map((metric) => [normalizeName(metric.name), metric]));
+  const pointMap = new Map<string, MetricPointRecord[]>();
+  metricPoints.forEach((point) => {
+    const existing = pointMap.get(point.metric_id) || [];
+    existing.push(point);
+    pointMap.set(point.metric_id, existing);
+  });
+
+  const getMetricBundle = (name: string) => {
+    const metric = metricsByName.get(normalizeName(name));
+    if (!metric) return { metric: null as MetricRecord | null, current: null as number | null, previous: null as number | null, count: 0 };
+    const points = [...(pointMap.get(metric.id) || [])].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    return {
+      metric,
+      current: points[0]?.value ?? metric.current_value ?? null,
+      previous: points[1]?.value ?? points[0]?.value ?? null,
+      count: points.length,
+    };
+  };
+
+  const wait = getMetricBundle('ED Wait Time');
+  const bedsAvailable = getMetricBundle('Available Beds');
+  const bedsOccupied = getMetricBundle('Occupied Beds');
+  const patientsPerNurse = getMetricBundle('Patients Per Nurse');
+  const readmission = getMetricBundle('Readmission Risk');
+  const discharges = getMetricBundle('Discharges Pending');
+  const los = getMetricBundle('LOS Average Hours');
+  const criticalLabs = getMetricBundle('Critical Labs Unacknowledged');
+
+  const totalBeds = (bedsOccupied.current || 0) + (bedsAvailable.current || 0);
+  const occupancyPct = totalBeds > 0 ? Math.round(((bedsOccupied.current || 0) / totalBeds) * 100) : 0;
+
+  return models.map((model) => {
+    const key = model.model_key;
+
+    const apply = (overrides: Partial<CPIModel>) => ({
+      ...model,
+      ...overrides,
+    });
+
+    if (key === 'ed-surge') {
+      const risk = wait.current !== null && (wait.metric?.target_value ?? 30) > 0
+        ? Math.max(0, ((wait.current - (wait.metric?.target_value ?? 30)) / (wait.metric?.target_value ?? 30)) * 100)
+        : 0;
+      return apply({
+        accuracy: Math.max(72, Math.min(96, 88 - Math.min(18, risk / 4))),
+        prediction_confidence: deriveConfidence(wait.count, risk),
+        predictions: wait.current !== null
+          ? `ED wait time is ${formatMetricValue(wait.current, wait.metric?.unit)}${wait.previous !== null ? `, ${wait.current > wait.previous ? 'trending up' : 'trending down'}` : ''}.`
+          : model.predictions,
+        impact: occupancyPct > 85 ? `Capacity pressure ${occupancyPct}% occupied` : 'Throughput within watch range',
+        description: 'Monitors ED throughput pressure using live wait-time and capacity signals from imported KPI history.',
+        features: ['ED Wait Time', 'Occupied Beds', 'Available Beds', 'Discharges Pending'],
+      });
+    }
+
+    if (key === 'readmission') {
+      const riskValue = readmission.current ?? 0;
+      return apply({
+        accuracy: Math.max(74, Math.min(95, 90 - Math.max(0, (riskValue - 0.12) * 120))),
+        prediction_confidence: deriveConfidence(readmission.count, riskValue * 100),
+        predictions: readmission.current !== null
+          ? `Average readmission risk is ${formatMetricValue(readmission.current, readmission.metric?.unit)} against a ${formatMetricValue(readmission.metric?.target_value ?? 0.12, readmission.metric?.unit)} target.`
+          : model.predictions,
+        impact: riskValue > 0.12 ? 'Intervention review recommended' : 'Within expected threshold',
+        description: 'Scores readmission pressure using the imported risk KPI and updates alongside discharge conditions.',
+        features: ['Readmission Risk', 'Discharges Pending', 'LOS Average Hours'],
+      });
+    }
+
+    if (key === 'lab-escalation' || key === 'lab') {
+      const backlog = criticalLabs.current ?? 0;
+      return apply({
+        accuracy: Math.max(76, Math.min(95, 92 - backlog * 3)),
+        prediction_confidence: deriveConfidence(criticalLabs.count, backlog * 20),
+        predictions: criticalLabs.current !== null
+          ? `${Math.round(backlog)} critical lab result${backlog === 1 ? '' : 's'} remain unacknowledged.`
+          : model.predictions,
+        impact: backlog > 0 ? 'Escalation queue active' : 'No live lab backlog',
+        description: 'Tracks critical result acknowledgement pressure from the imported lab backlog KPI.',
+        features: ['Critical Labs Unacknowledged', 'LOS Average Hours'],
+      });
+    }
+
+    if (key === 'bed-forecast') {
+      const available = bedsAvailable.current ?? 0;
+      const risk = available > 0 ? Math.max(0, (10 - available) * 8) : occupancyPct;
+      return apply({
+        accuracy: Math.max(73, Math.min(95, 90 - risk / 3)),
+        prediction_confidence: deriveConfidence(bedsAvailable.count + bedsOccupied.count, risk),
+        predictions: bedsAvailable.current !== null
+          ? `${formatMetricValue(bedsAvailable.current, bedsAvailable.metric?.unit)} available beds with ${occupancyPct}% occupancy.`
+          : model.predictions,
+        impact: available < 8 ? 'Bed shortage risk building' : 'Capacity buffer intact',
+        description: 'Forecasts capacity stress using live available-bed, occupied-bed, and discharge backlog signals.',
+        features: ['Available Beds', 'Occupied Beds', 'Discharges Pending'],
+      });
+    }
+
+    if (key === 'staffing-demand') {
+      const load = patientsPerNurse.current ?? 0;
+      return apply({
+        accuracy: Math.max(74, Math.min(94, 89 - Math.max(0, load - 4) * 6)),
+        prediction_confidence: deriveConfidence(patientsPerNurse.count, load * 12),
+        predictions: patientsPerNurse.current !== null
+          ? `Patients per nurse is ${formatMetricValue(load, patientsPerNurse.metric?.unit)}${load > 4 ? ', above preferred range' : ', within preferred range'}.`
+          : model.predictions,
+        impact: load > 5 ? 'Rebalancing may be needed' : 'Coverage stable',
+        description: 'Monitors staffing strain using the imported patients-per-nurse KPI and downstream discharge pressure.',
+        features: ['Patients Per Nurse', 'Discharges Pending', 'Available Beds'],
+      });
+    }
+
+    if (key === 'deterioration') {
+      const composite = ((criticalLabs.current || 0) * 10) + Math.max(0, (los.current || 0) - 24);
+      return apply({
+        accuracy: Math.max(70, Math.min(93, 88 - composite * 0.4)),
+        prediction_confidence: deriveConfidence((criticalLabs.count + los.count), composite),
+        predictions: composite > 12
+          ? 'Escalation pressure suggests higher deterioration watch requirements across inpatient flow.'
+          : 'No strong deterioration pressure is visible from current inpatient and escalation KPIs.',
+        impact: composite > 12 ? 'Closer clinical surveillance advised' : 'No elevated deterioration signal',
+        description: 'Infers deterioration watch pressure from inpatient LOS friction and critical lab escalation backlog.',
+        features: ['LOS Average Hours', 'Critical Labs Unacknowledged'],
+      });
+    }
+
+    return model;
+  });
+}
 
 // ── Skeleton card ──────────────────────────────────────────────────────────
 
@@ -514,6 +695,7 @@ function ModelCard({
 // ── Main component ─────────────────────────────────────────────────────────
 
 export default function CPIIntelligenceModels() {
+  const { organizationId } = useAuth();
   const [models, setModels] = useState<CPIModel[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<string | null>(null);
@@ -537,7 +719,7 @@ export default function CPIIntelligenceModels() {
       .order('created_at', { ascending: true });
 
     if (!error && data) {
-      const rows = data.map((r) => ({
+      let rows = data.map((r) => ({
         ...r,
         features: Array.isArray(r.features) ? r.features : [],
         accuracy: parseFloat(r.accuracy),
@@ -547,10 +729,32 @@ export default function CPIIntelligenceModels() {
         learn_count: r.learn_count ?? 0,
         last_learned_at: r.last_learned_at ?? null,
       })) as CPIModel[];
+
+      if (organizationId) {
+        const { data: metricRows, error: metricsError } = await supabase
+          .from('metrics')
+          .select('id, name, unit, current_value, target_value')
+          .eq('organization_id', organizationId)
+          .in('name', LIVE_METRIC_PRIORITY);
+
+        if (!metricsError && metricRows && metricRows.length > 0) {
+          const metricIds = metricRows.map((metric) => metric.id);
+          const { data: pointRows, error: pointsError } = await supabase
+            .from('metric_data')
+            .select('metric_id, value, timestamp')
+            .in('metric_id', metricIds)
+            .order('timestamp', { ascending: false })
+            .limit(500);
+
+          if (!pointsError) {
+            rows = overlayLiveModelSignals(rows, metricRows as MetricRecord[], (pointRows as MetricPointRecord[]) || []);
+          }
+        }
+      }
       setModels(rows);
     }
     setLoading(false);
-  }, []);
+  }, [organizationId]);
 
   // ── Fetch unacked counts per feed category ───────────────────────────────
   const fetchUnackedCounts = useCallback(async () => {
@@ -589,35 +793,20 @@ export default function CPIIntelligenceModels() {
     return () => { if (tickRef.current) clearInterval(tickRef.current); };
   }, [models, rebuildTicks]);
 
-  // ── Auto-heartbeat ───────────────────────────────────────────────────────
+  // ── Live refresh pulse ───────────────────────────────────────────────────
   useEffect(() => {
-    const runHeartbeat = async () => {
-      const running = modelsRef.current.filter((m) => m.status === 'running' && !SMART_MODELS.has(m.model_key));
-      if (running.length === 0) return;
-      const shuffled = [...running].sort(() => Math.random() - 0.5);
-      const batch = shuffled.slice(0, Math.max(1, Math.floor(Math.random() * 3)));
+    const runRefresh = async () => {
       setHeartbeatActive(true);
-      setTimeout(() => setHeartbeatActive(false), 1_200);
-      await Promise.all(
-        batch.map(async (model) => {
-          const nudge = (Math.random() - 0.48) * 0.4;
-          const newAccuracy = parseFloat(Math.min(99.9, Math.max(60.0, model.accuracy + nudge)).toFixed(2));
-          await supabase.from('cpi_models').update({
-            last_run_at: new Date().toISOString(),
-            run_count_today: model.run_count_today + 1,
-            accuracy: newAccuracy,
-            updated_at: new Date().toISOString(),
-          }).eq('id', model.id);
-        })
-      );
+      await fetchModels();
+      setTimeout(() => setHeartbeatActive(false), 900);
     };
-    const initialDelay = setTimeout(runHeartbeat, 3_000);
-    heartbeatRef.current = setInterval(runHeartbeat, 45_000);
+    const initialDelay = setTimeout(runRefresh, 3_000);
+    heartbeatRef.current = setInterval(runRefresh, 60_000);
     return () => {
       clearTimeout(initialDelay);
       if (heartbeatRef.current) clearInterval(heartbeatRef.current);
     };
-  }, []);
+  }, [fetchModels]);
 
   // ── Real-time: models subscription ──────────────────────────────────────
   useEffect(() => {
@@ -695,15 +884,21 @@ export default function CPIIntelligenceModels() {
         if (error) throw new Error(error.message);
         result = data ?? {};
       } else {
-        const nudge = parseFloat((model.accuracy + (Math.random() - 0.5) * 0.6).toFixed(1));
-        const clampedAccuracy = Math.min(99.9, Math.max(60.0, nudge));
         await supabase.from('cpi_models').update({
           last_run_at: new Date().toISOString(),
           run_count_today: model.run_count_today + 1,
-          accuracy: clampedAccuracy,
           updated_at: new Date().toISOString(),
         }).eq('id', model.id);
-        result = { success: true, alert_fired: false, message: 'Model check completed. Stats updated.' };
+        await fetchModels();
+        result = {
+          success: true,
+          alert_fired: false,
+          message: model.predictions ?? 'Model check completed using the latest healthcare KPI inputs.',
+          display_metrics: [
+            { label: 'Accuracy', value: `${model.accuracy.toFixed(1)}%` },
+            { label: 'Confidence', value: model.prediction_confidence != null ? `${model.prediction_confidence.toFixed(1)}%` : '—' },
+          ],
+        };
       }
 
       const finalResult: RunResult = {
@@ -743,7 +938,7 @@ export default function CPIIntelligenceModels() {
     }
 
     setActingId(null);
-  }, []);
+  }, [fetchModels]);
 
   // ── Toggle pause ─────────────────────────────────────────────────────────
   const handleTogglePause = useCallback(async (model: CPIModel) => {
@@ -805,7 +1000,7 @@ export default function CPIIntelligenceModels() {
           }`}>
             <div className={`w-2 h-2 rounded-full bg-teal-500 ${heartbeatActive ? 'scale-125' : 'animate-pulse'} transition-transform duration-200`}></div>
             <span className="text-xs font-semibold text-teal-700 whitespace-nowrap">
-              {heartbeatActive ? 'Firing...' : 'Auto-running'}
+              {heartbeatActive ? 'Refreshing...' : 'Live refresh'}
             </span>
           </div>
           {trainingCount > 0 && (
@@ -905,8 +1100,8 @@ export default function CPIIntelligenceModels() {
         <div className="mt-4 flex items-center space-x-2 px-4 py-2.5 bg-teal-50 border border-teal-100 rounded-xl">
           <div className="w-1.5 h-1.5 rounded-full bg-teal-500 animate-pulse flex-shrink-0"></div>
           <p className="text-xs text-teal-700">
-            <strong>Live monitoring active</strong> — <strong>ED Surge</strong>, <strong>Lab Escalation</strong>, and <strong>Readmission</strong> invoke dedicated Supabase Edge Functions on demand, reading real domain snapshots and firing severity-rated alerts into the feed.
-            All models receive real-time alert badges from the feed, update accuracy via continuous auto-heartbeat, and incorporate resolved Decision Support cases as feedback through the full Sense → Analyze → Decide → Act → <strong>Learn</strong> loop.
+            <strong>Live monitoring active</strong> — <strong>ED Surge</strong>, <strong>Lab Escalation</strong>, and <strong>Readmission</strong> invoke dedicated Supabase Edge Functions on demand, while the remaining model cards now derive their summaries from your imported healthcare KPI layer.
+            All models receive real-time alert badges from the feed, refresh against the latest operational metrics, and incorporate resolved Decision Support cases as feedback through the full Sense → Analyze → Decide → Act → <strong>Learn</strong> loop.
           </p>
         </div>
       )}
