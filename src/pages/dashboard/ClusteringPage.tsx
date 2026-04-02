@@ -31,6 +31,14 @@ interface DataSource {
   };
 }
 
+const getErrorMessage = (error: unknown) => {
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === 'object' && 'message' in error && typeof (error as any).message === 'string') {
+    return (error as any).message;
+  }
+  return 'Failed to run clustering analysis';
+};
+
 export default function ClusteringPage() {
   const { user, organizationId } = useAuth();
   const { showToast } = useToast();
@@ -337,8 +345,7 @@ export default function ClusteringPage() {
       );
 
       const selectedSource = dataSources.find(ds => ds.id === formData.data_source_id);
-
-      const { error } = await supabase.from('clustering_analyses').insert({
+      const insertPayload: any = {
         organization_id: organizationId,
         name: formData.name,
         algorithm: formData.algorithm,
@@ -350,7 +357,15 @@ export default function ClusteringPage() {
         metrics,
         status: 'completed',
         created_by: user.id
-      });
+      };
+
+      let { error } = await supabase.from('clustering_analyses').insert(insertPayload);
+
+      if (error && error.message?.toLowerCase().includes('data_source_id')) {
+        delete insertPayload.data_source_id;
+        const retryResult = await supabase.from('clustering_analyses').insert(insertPayload);
+        error = retryResult.error;
+      }
 
       if (!error) {
         setShowCreateModal(false);
@@ -369,7 +384,7 @@ export default function ClusteringPage() {
       }
     } catch (error) {
       console.error('Error creating analysis:', error);
-      showToast(error instanceof Error ? error.message : 'Failed to run clustering analysis', 'error');
+      showToast(getErrorMessage(error), 'error');
     }
   };
 
