@@ -23,6 +23,17 @@ interface Integration {
   baseMins: number;
 }
 
+interface IntegrationConfigRow {
+  integration_id: string;
+  status: string | null;
+  last_test_at: string | null;
+  last_test_result: {
+    latency_ms?: number;
+    message?: string;
+    protocol?: string;
+  } | null;
+}
+
 const INTEGRATIONS: Integration[] = [
   {
     id: 'ehr-epic',
@@ -154,14 +165,33 @@ function deriveEventsPerMin(integration: Integration, snapshots: Record<string, 
   return total;
 }
 
-function deriveStatus(integration: Integration, snapshots: Record<string, DomainSnapshot>): 'connected' | 'syncing' | 'pending' {
-  if (integration.domainIds.length === 0) return 'pending';
-  if (integration.id === 'scheduling') return 'syncing';
+function deriveStatus(
+  integration: Integration,
+  snapshots: Record<string, DomainSnapshot>,
+  configs: Record<string, IntegrationConfigRow>
+): 'connected' | 'syncing' | 'pending' {
+  const cfg = configs[integration.id];
+  if (!cfg) return integration.domainIds.length === 0 ? 'pending' : 'syncing';
+  if (cfg.status === 'connected') return 'connected';
+  if (cfg.status === 'syncing') return 'syncing';
+  if (cfg.status === 'pending') return 'pending';
   const anySnap = integration.domainIds.some(d => snapshots[d]);
-  return anySnap ? 'connected' : 'syncing';
+  return anySnap ? 'connected' : 'pending';
 }
 
-function getLastSync(integration: Integration, snapshots: Record<string, DomainSnapshot>): string {
+function getLastSync(
+  integration: Integration,
+  snapshots: Record<string, DomainSnapshot>,
+  configs: Record<string, IntegrationConfigRow>
+): string {
+  const cfg = configs[integration.id];
+  if (cfg?.last_test_at) {
+    const diffSec = Math.floor((Date.now() - new Date(cfg.last_test_at).getTime()) / 1000);
+    if (diffSec < 60) return `${diffSec} seconds ago`;
+    const diffMin = Math.floor(diffSec / 60);
+    if (diffMin < 60) return `${diffMin} min ago`;
+    return `${Math.floor(diffMin / 60)}h ago`;
+  }
   if (integration.domainIds.length === 0) return 'Pending setup';
   const times = integration.domainIds
     .map(d => snapshots[d]?.updated_at)
@@ -233,6 +263,7 @@ const statusConfig = {
 
 export default function HealthcareIntegrations() {
   const [snapshots, setSnapshots] = useState<Record<string, DomainSnapshot>>({});
+  const [configs, setConfigs] = useState<Record<string, IntegrationConfigRow>>({});
   const [selected, setSelected] = useState<string | null>(null);
   const [configuring, setConfiguring] = useState<Integration | null>(null);
   const [filter, setFilter] = useState<string>('all');
@@ -250,6 +281,15 @@ export default function HealthcareIntegrations() {
         data.forEach((s: DomainSnapshot) => { map[s.domain_id] = s; });
         setSnapshots(map);
       }
+
+      const { data: configRows } = await supabase
+        .from('cpi_integration_configs')
+        .select('integration_id, status, last_test_at, last_test_result');
+      if (configRows) {
+        const configMap: Record<string, IntegrationConfigRow> = {};
+        configRows.forEach((row: IntegrationConfigRow) => { configMap[row.integration_id] = row; });
+        setConfigs(configMap);
+      }
       setLoading(false);
     };
     load();
@@ -260,12 +300,17 @@ export default function HealthcareIntegrations() {
         const snap = payload.new as DomainSnapshot;
         setSnapshots(prev => ({ ...prev, [snap.domain_id]: snap }));
       })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'cpi_integration_configs' }, (payload) => {
+        const row = payload.new as IntegrationConfigRow;
+        if (!row?.integration_id) return;
+        setConfigs(prev => ({ ...prev, [row.integration_id]: row }));
+      })
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
   }, []);
 
-  // Tick events/min slightly every few seconds to feel live
+  // Refresh events/min deterministically from live domain signals
   useEffect(() => {
     if (Object.keys(snapshots).length === 0) return;
     const base: Record<string, number> = {};
@@ -273,16 +318,11 @@ export default function HealthcareIntegrations() {
     setTickEventsPerMin(base);
 
     tickRef.current = setInterval(() => {
-      setTickEventsPerMin(prev => {
-        const next = { ...prev };
-        INTEGRATIONS.forEach(integration => {
-          if (integration.domainIds.length === 0) return;
-          const baseVal = deriveEventsPerMin(integration, snapshots);
-          const jitter = Math.floor((Math.random() - 0.5) * baseVal * 0.08);
-          next[integration.id] = Math.max(0, baseVal + jitter);
-        });
-        return next;
+      const next: Record<string, number> = {};
+      INTEGRATIONS.forEach(integration => {
+        next[integration.id] = deriveEventsPerMin(integration, snapshots);
       });
+      setTickEventsPerMin(next);
     }, 3500);
 
     return () => { if (tickRef.current) clearInterval(tickRef.current); };
@@ -291,7 +331,7 @@ export default function HealthcareIntegrations() {
   const categories = ['all', ...Array.from(new Set(INTEGRATIONS.map(i => i.category)))];
   const filtered = filter === 'all' ? INTEGRATIONS : INTEGRATIONS.filter(i => i.category === filter);
 
-  const connectedCount = INTEGRATIONS.filter(i => deriveStatus(i, snapshots) === 'connected').length;
+  const connectedCount = INTEGRATIONS.filter(i => deriveStatus(i, snapshots, configs) === 'connected').length;
   const totalEventsPerMin = INTEGRATIONS.reduce((sum, i) => sum + (tickEventsPerMin[i.id] ?? 0), 0);
 
   if (loading) {
@@ -339,7 +379,7 @@ export default function HealthcareIntegrations() {
             {/* Sources */}
             <div className="space-y-2">
               {INTEGRATIONS.filter(i => ['ehr-epic', 'ehr-cerner', 'lab-lis', 'bed-mgmt', 'adt-real'].includes(i.id)).map((intg) => {
-                const st = deriveStatus(intg, snapshots);
+                const st = deriveStatus(intg, snapshots, configs);
                 const dotColor = st === 'connected' ? 'bg-emerald-400 animate-pulse' : st === 'syncing' ? 'bg-amber-400 animate-pulse' : 'bg-slate-500';
                 return (
                   <div key={intg.id} className="flex items-center space-x-2 px-3 py-1.5 bg-white/8 border border-white/10 rounded-lg">
@@ -441,12 +481,15 @@ export default function HealthcareIntegrations() {
       {/* Integration grid */}
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
         {filtered.map((integration) => {
-          const status = deriveStatus(integration, snapshots);
+          const status = deriveStatus(integration, snapshots, configs);
           const cfg = statusConfig[status];
           const isSelected = selected === integration.id;
           const evPerMin = tickEventsPerMin[integration.id] ?? 0;
-          const lastSync = getLastSync(integration, snapshots);
+          const lastSync = getLastSync(integration, snapshots, configs);
           const metricRows = getDomainMetricRows(integration, snapshots);
+          const config = configs[integration.id];
+          const latency = config?.last_test_result?.latency_ms;
+          const lastMessage = config?.last_test_result?.message;
 
           return (
             <div
@@ -485,6 +528,10 @@ export default function HealthcareIntegrations() {
                     <span className="text-xs text-slate-400">Last sync</span>
                     <span className="text-xs text-slate-500">{lastSync}</span>
                   </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-slate-400">Latency</span>
+                    <span className="text-xs text-slate-500">{latency != null ? `${latency} ms` : '—'}</span>
+                  </div>
                 </div>
 
                 {isSelected && (
@@ -505,6 +552,22 @@ export default function HealthcareIntegrations() {
                             }`}>{row.value}</span>
                           </div>
                         ))}
+                      </div>
+                    )}
+                    {(lastMessage || config?.status) && (
+                      <div className="space-y-1.5 bg-slate-50 rounded-lg p-3 mb-3">
+                        <p className="text-xs font-semibold text-slate-600 mb-2">Connector health</p>
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-slate-500">Config status</span>
+                          <span className={`text-xs font-semibold ${
+                            status === 'connected' ? 'text-emerald-600' : status === 'syncing' ? 'text-amber-600' : 'text-slate-500'
+                          }`}>
+                            {config?.status ?? status}
+                          </span>
+                        </div>
+                        {lastMessage && (
+                          <p className="text-xs text-slate-600 leading-relaxed">{lastMessage}</p>
+                        )}
                       </div>
                     )}
                     <button
