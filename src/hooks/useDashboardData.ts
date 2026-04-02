@@ -51,6 +51,41 @@ export interface DashboardStats {
 }
 
 const SERIES_COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EF4444', '#06B6D4'];
+const HEALTHCARE_PRIORITY = [
+  'ED Wait Time',
+  'Occupied Beds',
+  'Available Beds',
+  'Patients Per Nurse',
+  'Readmission Risk',
+  'Discharges Pending',
+  'LOS Average Hours',
+  'Critical Labs Unacknowledged',
+];
+
+function normalizeMetricName(name: string | null | undefined) {
+  return (name || '').trim().toLowerCase();
+}
+
+function getPriorityIndex(name: string) {
+  const idx = HEALTHCARE_PRIORITY.findIndex((metric) => normalizeMetricName(metric) === normalizeMetricName(name));
+  return idx === -1 ? HEALTHCARE_PRIORITY.length + 100 : idx;
+}
+
+function getMetricHealthRatio(metricName: string, currentValue: number, targetValue: number) {
+  if (!Number.isFinite(currentValue)) return 0;
+  if (!Number.isFinite(targetValue) || targetValue <= 0) return 100;
+
+  const lowerIsBetterNames = ['ed wait time', 'readmission risk', 'los average hours', 'critical labs unacknowledged'];
+  const lowerIsBetter = lowerIsBetterNames.includes(normalizeMetricName(metricName));
+
+  if (lowerIsBetter) {
+    if (currentValue <= targetValue) return 100;
+    const overshoot = (currentValue - targetValue) / targetValue;
+    return Math.max(0, 100 - overshoot * 100);
+  }
+
+  return Math.max(0, (currentValue / targetValue) * 100);
+}
 
 export function useDashboardData() {
   const { user, organizationId } = useAuth();
@@ -97,42 +132,6 @@ export function useDashboardData() {
       ]);
 
       // --- Avg metric value ---
-      const { data: metricData } = await supabase
-        .from('metric_data')
-        .select('value')
-        .eq('organization_id', organizationId)
-        .order('timestamp', { ascending: false })
-        .limit(100);
-
-      const avgValue = metricData && metricData.length > 0
-        ? metricData.reduce((sum, d) => sum + (d.value || 0), 0) / metricData.length
-        : 0;
-
-      // --- Recent metrics ---
-      const { data: recentMetricsData } = await supabase
-        .from('metric_data')
-        .select('id, value, timestamp, metrics(id, name, unit)')
-        .eq('organization_id', organizationId)
-        .order('timestamp', { ascending: false })
-        .limit(5);
-
-      const recentMetrics = (recentMetricsData || []).map((d: any) => ({
-        id: d.id,
-        name: d.metrics?.name || 'Unknown',
-        value: d.value,
-        timestamp: d.timestamp,
-        unit: d.metrics?.unit || '',
-      }));
-
-      // --- Recent alerts ---
-      const { data: recentAlertsData } = await supabase
-        .from('alerts')
-        .select('id, title, severity, status, created_at')
-        .eq('organization_id', organizationId)
-        .order('created_at', { ascending: false })
-        .limit(5);
-
-      // --- Metrics with data for trend chart & KPI grid ---
       const { data: metricsWithData } = await supabase
         .from('metrics')
         .select('id, name, unit, target_value, category')
@@ -140,20 +139,64 @@ export function useDashboardData() {
 
       const metricTrendSeries: MetricTrendSeries[] = [];
       const kpiHealthGrid: KPIHealthItem[] = [];
+      const recentMetrics: DashboardStats['recentMetrics'] = [];
+      let avgValue = 0;
 
       if (metricsWithData && metricsWithData.length > 0) {
-        // Pick up to 4 metrics that have data
-        const metricsToFetch = metricsWithData.slice(0, 8);
+        const prioritizedMetrics = [...metricsWithData].sort((a: any, b: any) => {
+          const priorityDiff = getPriorityIndex(a.name) - getPriorityIndex(b.name);
+          if (priorityDiff !== 0) return priorityDiff;
+          return a.name.localeCompare(b.name);
+        });
+        const metricIds = prioritizedMetrics.map((metric: any) => metric.id);
+
+        const { data: allRecentMetricData } = await supabase
+          .from('metric_data')
+          .select('id, metric_id, value, timestamp')
+          .in('metric_id', metricIds)
+          .order('timestamp', { ascending: false })
+          .limit(400);
+
+        const metricPointsById = new Map<string, Array<{ id: string; value: number; timestamp: string }>>();
+        (allRecentMetricData || []).forEach((row: any) => {
+          const existing = metricPointsById.get(row.metric_id) || [];
+          existing.push({
+            id: row.id,
+            value: Number(row.value) || 0,
+            timestamp: row.timestamp,
+          });
+          metricPointsById.set(row.metric_id, existing);
+        });
+
+        const recentMetricEntries = prioritizedMetrics
+          .flatMap((metric: any) =>
+            (metricPointsById.get(metric.id) || []).slice(0, 2).map((point) => ({
+              id: point.id,
+              name: metric.name,
+              value: point.value,
+              timestamp: point.timestamp,
+              unit: metric.unit || '',
+              priority: getPriorityIndex(metric.name),
+            }))
+          )
+          .sort((a, b) => {
+            const timeDiff = new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+            if (timeDiff !== 0) return timeDiff;
+            return a.priority - b.priority;
+          })
+          .slice(0, 5);
+
+        recentMetrics.push(
+          ...recentMetricEntries.map(({ priority: _priority, ...metric }) => metric)
+        );
+
+        const healthRatios: number[] = [];
 
         await Promise.all(
-          metricsToFetch.map(async (metric: any, idx: number) => {
-            const { data: points } = await supabase
-              .from('metric_data')
-              .select('value, timestamp')
-              .eq('metric_id', metric.id)
-              .eq('organization_id', organizationId)
-              .order('timestamp', { ascending: true })
-              .limit(30);
+          prioritizedMetrics.slice(0, 8).map(async (metric: any, idx: number) => {
+            const points = [...(metricPointsById.get(metric.id) || [])]
+              .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+              .slice(-120);
 
             if (!points || points.length < 2) return;
 
@@ -174,8 +217,9 @@ export function useDashboardData() {
             const trendPct = firstValue !== 0 ? ((currentValue - firstValue) / Math.abs(firstValue)) * 100 : 0;
             const trend: 'up' | 'down' | 'stable' = Math.abs(trendPct) < 1 ? 'stable' : trendPct > 0 ? 'up' : 'down';
             const target = Number(metric.target_value) || 85;
-            const pctOfTarget = target !== 0 ? (currentValue / target) * 100 : 100;
+            const pctOfTarget = getMetricHealthRatio(metric.name, currentValue, target);
             const status: KPIHealthItem['status'] = pctOfTarget >= 90 ? 'on-track' : pctOfTarget >= 70 ? 'at-risk' : 'critical';
+            healthRatios.push(pctOfTarget);
 
             // Only add to trend series if idx < 4
             if (idx < 4) {
@@ -203,7 +247,19 @@ export function useDashboardData() {
             });
           })
         );
+
+        avgValue = healthRatios.length > 0
+          ? healthRatios.reduce((sum, value) => sum + value, 0) / healthRatios.length
+          : 0;
       }
+
+      // --- Recent alerts ---
+      const { data: recentAlertsData } = await supabase
+        .from('alerts')
+        .select('id, title, severity, status, created_at')
+        .eq('organization_id', organizationId)
+        .order('created_at', { ascending: false })
+        .limit(5);
 
       setStats({
         totalMetrics: metricsCount || 0,

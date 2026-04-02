@@ -78,7 +78,7 @@ export default function DashboardHome() {
   }
 
   const avgPctVsTarget = stats.avgMetricValue > 0
-    ? ((stats.avgMetricValue - 85) / 85 * 100)
+    ? (stats.avgMetricValue - 85)
     : 0;
 
   return (
@@ -137,9 +137,9 @@ export default function DashboardHome() {
           trend={null}
         />
         <StatCard
-          title="Avg Performance"
+          title="Avg KPI Health"
           value={`${stats.avgMetricValue.toFixed(1)}%`}
-          subtitle="vs 85% target baseline"
+          subtitle="Average attainment vs metric targets"
           icon="ri-speed-up-line"
           iconBg="bg-gradient-to-br from-teal-500 to-teal-600"
           accent="bg-teal-500"
