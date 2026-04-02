@@ -98,6 +98,11 @@ export default function ETLPipelinesPage() {
 
   const [pipelineHistory, setPipelineHistory] = useState<any[]>([]);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [showRecoveryModal, setShowRecoveryModal] = useState(false);
+  const [recoveryPipeline, setRecoveryPipeline] = useState<Pipeline | null>(null);
+  const [recoveryMode, setRecoveryMode] = useState<'replay' | 'backfill'>('replay');
+  const [recoveryRunId, setRecoveryRunId] = useState('');
+  const [backfillWindow, setBackfillWindow] = useState({ start: '', end: '' });
 
   // Confirm dialog state
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -572,7 +577,17 @@ export default function ETLPipelinesPage() {
     }
   };
 
-  const handleRunPipeline = async (pipelineId: string) => {
+  const executePipelineRun = async ({
+    pipelineId,
+    replayRunId,
+    windowStart,
+    windowEnd,
+  }: {
+    pipelineId: string;
+    replayRunId?: string;
+    windowStart?: string;
+    windowEnd?: string;
+  }) => {
     const pipeline = pipelines.find(p => p.id === pipelineId);
     if (!pipeline || !pipeline.source_id) {
       showToast('Pipeline has no data source configured', 'error');
@@ -588,10 +603,22 @@ export default function ETLPipelinesPage() {
     setRunningPipelines(prev => new Set(prev).add(pipelineId));
 
     try {
-      showToast('Pipeline started', 'info');
+      showToast(
+        replayRunId
+          ? 'Replay started'
+          : windowStart || windowEnd
+            ? 'Backfill started'
+            : 'Pipeline started',
+        'info'
+      );
 
       const { data, error } = await supabase.functions.invoke('run-etl-pipeline', {
-        body: { pipelineId }
+        body: {
+          pipelineId,
+          replayRunId: replayRunId || null,
+          windowStart: windowStart || null,
+          windowEnd: windowEnd || null,
+        }
       });
 
       if (error) throw error;
@@ -611,6 +638,43 @@ export default function ETLPipelinesPage() {
         return updated;
       });
     }
+  };
+
+  const handleRunPipeline = async (pipelineId: string) => {
+    await executePipelineRun({ pipelineId });
+  };
+
+  const openRecoveryModal = async (pipeline: Pipeline) => {
+    await loadPipelineRuns(pipeline.id);
+    setRecoveryPipeline(pipeline);
+    setRecoveryMode('replay');
+    setRecoveryRunId(latestRuns[pipeline.id]?.id || '');
+    setBackfillWindow({ start: '', end: '' });
+    setShowRecoveryModal(true);
+  };
+
+  const handleRecoverySubmit = async () => {
+    if (!recoveryPipeline) return;
+
+    if (recoveryMode === 'backfill') {
+      if (!backfillWindow.start && !backfillWindow.end) {
+        showToast('Choose a backfill start or end date before running.', 'error');
+        return;
+      }
+
+      await executePipelineRun({
+        pipelineId: recoveryPipeline.id,
+        windowStart: backfillWindow.start || undefined,
+        windowEnd: backfillWindow.end || undefined,
+      });
+    } else {
+      await executePipelineRun({
+        pipelineId: recoveryPipeline.id,
+        replayRunId: recoveryRunId || undefined,
+      });
+    }
+
+    setShowRecoveryModal(false);
   };
 
   const getNextRunCountdown = (nextRunAt: string | null): string => {
@@ -1071,6 +1135,15 @@ export default function ETLPipelinesPage() {
               <button
                 onClick={(e) => {
                   e.stopPropagation();
+                  openRecoveryModal(pipeline);
+                }}
+                className="px-3 py-1 text-xs border border-teal-200 text-teal-700 rounded hover:bg-teal-50 transition-colors whitespace-nowrap"
+              >
+                Recovery
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
                   handleToggleStatus(pipeline);
                 }}
                 className="px-3 py-1 text-xs border border-gray-300 text-gray-700 rounded hover:bg-gray-50 transition-colors whitespace-nowrap"
@@ -1207,6 +1280,105 @@ export default function ETLPipelinesPage() {
                     <Bar dataKey="records" fill="#3B82F6" radius={[8, 8, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showRecoveryModal && recoveryPipeline && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-xl w-full">
+            <div className="p-6 border-b border-gray-200 flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900">Recovery Controls</h2>
+                <p className="text-sm text-gray-600 mt-1">Replay the latest stored snapshot or backfill a timestamp window.</p>
+              </div>
+              <button
+                onClick={() => setShowRecoveryModal(false)}
+                className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <i className="ri-close-line text-xl"></i>
+              </button>
+            </div>
+
+            <div className="p-6 space-y-5">
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                <p className="text-sm font-semibold text-slate-900">{recoveryPipeline.name}</p>
+                <p className="text-xs text-slate-600 mt-1">
+                  Recovery mode works against the current connected source and records the replay or backfill context in ingestion logs.
+                </p>
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setRecoveryMode('replay')}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium ${recoveryMode === 'replay' ? 'bg-teal-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                >
+                  Replay
+                </button>
+                <button
+                  onClick={() => setRecoveryMode('backfill')}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium ${recoveryMode === 'backfill' ? 'bg-teal-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                >
+                  Backfill
+                </button>
+              </div>
+
+              {recoveryMode === 'replay' ? (
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-700">Reference run</label>
+                  <select
+                    value={recoveryRunId}
+                    onChange={(e) => setRecoveryRunId(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                  >
+                    <option value="">Use latest source snapshot</option>
+                    {pipelineRuns.map((run) => (
+                      <option key={run.id} value={run.id}>
+                        {new Date(run.started_at).toLocaleString()} - {run.status}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-gray-500">Replay reruns the latest stored source snapshot and tags the recovery with a prior run reference.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Start</label>
+                    <input
+                      type="datetime-local"
+                      value={backfillWindow.start}
+                      onChange={(e) => setBackfillWindow((current) => ({ ...current, start: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">End</label>
+                    <input
+                      type="datetime-local"
+                      value={backfillWindow.end}
+                      onChange={(e) => setBackfillWindow((current) => ({ ...current, end: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                    />
+                  </div>
+                  <p className="md:col-span-2 text-xs text-gray-500">Backfill requires a timestamp mapping on the pipeline so SigmaSense can replay only the records in that window.</p>
+                </div>
+              )}
+
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  onClick={() => setShowRecoveryModal(false)}
+                  className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleRecoverySubmit}
+                  className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors"
+                >
+                  Run Recovery
+                </button>
               </div>
             </div>
           </div>

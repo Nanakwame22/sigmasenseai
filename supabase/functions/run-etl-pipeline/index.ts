@@ -53,6 +53,13 @@ interface TransformationOperation {
   value: string;
 }
 
+interface RunRequestPayload {
+  pipelineId?: string;
+  replayRunId?: string | null;
+  windowStart?: string | null;
+  windowEnd?: string | null;
+}
+
 function extractDataFromJsonPath(data: unknown, path: string): Record<string, unknown>[] {
   if (!path || path.trim() === '') {
     if (Array.isArray(data)) return data as Record<string, unknown>[];
@@ -201,6 +208,63 @@ function applyTransformationOperations(
   };
 }
 
+function applyBackfillWindow(
+  records: Record<string, unknown>[],
+  timestampField: string | undefined,
+  windowStart?: string | null,
+  windowEnd?: string | null,
+): {
+  records: Record<string, unknown>[];
+  excludedRecords: number;
+  applied: boolean;
+} {
+  if (!windowStart && !windowEnd) {
+    return {
+      records,
+      excludedRecords: 0,
+      applied: false,
+    };
+  }
+
+  if (!timestampField) {
+    throw new Error('Backfill requires a timestamp mapping on this pipeline.');
+  }
+
+  const start = windowStart ? new Date(windowStart) : null;
+  const end = windowEnd ? new Date(windowEnd) : null;
+
+  if (start && Number.isNaN(start.getTime())) {
+    throw new Error('Backfill start date is invalid.');
+  }
+
+  if (end && Number.isNaN(end.getTime())) {
+    throw new Error('Backfill end date is invalid.');
+  }
+
+  const filtered = records.filter((record) => {
+    const parsedTimestamp = new Date(String(record[timestampField] ?? ''));
+    if (Number.isNaN(parsedTimestamp.getTime())) {
+      return false;
+    }
+
+    if (start && parsedTimestamp < start) {
+      return false;
+    }
+
+    if (end && parsedTimestamp > end) {
+      return false;
+    }
+
+    return true;
+  });
+
+  return {
+    records: filtered,
+    excludedRecords: Math.max(0, records.length - filtered.length),
+    applied: true,
+  };
+}
+
 async function logIngestionEvent(
   adminClient: ReturnType<typeof createClient>,
   payload: {
@@ -258,7 +322,7 @@ serve(async (req) => {
   try {
     await authClient.auth.getUser();
 
-    const { pipelineId } = await req.json();
+    const { pipelineId, replayRunId, windowStart, windowEnd } = await req.json() as RunRequestPayload;
     if (!pipelineId) {
       return new Response(JSON.stringify({ error: 'pipelineId is required' }), {
         status: 400,
@@ -344,6 +408,12 @@ serve(async (req) => {
       level: 'info',
       stage: 'startup',
       message: 'Pipeline execution started',
+      details: {
+        recovery_mode: replayRunId ? 'replay' : windowStart || windowEnd ? 'backfill' : 'standard',
+        replay_run_id: replayRunId ?? null,
+        window_start: windowStart ?? null,
+        window_end: windowEnd ?? null,
+      },
     });
 
     const source = sourceData as DataSource;
@@ -394,6 +464,12 @@ serve(async (req) => {
       });
     }
 
+    const mappings = pipeline.transformation_rules?.field_mappings || [];
+    const metricNameMapping = mappings.find((m) => m.destinationType === 'metric_name');
+    const valueMapping = mappings.find((m) => m.destinationType === 'value');
+    const timestampMapping = mappings.find((m) => m.destinationType === 'timestamp');
+    const unitMapping = mappings.find((m) => m.destinationType === 'unit');
+
     const operations = Array.isArray(pipeline.transformation_rules?.operations)
       ? pipeline.transformation_rules?.operations
       : [];
@@ -418,11 +494,34 @@ serve(async (req) => {
       });
     }
 
-    const mappings = pipeline.transformation_rules?.field_mappings || [];
-    const metricNameMapping = mappings.find((m) => m.destinationType === 'metric_name');
-    const valueMapping = mappings.find((m) => m.destinationType === 'value');
-    const timestampMapping = mappings.find((m) => m.destinationType === 'timestamp');
-    const unitMapping = mappings.find((m) => m.destinationType === 'unit');
+    const backfillResult = applyBackfillWindow(
+      records,
+      timestampMapping?.sourceField,
+      windowStart,
+      windowEnd,
+    );
+    records = backfillResult.records;
+
+    if (replayRunId || backfillResult.applied) {
+      await logIngestionEvent(adminClient, {
+        organization_id: organizationId,
+        pipeline_id: pipelineId,
+        run_id: runId,
+        source_id: sourceId,
+        level: 'info',
+        stage: 'transform',
+        message: replayRunId
+          ? 'Replay requested against the latest stored source snapshot'
+          : 'Applied backfill window to source records',
+        details: {
+          replay_run_id: replayRunId ?? null,
+          window_start: windowStart ?? null,
+          window_end: windowEnd ?? null,
+          excluded_records: backfillResult.excludedRecords,
+          remaining_records: records.length,
+        },
+      });
+    }
 
     if (!valueMapping) {
       throw new Error('Pipeline is missing a value mapping');
@@ -447,12 +546,13 @@ serve(async (req) => {
       level: 'info',
       stage: 'transform',
       message: 'Transforming source records into metric datapoints',
-      details: {
-        records_received: records.length,
-        mapping_count: mappings.length,
-        operations_applied: operationResult.operationsApplied,
-      },
-    });
+        details: {
+          records_received: records.length,
+          mapping_count: mappings.length,
+          operations_applied: operationResult.operationsApplied,
+          recovery_mode: replayRunId ? 'replay' : windowStart || windowEnd ? 'backfill' : 'standard',
+        },
+      });
 
     for (const [index, record] of records.entries()) {
       try {
@@ -571,6 +671,7 @@ serve(async (req) => {
           records_success: recordsSuccess,
           records_failed: recordsFailed,
           excluded_by_operations: operationResult.excludedRecords,
+          excluded_by_backfill: backfillResult.excludedRecords,
           sample_failures: failureSamples,
         },
       });
@@ -646,6 +747,7 @@ serve(async (req) => {
         records_success: recordsSuccess,
         records_failed: recordsFailed,
         excluded_by_operations: operationResult.excludedRecords,
+        excluded_by_backfill: backfillResult.excludedRecords,
         operations_applied: operationResult.operationsApplied,
         duration_seconds: durationSeconds,
       },
@@ -660,6 +762,7 @@ serve(async (req) => {
       records_success: recordsSuccess,
       records_failed: recordsFailed,
       excluded_by_operations: operationResult.excludedRecords,
+      excluded_by_backfill: backfillResult.excludedRecords,
       operations_applied: operationResult.operationsApplied,
       duration_seconds: durationSeconds,
       message: runStatus === 'partial'
