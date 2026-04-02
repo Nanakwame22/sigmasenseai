@@ -36,6 +36,54 @@ interface DataSource {
   records_count: number;
 }
 
+const parseNumericValue = (value: unknown): number | null => {
+  if (value === null || value === undefined || value === '') return null;
+  const parsed = parseFloat(String(value).replace(/[^0-9.-]/g, ''));
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const findTimestampColumn = (headers: string[]): string | null => {
+  const patterns = ['timestamp', 'date', 'time', 'recorded_at', 'datetime', 'period'];
+  return headers.find((header) => {
+    const lower = header.toLowerCase();
+    return patterns.some((pattern) => lower.includes(pattern));
+  }) || null;
+};
+
+const buildColumnMetricHistory = (
+  rows: Record<string, unknown>[],
+  columnName: string,
+  organizationId: string,
+  metricId: string,
+  timestampColumn?: string | null
+) => {
+  return rows
+    .map((row, index) => {
+      const value = parseNumericValue(row[columnName]);
+      if (value === null) return null;
+
+      const rawTimestamp = timestampColumn ? row[timestampColumn] : null;
+      const parsedTimestamp = rawTimestamp ? new Date(String(rawTimestamp)) : null;
+      const fallbackDate = new Date();
+      fallbackDate.setDate(fallbackDate.getDate() - (rows.length - index - 1));
+
+      return {
+        metric_id: metricId,
+        value: parseFloat(value.toFixed(2)),
+        timestamp: parsedTimestamp && !Number.isNaN(parsedTimestamp.getTime())
+          ? parsedTimestamp.toISOString()
+          : fallbackDate.toISOString(),
+        organization_id: organizationId,
+      };
+    })
+    .filter(Boolean) as Array<{
+      metric_id: string;
+      value: number;
+      timestamp: string;
+      organization_id: string;
+    }>;
+};
+
 export default function MetricsPage() {
   const { user, organizationId } = useAuth();
   const [metrics, setMetrics] = useState<Metric[]>([]);
@@ -183,6 +231,7 @@ export default function MetricsPage() {
       }
 
       const headers = Object.keys(rawData[0] || {});
+      const timestampColumn = findTimestampColumn(headers);
       
       if (headers.length === 0) {
         throw new Error('No columns found in data source');
@@ -239,28 +288,9 @@ export default function MetricsPage() {
         if (importError) throw importError;
 
         if (importedMetrics && importedMetrics.length > 0) {
-          // Create historical data points for each metric
-          const dataPoints = [];
-          const now = new Date();
-
-          for (const metric of importedMetrics) {
-            // Generate 30 days of historical data
-            for (let i = 29; i >= 0; i--) {
-              const timestamp = new Date(now);
-              timestamp.setDate(timestamp.getDate() - i);
-              
-              const baseValue = metric.current_value || 100;
-              const variation = 0.9 + Math.random() * 0.2;
-              const value = baseValue * variation;
-              
-              dataPoints.push({
-                metric_id: metric.id,
-                value: parseFloat(value.toFixed(2)),
-                timestamp: timestamp.toISOString(),
-                organization_id: organizationId
-              });
-            }
-          }
+          const dataPoints = importedMetrics.flatMap((metric) =>
+            buildColumnMetricHistory(rawData, metric.name, organizationId, metric.id, timestampColumn)
+          );
 
           if (dataPoints.length > 0) {
             await supabase.from('metric_data').insert(dataPoints);
@@ -268,8 +298,13 @@ export default function MetricsPage() {
 
           setShowDataSourceModal(false);
           fetchMetrics();
-          
-          addToast(`Successfully imported ${importedMetrics.length} metrics from columns in ${sourceData.name}. Each column has been converted into a separate metric.`, 'success');
+
+          addToast(
+            dataPoints.length > 0
+              ? `Successfully imported ${importedMetrics.length} metrics from ${sourceData.name} with ${dataPoints.length} real historical data points.`
+              : `Successfully imported ${importedMetrics.length} metrics from ${sourceData.name}. No usable time-series rows were found, so no history was fabricated.`,
+            'success'
+          );
         }
       } else {
         // ROW-BASED IMPORT: Each row is a metric (existing logic)
@@ -309,8 +344,7 @@ export default function MetricsPage() {
           .map(row => {
             let currentValue = 0;
             if (valueCol && row[valueCol] !== undefined && row[valueCol] !== null) {
-              const parsedValue = parseFloat(String(row[valueCol]).replace(/[^0-9.-]/g, ''));
-              currentValue = isNaN(parsedValue) ? 0 : parsedValue;
+              currentValue = parseNumericValue(row[valueCol]) ?? 0;
             }
 
             return {
@@ -338,31 +372,6 @@ export default function MetricsPage() {
         if (importError) throw importError;
 
         if (importedMetrics && importedMetrics.length > 0) {
-          const dataPoints = [];
-          const now = new Date();
-
-          for (const metric of importedMetrics) {
-            for (let i = 29; i >= 0; i--) {
-              const timestamp = new Date(now);
-              timestamp.setDate(timestamp.getDate() - i);
-              
-              const baseValue = metric.current_value || 100;
-              const variation = 0.9 + Math.random() * 0.2;
-              const value = baseValue * variation;
-              
-              dataPoints.push({
-                metric_id: metric.id,
-                value: parseFloat(value.toFixed(2)),
-                timestamp: timestamp.toISOString(),
-                organization_id: organizationId
-              });
-            }
-          }
-
-          if (dataPoints.length > 0) {
-            await supabase.from('metric_data').insert(dataPoints);
-          }
-
           setShowDataSourceModal(false);
           fetchMetrics();
           
@@ -373,7 +382,10 @@ export default function MetricsPage() {
           
           const infoText = columnInfo.length > 0 ? ` (${columnInfo.join(', ')})` : '';
           
-          addToast(`Successfully imported ${importedMetrics.length} metrics from ${sourceData.name}${infoText}. They are now available for analysis across all features.`, 'success');
+          addToast(
+            `Successfully imported ${importedMetrics.length} metrics from ${sourceData.name}${infoText}. Current values came from the source rows, and no synthetic history was added.`,
+            'success'
+          );
         }
       }
     } catch (error: any) {
@@ -1097,7 +1109,7 @@ export default function MetricsPage() {
         <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
           <i className="ri-line-chart-line text-5xl text-gray-400 mb-4"></i>
           <h3 className="text-lg font-semibold text-gray-900 mb-2">No metrics yet</h3>
-          <p className="text-gray-600 mb-4">Get started by seeding demo data, adding your first metric, or importing from CSV</p>
+          <p className="text-gray-600 mb-4">Get started by importing real metrics, adding your first metric manually, or using demo data for exploration.</p>
           <div className="flex gap-3 justify-center">
             <button
               onClick={handleSeedDemoData}
@@ -1112,7 +1124,7 @@ export default function MetricsPage() {
               ) : (
                 <>
                   <i className="ri-magic-line mr-2"></i>
-                  Seed Demo Data (Recommended)
+                  Seed Demo Data
                 </>
               )}
             </button>
@@ -1151,7 +1163,7 @@ export default function MetricsPage() {
                   </li>
                   <li className="flex items-start">
                     <i className="ri-check-line text-purple-600 mr-2 mt-0.5"></i>
-                    <span>Instantly activates Forecasting, Anomaly Detection, and Recommendations features</span>
+                    <span>Creates a safe sample environment for exploring Forecasting, Anomaly Detection, and Recommendations</span>
                   </li>
                 </ul>
               </div>
