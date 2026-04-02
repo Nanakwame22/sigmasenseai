@@ -23,6 +23,10 @@ interface DataSource {
   last_error_message?: string | null;
   attention_message?: string | null;
   recent_event_count?: number;
+  schema_drift_status?: 'stable' | 'drift' | 'unknown';
+  missing_fields?: string[];
+  new_fields?: string[];
+  schema_field_count?: number;
 }
 
 interface SourcePipeline {
@@ -99,6 +103,7 @@ export default function DataIntegrationPage() {
       if (source.health_status === 'warning') summary.warning += 1;
       if (source.health_status === 'critical') summary.critical += 1;
       if (source.health_status === 'idle') summary.idle += 1;
+      if (source.schema_drift_status === 'drift') summary.drift += 1;
 
       if (source.last_success_at) summary.recentSuccesses += 1;
       if (source.last_failure_at) summary.recentFailures += 1;
@@ -110,6 +115,7 @@ export default function DataIntegrationPage() {
       warning: 0,
       critical: 0,
       idle: 0,
+      drift: 0,
       recentSuccesses: 0,
       recentFailures: 0,
       records: 0,
@@ -216,6 +222,12 @@ export default function DataIntegrationPage() {
       const last24Hours = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
       const enrichedSources = sources.map((source) => {
+        const expectedFields = getExpectedSchemaFields(source);
+        const currentFields = getCurrentSchemaFields(source);
+        const missingFields = expectedFields.filter((field) => !currentFields.includes(field));
+        const newFields = currentFields.filter((field) => !expectedFields.includes(field));
+        const hasSchemaDrift = expectedFields.length > 0 && (missingFields.length > 0 || newFields.length > 0);
+
         const linkedPipelines = pipelinesBySource.get(source.id) || [];
         const linkedRuns = linkedPipelines.flatMap((pipeline) => runsByPipeline.get(pipeline.id) || []);
         const linkedEvents = eventsBySource.get(source.id) || [];
@@ -233,6 +245,9 @@ export default function DataIntegrationPage() {
         if (linkedPipelines.length === 0) {
           healthStatus = 'idle';
           attentionMessage = 'No ETL pipeline is attached to this source yet.';
+        } else if (hasSchemaDrift) {
+          healthStatus = 'warning';
+          attentionMessage = `Schema changed since the source was configured. ${missingFields.length} missing, ${newFields.length} new fields detected.`;
         } else if (latestRun?.status === 'failed') {
           healthStatus = 'critical';
           attentionMessage = latestRun.error_message || 'Latest ETL run failed. Review the run history.';
@@ -258,6 +273,10 @@ export default function DataIntegrationPage() {
           last_error_message: latestRun?.status === 'failed' ? latestRun.error_message : null,
           attention_message: attentionMessage,
           recent_event_count: linkedEvents.length,
+          schema_drift_status: hasSchemaDrift ? 'drift' : expectedFields.length > 0 ? 'stable' : 'unknown',
+          missing_fields: missingFields,
+          new_fields: newFields,
+          schema_field_count: currentFields.length,
         } as DataSource;
       });
 
@@ -268,6 +287,31 @@ export default function DataIntegrationPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const getExpectedSchemaFields = (source: DataSource) => {
+    const columns = source.connection_config?.columns;
+    if (Array.isArray(columns)) {
+      return columns
+        .map((field) => String(field).trim())
+        .filter(Boolean);
+    }
+    return [];
+  };
+
+  const getCurrentSchemaFields = (source: DataSource) => {
+    if (Array.isArray(source.file_data) && source.file_data.length > 0) {
+      return Object.keys(source.file_data[0] || {}).filter(Boolean);
+    }
+
+    const previewColumns = source.connection_config?.current_columns;
+    if (Array.isArray(previewColumns)) {
+      return previewColumns
+        .map((field) => String(field).trim())
+        .filter(Boolean);
+    }
+
+    return [];
   };
 
   const getHealthBadgeClasses = (healthStatus?: DataSource['health_status']) => {
@@ -409,7 +453,8 @@ export default function DataIntegrationPage() {
           connection_config: {
             upload_date: new Date().toISOString(),
             file_size: selectedFile.size,
-            columns: Object.keys(parsedData[0] || {})
+            columns: Object.keys(parsedData[0] || {}),
+            current_columns: Object.keys(parsedData[0] || {}),
           },
           last_sync: new Date().toISOString(),
           created_by: user.id
@@ -738,6 +783,10 @@ export default function DataIntegrationPage() {
     setIsSavingApi(true);
 
     try {
+      const previewFields = Array.isArray(testResponse.preview) && testResponse.preview.length > 0
+        ? Object.keys(testResponse.preview[0] || {})
+        : [];
+
       const connectionConfig = {
         base_url: apiBaseUrl,
         http_method: httpMethod,
@@ -746,7 +795,9 @@ export default function DataIntegrationPage() {
         auth_key_value: authKeyValue,
         custom_headers: customHeaders.filter(h => h.key && h.value),
         json_path: jsonPath,
-        created_date: new Date().toISOString()
+        created_date: new Date().toISOString(),
+        columns: previewFields,
+        current_columns: previewFields,
       };
 
       const { data: sourceData, error: sourceError } = await supabase
@@ -844,7 +895,12 @@ export default function DataIntegrationPage() {
           last_sync: new Date().toISOString(),
           records_count: extractedData.length,
           file_data: extractedData,
-          status: 'active'
+          status: 'active',
+          connection_config: {
+            ...(source.connection_config || {}),
+            current_columns: Object.keys(extractedData[0] || {}),
+            last_schema_check: new Date().toISOString(),
+          }
         })
         .eq('id', source.id);
 
@@ -1109,6 +1165,18 @@ export default function DataIntegrationPage() {
               <p className="text-xs text-slate-500 mt-1">Tracked across all integrated sources</p>
             </div>
           </div>
+
+          <div className="mb-6 rounded-xl border border-slate-200 bg-white p-5">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-900">Schema Drift Watch</h3>
+                <p className="text-sm text-slate-600 mt-1">Catch upstream field changes before they silently break mapping rules or ETL jobs.</p>
+              </div>
+              <div className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold ${healthSummary.drift > 0 ? 'bg-amber-50 text-amber-700 border border-amber-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}`}>
+                {healthSummary.drift > 0 ? `${healthSummary.drift} source${healthSummary.drift === 1 ? '' : 's'} changed` : 'All tracked schemas stable'}
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
@@ -1157,6 +1225,17 @@ export default function DataIntegrationPage() {
             <div className="mb-4 p-3 rounded-lg bg-slate-50 border border-slate-200">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">Operational signal</p>
               <p className="text-sm text-slate-700">{source.attention_message}</p>
+            </div>
+
+            <div className="mb-4 flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2">
+              <div>
+                <p className="text-xs text-slate-500">Schema</p>
+                <p className="text-sm font-semibold text-slate-900 capitalize">{source.schema_drift_status || 'unknown'}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-xs text-slate-500">Tracked fields</p>
+                <p className="text-sm font-semibold text-slate-900">{source.schema_field_count || getExpectedSchemaFields(source).length || 0}</p>
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3 mb-4">
@@ -1210,6 +1289,17 @@ export default function DataIntegrationPage() {
             <div className="mt-4 pt-4 border-t border-slate-200 space-y-1">
               <p className="text-xs text-slate-500">Last sync timestamp</p>
               <p className="text-sm text-slate-700">{formatDateTime(source.last_sync)}</p>
+              {source.schema_drift_status === 'drift' && (
+                <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-amber-800 mb-2">Schema drift detected</p>
+                  {source.missing_fields && source.missing_fields.length > 0 && (
+                    <p className="text-xs text-amber-700">Missing fields: {source.missing_fields.slice(0, 4).join(', ')}</p>
+                  )}
+                  {source.new_fields && source.new_fields.length > 0 && (
+                    <p className="text-xs text-amber-700 mt-1">New fields: {source.new_fields.slice(0, 4).join(', ')}</p>
+                  )}
+                </div>
+              )}
               {source.last_error_message && (
                 <p className="text-xs text-red-600 mt-2">{source.last_error_message}</p>
               )}
