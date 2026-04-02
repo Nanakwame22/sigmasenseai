@@ -189,8 +189,8 @@ function overlayLiveModelSignals(models: CPIModel[], metrics: MetricRecord[], me
         predictions: wait.current !== null
           ? `ED wait time is ${formatMetricValue(wait.current, wait.metric?.unit)}${wait.previous !== null ? `, ${wait.current > wait.previous ? 'trending up' : 'trending down'}` : ''}.`
           : model.predictions,
-        impact: occupancyPct > 85 ? `Capacity pressure ${occupancyPct}% occupied` : 'Throughput within watch range',
-        description: 'Monitors ED throughput pressure using live wait-time and capacity signals from imported KPI history.',
+        impact: occupancyPct > 85 ? `Capacity tight at ${occupancyPct}% occupancy` : 'Throughput within operating range',
+        description: 'Monitors ED throughput using live wait-time and capacity signals from the imported healthcare KPI stream.',
         features: ['ED Wait Time', 'Occupied Beds', 'Available Beds', 'Discharges Pending'],
       });
     }
@@ -204,7 +204,7 @@ function overlayLiveModelSignals(models: CPIModel[], metrics: MetricRecord[], me
           ? `Average readmission risk is ${formatMetricValue(readmission.current, readmission.metric?.unit)} against a ${formatMetricValue(readmission.metric?.target_value ?? 0.12, readmission.metric?.unit)} target.`
           : model.predictions,
         impact: riskValue > 0.12 ? 'Intervention review recommended' : 'Within expected threshold',
-        description: 'Scores readmission pressure using the imported risk KPI and updates alongside discharge conditions.',
+        description: 'Assesses readmission pressure using the imported risk KPI alongside discharge conditions.',
         features: ['Readmission Risk', 'Discharges Pending', 'LOS Average Hours'],
       });
     }
@@ -218,7 +218,7 @@ function overlayLiveModelSignals(models: CPIModel[], metrics: MetricRecord[], me
           ? `${Math.round(backlog)} critical lab result${backlog === 1 ? '' : 's'} remain unacknowledged.`
           : model.predictions,
         impact: backlog > 0 ? 'Escalation queue active' : 'No live lab backlog',
-        description: 'Tracks critical result acknowledgement pressure from the imported lab backlog KPI.',
+        description: 'Tracks critical result acknowledgement risk from the imported lab backlog KPI.',
         features: ['Critical Labs Unacknowledged', 'LOS Average Hours'],
       });
     }
@@ -233,7 +233,7 @@ function overlayLiveModelSignals(models: CPIModel[], metrics: MetricRecord[], me
           ? `${formatMetricValue(bedsAvailable.current, bedsAvailable.metric?.unit)} available beds with ${occupancyPct}% occupancy.`
           : model.predictions,
         impact: available < 8 ? 'Bed shortage risk building' : 'Capacity buffer intact',
-        description: 'Forecasts capacity stress using live available-bed, occupied-bed, and discharge backlog signals.',
+        description: 'Forecasts capacity strain using live available-bed, occupied-bed, and discharge backlog signals.',
         features: ['Available Beds', 'Occupied Beds', 'Discharges Pending'],
       });
     }
@@ -258,10 +258,10 @@ function overlayLiveModelSignals(models: CPIModel[], metrics: MetricRecord[], me
         accuracy: Math.max(70, Math.min(93, 88 - composite * 0.4)),
         prediction_confidence: deriveConfidence((criticalLabs.count + los.count), composite),
         predictions: composite > 12
-          ? 'Escalation pressure suggests higher deterioration watch requirements across inpatient flow.'
-          : 'No strong deterioration pressure is visible from current inpatient and escalation KPIs.',
+          ? 'Escalation patterns suggest a higher need for clinical surveillance across inpatient flow.'
+          : 'No elevated deterioration signal is visible from current inpatient and escalation indicators.',
         impact: composite > 12 ? 'Closer clinical surveillance advised' : 'No elevated deterioration signal',
-        description: 'Infers deterioration watch pressure from inpatient LOS friction and critical lab escalation backlog.',
+        description: 'Infers deterioration surveillance needs from inpatient LOS friction and critical lab escalation backlog.',
         features: ['LOS Average Hours', 'Critical Labs Unacknowledged'],
       });
     }
@@ -988,7 +988,7 @@ export default function CPIIntelligenceModels() {
         <div>
           <h2 className="text-lg font-bold text-slate-900">Healthcare Intelligence Models</h2>
           <p className="text-sm text-slate-500 mt-0.5">
-            AI models tuned for clinical prediction — live from Supabase
+            Clinical prediction models aligned to live healthcare operations data
           </p>
         </div>
         <div className="flex items-center space-x-2">
@@ -1100,8 +1100,8 @@ export default function CPIIntelligenceModels() {
         <div className="mt-4 flex items-center space-x-2 px-4 py-2.5 bg-teal-50 border border-teal-100 rounded-xl">
           <div className="w-1.5 h-1.5 rounded-full bg-teal-500 animate-pulse flex-shrink-0"></div>
           <p className="text-xs text-teal-700">
-            <strong>Live monitoring active</strong> — <strong>ED Surge</strong>, <strong>Lab Escalation</strong>, and <strong>Readmission</strong> invoke dedicated Supabase Edge Functions on demand, while the remaining model cards now derive their summaries from your imported healthcare KPI layer.
-            All models receive real-time alert badges from the feed, refresh against the latest operational metrics, and incorporate resolved Decision Support cases as feedback through the full Sense → Analyze → Decide → Act → <strong>Learn</strong> loop.
+            <strong>Live monitoring active</strong> — <strong>ED Surge</strong>, <strong>Lab Escalation</strong>, and <strong>Readmission</strong> invoke dedicated Supabase edge services on demand, while the remaining model cards derive their summaries from the imported healthcare KPI layer.
+            All models receive real-time alert badges from the feed, refresh against the latest operational metrics, and incorporate resolved decision cases as feedback through the full Sense → Analyze → Decide → Act → <strong>Learn</strong> loop.
           </p>
         </div>
       )}

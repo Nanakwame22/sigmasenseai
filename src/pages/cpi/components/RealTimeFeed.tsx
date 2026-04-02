@@ -676,7 +676,7 @@ export default function RealTimeFeed() {
             </div>
             <div>
               <h3 className="text-sm font-bold text-slate-900">Real-Time Intelligence Feed</h3>
-              <p className="text-xs text-slate-500">Live signals from edge functions · {feed.length} events</p>
+              <p className="text-xs text-slate-500">Priority operational events and escalation alerts · {feed.length} events</p>
             </div>
           </div>
           <div className="flex items-center space-x-2">
@@ -828,7 +828,7 @@ export default function RealTimeFeed() {
             <i className="ri-check-double-line text-2xl text-emerald-400 mb-2 block"></i>
             <p className="text-sm text-slate-500">
               No {sourceFilter !== 'all' ? (sourceConfig[sourceFilter]?.label ?? sourceFilter) : ''}{' '}
-              {severityFilter !== 'all' ? severityFilter : ''} signals at this time
+              {severityFilter !== 'all' ? severityFilter : ''} items require attention right now
             </p>
             <div className="flex items-center justify-center space-x-2 mt-3">
               {(sourceFilter === 'ed' || sourceFilter === 'all') && (

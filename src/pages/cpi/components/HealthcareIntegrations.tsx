@@ -350,7 +350,7 @@ export default function HealthcareIntegrations() {
       <div className="flex items-center justify-between mb-5">
         <div>
           <h2 className="text-lg font-bold text-slate-900">Healthcare System Integrations</h2>
-          <p className="text-sm text-slate-500 mt-0.5">Live data connections to clinical systems — syncing from Supabase</p>
+          <p className="text-sm text-slate-500 mt-0.5">Connector health, interoperability status, and recent sync telemetry across clinical systems</p>
         </div>
         <div className="flex items-center space-x-3">
           <div className="flex items-center space-x-2 px-3 py-1.5 bg-emerald-50 border border-emerald-100 rounded-lg">

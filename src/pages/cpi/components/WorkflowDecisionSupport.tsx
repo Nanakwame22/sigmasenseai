@@ -142,8 +142,8 @@ function buildLiveCases(metrics: MetricRecord[], metricPoints: MetricPointRecord
         { stage: 'Sense', description: 'Critical lab backlog detected from imported KPI stream', automated: true },
         { stage: 'Analyze', description: `Current backlog is ${formatMetricValue(criticalLabs.current, criticalLabs.metric?.unit)} against a zero-backlog target`, automated: true },
         { stage: 'Decide', description: 'Clinical escalation required if acknowledgement does not clear promptly', automated: true },
-        { stage: 'Act', description: 'Use Log Case to assign and track the response.', automated: false },
-        { stage: 'Learn', description: 'Resolve a logged case to feed the outcome back into CPI learning.', automated: false },
+        { stage: 'Act', description: 'Capture the assigned response in a tracked case record.', automated: false },
+        { stage: 'Learn', description: 'Resolve the resulting case to capture outcome feedback for CPI.', automated: false },
       ],
       status: 'active',
       tags: ['lab', 'escalation', 'critical-result'],
@@ -168,7 +168,7 @@ function buildLiveCases(metrics: MetricRecord[], metricPoints: MetricPointRecord
         { stage: 'Sense', description: 'Discharge backlog detected from live KPI feed', automated: true },
         { stage: 'Analyze', description: `${Math.round(discharges.current)} pending discharges remain above the target threshold of 5`, automated: true },
         { stage: 'Decide', description: 'Select the first discharge bottleneck to remove', automated: true },
-        { stage: 'Act', description: 'Use Log Case to track the chosen operational response.', automated: false },
+        { stage: 'Act', description: 'Capture the selected operational response in a tracked case record.', automated: false },
         { stage: 'Learn', description: 'Resolve a logged case to capture whether the intervention cleared the backlog.', automated: false },
       ],
       status: 'active',
@@ -194,7 +194,7 @@ function buildLiveCases(metrics: MetricRecord[], metricPoints: MetricPointRecord
         { stage: 'Sense', description: 'ED wait-time signal exceeded preferred operating range', automated: true },
         { stage: 'Analyze', description: `Live KPI shows ${formatMetricValue(wait.current, wait.metric?.unit)} versus target ${(wait.metric?.target_value ?? 30)} minutes`, automated: true },
         { stage: 'Decide', description: 'Choose between local balancing and surge activation', automated: true },
-        { stage: 'Act', description: 'Use Log Case to record the decision taken.', automated: false },
+        { stage: 'Act', description: 'Record the selected response in a tracked case record.', automated: false },
         { stage: 'Learn', description: 'Resolve the resulting case to measure whether throughput improved.', automated: false },
       ],
       status: 'active',
@@ -220,7 +220,7 @@ function buildLiveCases(metrics: MetricRecord[], metricPoints: MetricPointRecord
         { stage: 'Sense', description: 'Capacity signal detected from available-bed KPI', automated: true },
         { stage: 'Analyze', description: `Available beds are below the preferred target of ${Math.round(bedsAvailable.metric?.target_value ?? 10)}`, automated: true },
         { stage: 'Decide', description: 'Select near-term capacity recovery actions', automated: true },
-        { stage: 'Act', description: 'Use Log Case to track the recovery plan.', automated: false },
+        { stage: 'Act', description: 'Capture the recovery plan in a tracked case record.', automated: false },
         { stage: 'Learn', description: 'Resolve a logged case to capture whether the buffer recovered.', automated: false },
       ],
       status: 'active',
@@ -246,7 +246,7 @@ function buildLiveCases(metrics: MetricRecord[], metricPoints: MetricPointRecord
         { stage: 'Sense', description: 'Readmission risk exceeded the expected threshold', automated: true },
         { stage: 'Analyze', description: `Risk level is ${formatMetricValue(readmission.current, readmission.metric?.unit)} against a target of ${Math.round((readmission.metric?.target_value ?? 0.12) * 100)}%`, automated: true },
         { stage: 'Decide', description: 'Choose the first intervention target cohort', automated: true },
-        { stage: 'Act', description: 'Use Log Case to document the outreach plan.', automated: false },
+        { stage: 'Act', description: 'Document the outreach plan in a tracked case record.', automated: false },
         { stage: 'Learn', description: 'Resolve a logged case to capture outcome effectiveness.', automated: false },
       ],
       status: 'active',
@@ -272,7 +272,7 @@ function buildLiveCases(metrics: MetricRecord[], metricPoints: MetricPointRecord
         { stage: 'Sense', description: 'Staffing load rose above the preferred threshold', automated: true },
         { stage: 'Analyze', description: `Patients per nurse is ${formatMetricValue(patientsPerNurse.current, patientsPerNurse.metric?.unit)} against a target of ${patientsPerNurse.metric?.target_value ?? 4}`, automated: true },
         { stage: 'Decide', description: 'Choose the first staffing correction', automated: true },
-        { stage: 'Act', description: 'Use Log Case to track the staffing response.', automated: false },
+        { stage: 'Act', description: 'Track the staffing response in a case record.', automated: false },
         { stage: 'Learn', description: 'Resolve a logged case to capture whether staffing strain improved.', automated: false },
       ],
       status: 'active',
@@ -774,7 +774,7 @@ export default function WorkflowDecisionSupport() {
       <div className="flex items-center justify-between mb-5">
         <div>
           <h2 className="text-lg font-bold text-slate-900">Workflow-Embedded Decision Support</h2>
-          <p className="text-sm text-slate-500 mt-0.5">Clinical decision scenarios — logged, tracked, and reviewed from Supabase</p>
+          <p className="text-sm text-slate-500 mt-0.5">Operational decision cases linked to live clinical signals and review workflows</p>
         </div>
         <button
           onClick={() => setShowLogModal(true)}
@@ -854,7 +854,7 @@ export default function WorkflowDecisionSupport() {
             <i className="ri-file-list-3-line text-slate-400 text-xl"></i>
           </div>
           <p className="text-sm font-semibold text-slate-600">No {filter !== 'all' ? filter : ''} cases</p>
-          <p className="text-xs text-slate-400 mt-1">Click &ldquo;Log Case&rdquo; to record a new clinical decision scenario</p>
+            <p className="text-xs text-slate-400 mt-1">Use &ldquo;Log Case&rdquo; to document a new operational decision and follow-through</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
@@ -949,7 +949,7 @@ export default function WorkflowDecisionSupport() {
                       {c.status === 'active' && c.id.startsWith('live-case:') && (
                         <span className="text-xs text-amber-600 flex items-center space-x-1">
                           <i className="ri-information-line"></i>
-                          <span>Use Log Case to track this live signal</span>
+                          <span>Log a case to track response and accountability</span>
                         </span>
                       )}
                       {c.status === 'resolved' && c.resolved_at && (

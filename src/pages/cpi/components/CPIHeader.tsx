@@ -137,8 +137,8 @@ export default function CPIHeader() {
               </h1>
             </div>
           </div>
-          <p className="text-white/50 text-base leading-relaxed mb-1">Real-time intelligence for healthcare operations</p>
-          <p className="text-white/30 text-sm">Monitoring live signals across ED, inpatient flow, labs, staffing, and care coordination</p>
+          <p className="text-white/50 text-base leading-relaxed mb-1">Operational intelligence for healthcare delivery</p>
+          <p className="text-white/30 text-sm">Monitoring ED flow, inpatient throughput, lab escalation, staffing balance, and discharge coordination</p>
         </div>
 
         {/* Live metrics strip — pulled from Supabase */}
@@ -176,11 +176,11 @@ export default function CPIHeader() {
         <div className="mt-3 flex items-center space-x-4 flex-wrap gap-y-1">
           <div className="flex items-center space-x-1.5">
             <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></div>
-            <span className="text-xs text-white/25">Metrics sourced from live Supabase domain snapshots</span>
+            <span className="text-xs text-white/25">Operational metrics refreshed from live CPI domain telemetry</span>
           </div>
           <div className="flex items-center space-x-1.5 px-2.5 py-1 bg-teal-500/10 border border-teal-500/20 rounded-full">
             <i className="ri-arrow-left-right-line text-teal-400 text-xs"></i>
-            <span className="text-xs text-teal-400 font-medium">Syncing to Analytics Engine</span>
+            <span className="text-xs text-teal-400 font-medium">Connected to Analytics Layer</span>
             <span className="text-xs text-teal-500/60">· Forecasting · AIM · Alerts</span>
           </div>
         </div>

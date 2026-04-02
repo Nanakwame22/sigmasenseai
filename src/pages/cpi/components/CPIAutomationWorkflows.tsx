@@ -314,7 +314,7 @@ function buildWorkflowSignals(metrics: MetricRecord[], metricPoints: MetricPoint
       'Discharge readiness signal',
       discharges.current !== null
         ? `${Math.round(discharges.current)} patients are pending discharge completion${(discharges.current || 0) > 6 ? ', so coordination should be prioritized.' : '.'}`
-        : 'No live discharge backlog signal is currently available.',
+        : 'No discharge backlog requiring intervention is currently visible.',
       discharges.latestAt,
       'Prioritize pharmacy, transport, and discharge paperwork blockers first.'
     ),
@@ -323,7 +323,7 @@ function buildWorkflowSignals(metrics: MetricRecord[], metricPoints: MetricPoint
       'Bed turnover readiness',
       bedsAvailable.current !== null
         ? `${formatMetricValue(bedsAvailable.current, bedsAvailable.metric?.unit)} are available. ${((bedsAvailable.current || 0) < 8) ? 'Faster room turnover may be needed to restore safe bed buffer.' : 'Current bed buffer is acceptable.'}`
-        : 'No live bed turnover signal is currently available.',
+        : 'No bed turnover pressure is currently visible.',
       bedsAvailable.latestAt,
       'Coordinate discharge completion and housekeeping handoff for the highest-demand units.'
     ),
@@ -331,8 +331,8 @@ function buildWorkflowSignals(metrics: MetricRecord[], metricPoints: MetricPoint
       (bedsAvailable.current || 0) < 8 || (discharges.current || 0) > 6 ? 'warning' : 'info',
       'Transfer flow check',
       bedsAvailable.current !== null && discharges.current !== null
-        ? `Available beds: ${formatMetricValue(bedsAvailable.current, bedsAvailable.metric?.unit)}. Pending discharges: ${Math.round(discharges.current)}. Transfer velocity will matter if pressure keeps rising.`
-        : 'No live transfer pressure signal is currently available.',
+        ? `Available beds: ${formatMetricValue(bedsAvailable.current, bedsAvailable.metric?.unit)}. Pending discharges: ${Math.round(discharges.current)}. Transfer pacing will matter if bed pressure continues to build.`
+        : 'No transfer pressure requiring intervention is currently visible.',
       bedsAvailable.latestAt ?? discharges.latestAt,
       'Review receiving-unit readiness and move the clearest transfer candidates first.'
     ),
@@ -341,7 +341,7 @@ function buildWorkflowSignals(metrics: MetricRecord[], metricPoints: MetricPoint
       'Staffing load signal',
       patientsPerNurse.current !== null
         ? `Patients per nurse is ${formatMetricValue(patientsPerNurse.current, patientsPerNurse.metric?.unit)}${(patientsPerNurse.current || 0) > 5 ? ', which suggests reallocation pressure.' : ', which is within preferred range.'}`
-        : 'No live staffing load signal is currently available.',
+        : 'No staffing load imbalance requiring action is currently visible.',
       patientsPerNurse.latestAt,
       'Check float coverage and rebalance the highest-load unit first.'
     ),
@@ -350,7 +350,7 @@ function buildWorkflowSignals(metrics: MetricRecord[], metricPoints: MetricPoint
       'Readmission follow-up signal',
       readmission.current !== null
         ? `Readmission risk is ${formatMetricValue(readmission.current, readmission.metric?.unit)}${(readmission.current || 0) > 0.12 ? ', so follow-up intervention is recommended.' : ', which is within the current threshold.'}`
-        : 'No live readmission risk signal is currently available.',
+        : 'No elevated readmission follow-up demand is currently visible.',
       readmission.latestAt,
       'Prioritize the highest-risk discharges for navigator outreach.'
     ),
@@ -358,8 +358,8 @@ function buildWorkflowSignals(metrics: MetricRecord[], metricPoints: MetricPoint
       (wait.current || 0) > 45 ? 'critical' : (wait.current || 0) > 30 ? 'warning' : 'info',
       'ED surge watch',
       wait.current !== null
-        ? `ED wait time is ${formatMetricValue(wait.current, wait.metric?.unit)}${(wait.current || 0) > 45 ? ', which indicates acute congestion pressure.' : '.'}`
-        : 'No live ED surge signal is currently available.',
+        ? `ED wait time is ${formatMetricValue(wait.current, wait.metric?.unit)}${(wait.current || 0) > 45 ? ', indicating acute congestion pressure.' : '.'}`
+        : 'No ED surge condition requiring action is currently visible.',
       wait.latestAt,
       'Review intake and throughput bottlenecks before diversion thresholds are crossed.'
     ),
@@ -368,7 +368,7 @@ function buildWorkflowSignals(metrics: MetricRecord[], metricPoints: MetricPoint
       'Critical lab escalation watch',
       criticalLabs.current !== null
         ? `${Math.round(criticalLabs.current)} critical lab result${criticalLabs.current === 1 ? '' : 's'} remain unacknowledged${(criticalLabs.current || 0) > 0 ? ', which needs escalation.' : '.'}`
-        : 'No live lab escalation signal is currently available.',
+        : 'No lab escalation requiring action is currently visible.',
       criticalLabs.latestAt,
       'Escalate to the covering clinician if acknowledgement does not clear quickly.'
     ),
@@ -639,7 +639,7 @@ export default function CPIAutomationWorkflows() {
       <div className="flex items-center justify-between mb-5">
         <div>
           <h2 className="text-lg font-bold text-slate-900">Healthcare Automation &amp; Workflows</h2>
-          <p className="text-sm text-slate-500 mt-0.5">Trigger-based automations embedded into clinical workflows</p>
+          <p className="text-sm text-slate-500 mt-0.5">Operational automations embedded into clinical and care-delivery workflows</p>
         </div>
         <div className="flex items-center space-x-2">
           <div className="px-3 py-1.5 bg-slate-50 border border-slate-100 rounded-lg">
@@ -796,12 +796,12 @@ export default function CPIAutomationWorkflows() {
                           <i className={`ri-notification-3-line text-xs ${unackedCount > 0 ? 'text-rose-600' : 'text-slate-500'}`}></i>
                         </div>
                         <div>
-                          <p className="text-xs font-semibold text-slate-700">
-                            {unackedCount > 0
-                              ? `${unackedCount} unacknowledged alert${unackedCount > 1 ? 's' : ''}`
-                              : 'No active alerts'}
-                          </p>
-                          <p className="text-xs text-slate-400">in Command Center feed · {wf.feedCategory.toUpperCase()} channel</p>
+                      <p className="text-xs font-semibold text-slate-700">
+                        {unackedCount > 0
+                          ? `${unackedCount} unacknowledged alert${unackedCount > 1 ? 's' : ''}`
+                          : 'No active alerts'}
+                      </p>
+                      <p className="text-xs text-slate-400">in Command Center feed · {wf.feedCategory.toUpperCase()} channel</p>
                         </div>
                       </div>
                       <div className="border-l border-slate-200 pl-3">
@@ -860,7 +860,7 @@ export default function CPIAutomationWorkflows() {
                         </p>
                         <p className="text-xs text-slate-600 mt-0.5">{signal.detail}</p>
                         <p className="text-xs text-slate-500 mt-1">
-                          Suggested action: {signal.suggestedAction}
+                          Recommended next step: {signal.suggestedAction}
                           {signal.lastSeen ? ` · Updated ${formatLastRun(signal.lastSeen)}` : ''}
                         </p>
                       </div>
