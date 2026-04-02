@@ -16,6 +16,7 @@ interface Pipeline {
   failed_runs: number;
   records_processed: number;
   transformation_rules?: {
+    operations?: TransformationOperation[];
     field_mappings?: FieldMapping[];
   };
 }
@@ -43,6 +44,13 @@ interface FieldMapping {
   sourceField: string;
   destinationType: 'metric_name' | 'value' | 'timestamp' | 'unit';
   targetMetricId?: string;
+}
+
+interface TransformationOperation {
+  type: 'filter';
+  field: string;
+  condition: 'equals' | 'not_equals' | 'contains' | 'greater_than' | 'less_than';
+  value: string;
 }
 
 function extractDataFromJsonPath(data: unknown, path: string): Record<string, unknown>[] {
@@ -113,6 +121,84 @@ function calculateNextRun(schedule: string): string {
   }
 
   return next.toISOString();
+}
+
+function applyTransformationOperations(
+  records: Record<string, unknown>[],
+  operations: TransformationOperation[]
+): {
+  records: Record<string, unknown>[];
+  operationsApplied: number;
+  excludedRecords: number;
+  operationSummaries: Array<Record<string, unknown>>;
+} {
+  if (!operations.length) {
+    return {
+      records,
+      operationsApplied: 0,
+      excludedRecords: 0,
+      operationSummaries: [],
+    };
+  }
+
+  let transformedRecords = [...records];
+  const operationSummaries: Array<Record<string, unknown>> = [];
+  let excludedRecords = 0;
+
+  for (const operation of operations) {
+    if (operation.type !== 'filter' || !operation.field || operation.value === undefined) {
+      continue;
+    }
+
+    const beforeCount = transformedRecords.length;
+
+    transformedRecords = transformedRecords.filter((record) => {
+      const rawValue = record[operation.field];
+      const left = rawValue === null || rawValue === undefined ? '' : String(rawValue).trim();
+      const right = String(operation.value ?? '').trim();
+
+      switch (operation.condition) {
+        case 'equals':
+          return left === right;
+        case 'not_equals':
+          return left !== right;
+        case 'contains':
+          return left.toLowerCase().includes(right.toLowerCase());
+        case 'greater_than': {
+          const leftNumber = Number(String(rawValue ?? '').replace(/,/g, '').trim());
+          const rightNumber = Number(right.replace(/,/g, '').trim());
+          if (Number.isNaN(leftNumber) || Number.isNaN(rightNumber)) return false;
+          return leftNumber > rightNumber;
+        }
+        case 'less_than': {
+          const leftNumber = Number(String(rawValue ?? '').replace(/,/g, '').trim());
+          const rightNumber = Number(right.replace(/,/g, '').trim());
+          if (Number.isNaN(leftNumber) || Number.isNaN(rightNumber)) return false;
+          return leftNumber < rightNumber;
+        }
+        default:
+          return true;
+      }
+    });
+
+    const removed = beforeCount - transformedRecords.length;
+    excludedRecords += removed;
+    operationSummaries.push({
+      type: operation.type,
+      field: operation.field,
+      condition: operation.condition,
+      value: operation.value,
+      removed_records: removed,
+      remaining_records: transformedRecords.length,
+    });
+  }
+
+  return {
+    records: transformedRecords,
+    operationsApplied: operationSummaries.length,
+    excludedRecords,
+    operationSummaries,
+  };
 }
 
 async function logIngestionEvent(
@@ -308,6 +394,30 @@ serve(async (req) => {
       });
     }
 
+    const operations = Array.isArray(pipeline.transformation_rules?.operations)
+      ? pipeline.transformation_rules?.operations
+      : [];
+    const operationResult = applyTransformationOperations(records, operations);
+    records = operationResult.records;
+
+    if (operationResult.operationsApplied > 0) {
+      await logIngestionEvent(adminClient, {
+        organization_id: organizationId,
+        pipeline_id: pipelineId,
+        run_id: runId,
+        source_id: sourceId,
+        level: operationResult.excludedRecords > 0 ? 'info' : 'warning',
+        stage: 'transform',
+        message: 'Applied transformation operations to source records',
+        details: {
+          operations_applied: operationResult.operationsApplied,
+          excluded_records: operationResult.excludedRecords,
+          remaining_records: records.length,
+          operations: operationResult.operationSummaries,
+        },
+      });
+    }
+
     const mappings = pipeline.transformation_rules?.field_mappings || [];
     const metricNameMapping = mappings.find((m) => m.destinationType === 'metric_name');
     const valueMapping = mappings.find((m) => m.destinationType === 'value');
@@ -340,6 +450,7 @@ serve(async (req) => {
       details: {
         records_received: records.length,
         mapping_count: mappings.length,
+        operations_applied: operationResult.operationsApplied,
       },
     });
 
@@ -459,6 +570,7 @@ serve(async (req) => {
           records_received: records.length,
           records_success: recordsSuccess,
           records_failed: recordsFailed,
+          excluded_by_operations: operationResult.excludedRecords,
           sample_failures: failureSamples,
         },
       });
@@ -533,6 +645,8 @@ serve(async (req) => {
         records_processed: records.length,
         records_success: recordsSuccess,
         records_failed: recordsFailed,
+        excluded_by_operations: operationResult.excludedRecords,
+        operations_applied: operationResult.operationsApplied,
         duration_seconds: durationSeconds,
       },
     });
@@ -545,6 +659,8 @@ serve(async (req) => {
       records_processed: records.length,
       records_success: recordsSuccess,
       records_failed: recordsFailed,
+      excluded_by_operations: operationResult.excludedRecords,
+      operations_applied: operationResult.operationsApplied,
       duration_seconds: durationSeconds,
       message: runStatus === 'partial'
         ? `Pipeline completed with warnings: ${recordsSuccess} records ingested, ${recordsFailed} failed`
