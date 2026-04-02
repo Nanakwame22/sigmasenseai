@@ -167,6 +167,10 @@ export default function DataMappingPage() {
   const [fieldInsights, setFieldInsights] = useState<FieldInsight[]>([]);
   const [fieldMappings, setFieldMappings] = useState<FieldMapping[]>([]);
   const [loadingPreview, setLoadingPreview] = useState(false);
+  const [creatingPipeline, setCreatingPipeline] = useState(false);
+  const [newPipelineName, setNewPipelineName] = useState('');
+  const [newPipelineDescription, setNewPipelineDescription] = useState('');
+  const [newPipelineSchedule, setNewPipelineSchedule] = useState<'hourly' | 'daily' | 'weekly' | 'monthly'>('daily');
 
   useEffect(() => {
     loadPageData();
@@ -372,11 +376,6 @@ export default function DataMappingPage() {
   const totalOperations = pipelines.reduce((sum, pipeline) => sum + ((pipeline.transformation_rules?.operations || []).length), 0);
 
   const saveMappings = async () => {
-    if (!selectedPipeline) {
-      showToast('Select an ETL pipeline before saving mappings', 'error');
-      return;
-    }
-
     if (!selectedSourceId) {
       showToast('Select a data source before saving mappings', 'error');
       return;
@@ -395,37 +394,96 @@ export default function DataMappingPage() {
 
     try {
       setSaving(true);
+      if (selectedPipeline) {
+        const nextRules = {
+          ...(selectedPipeline.transformation_rules || {}),
+          field_mappings: fieldMappings,
+        };
 
-      const nextRules = {
-        ...(selectedPipeline.transformation_rules || {}),
-        field_mappings: fieldMappings,
-      };
+        const { error } = await supabase
+          .from('etl_pipelines')
+          .update({
+            source_id: selectedSourceId,
+            transformation_rules: nextRules,
+          })
+          .eq('id', selectedPipeline.id);
 
-      const { error } = await supabase
-        .from('etl_pipelines')
-        .update({
-          source_id: selectedSourceId,
-          transformation_rules: nextRules,
-        })
-        .eq('id', selectedPipeline.id);
+        if (error) throw error;
 
-      if (error) throw error;
+        setPipelines((current) =>
+          current.map((pipeline) =>
+            pipeline.id === selectedPipeline.id
+              ? { ...pipeline, source_id: selectedSourceId, transformation_rules: nextRules }
+              : pipeline
+          )
+        );
 
-      setPipelines((current) =>
-        current.map((pipeline) =>
-          pipeline.id === selectedPipeline.id
-            ? { ...pipeline, source_id: selectedSourceId, transformation_rules: nextRules }
-            : pipeline
-        )
-      );
+        showToast('Mapping rules saved to the selected pipeline', 'success');
+        return;
+      }
 
-      showToast('Mapping rules saved to the selected pipeline', 'success');
+      await createPipelineFromMappings();
     } catch (error) {
       console.error('Error saving mapping rules:', error);
       showToast('Failed to save mapping rules', 'error');
     } finally {
       setSaving(false);
     }
+  };
+
+  const createPipelineFromMappings = async () => {
+    if (!user) {
+      showToast('You need to be signed in to create a pipeline', 'error');
+      return;
+    }
+
+    if (!selectedSourceId) {
+      showToast('Select a source before creating a pipeline', 'error');
+      return;
+    }
+
+    const orgId = await resolveOrganizationId();
+    if (!orgId) {
+      showToast('Unable to resolve your organization', 'error');
+      return;
+    }
+
+    const defaultName = selectedSource
+      ? `${selectedSource.name} Pipeline`
+      : 'New Data Mapping Pipeline';
+    const pipelineName = newPipelineName.trim() || defaultName;
+
+    const payload = {
+      organization_id: orgId,
+      name: pipelineName,
+      description: newPipelineDescription.trim() || `Created from the Data Mapping workspace for ${selectedSource?.name || 'a connected source'}.`,
+      source_id: selectedSourceId,
+      destination_type: 'metrics',
+      schedule: newPipelineSchedule,
+      transformation_rules: {
+        operations: [],
+        field_mappings: fieldMappings,
+      },
+      status: 'draft',
+      created_by: user.id,
+    };
+
+    const { data, error } = await supabase
+      .from('etl_pipelines')
+      .insert([payload])
+      .select('id, name, source_id, status, destination_type, transformation_rules, updated_at')
+      .single();
+
+    if (error) throw error;
+
+    const createdPipeline = data as Pipeline;
+    setPipelines((current) => [createdPipeline, ...current]);
+    setSelectedPipelineId(createdPipeline.id);
+    setCreatingPipeline(false);
+    setNewPipelineName('');
+    setNewPipelineDescription('');
+    setNewPipelineSchedule('daily');
+    showToast('New ETL pipeline created from this mapping', 'success');
   };
 
   const addMappingRule = () => {
@@ -733,8 +791,55 @@ export default function DataMappingPage() {
                       </option>
                     ))}
                   </select>
+                  <div className="mt-2 flex items-center justify-between gap-3">
+                    <p className="text-xs text-slate-500">No pipeline selected? Create one directly from this mapping workspace.</p>
+                    <button
+                      onClick={() => setCreatingPipeline((current) => !current)}
+                      className="text-xs font-medium text-teal-700 hover:text-teal-800 whitespace-nowrap"
+                    >
+                      {creatingPipeline ? 'Cancel' : 'Create pipeline'}
+                    </button>
+                  </div>
                 </div>
               </div>
+
+              {creatingPipeline && (
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 p-4 rounded-xl border border-teal-100 bg-teal-50/50">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">Pipeline name</label>
+                    <input
+                      type="text"
+                      value={newPipelineName}
+                      onChange={(event) => setNewPipelineName(event.target.value)}
+                      placeholder={selectedSource ? `${selectedSource.name} Pipeline` : 'New Data Mapping Pipeline'}
+                      className="w-full px-4 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">Schedule</label>
+                    <select
+                      value={newPipelineSchedule}
+                      onChange={(event) => setNewPipelineSchedule(event.target.value as 'hourly' | 'daily' | 'weekly' | 'monthly')}
+                      className="w-full px-4 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                    >
+                      <option value="hourly">Hourly</option>
+                      <option value="daily">Daily</option>
+                      <option value="weekly">Weekly</option>
+                      <option value="monthly">Monthly</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">Description</label>
+                    <input
+                      type="text"
+                      value={newPipelineDescription}
+                      onChange={(event) => setNewPipelineDescription(event.target.value)}
+                      placeholder="Optional description"
+                      className="w-full px-4 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                    />
+                  </div>
+                </div>
+              )}
 
               {selectedPipeline ? (
                 <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
@@ -761,8 +866,8 @@ export default function DataMappingPage() {
                   <div className="w-14 h-14 bg-white rounded-full flex items-center justify-center mx-auto mb-4 border border-slate-200">
                     <i className="ri-git-branch-line text-slate-400 text-2xl"></i>
                   </div>
-                  <h3 className="text-lg font-semibold text-slate-900">Pick a real pipeline to edit</h3>
-                  <p className="text-sm text-slate-600 mt-2">This page now edits live mappings stored in `etl_pipelines.transformation_rules.field_mappings`.</p>
+                  <h3 className="text-lg font-semibold text-slate-900">Pick a real pipeline to edit or create one here</h3>
+                  <p className="text-sm text-slate-600 mt-2">This page now edits live mappings stored in `etl_pipelines.transformation_rules.field_mappings`, and it can create a new ETL pipeline when you need one.</p>
                 </div>
               )}
 
