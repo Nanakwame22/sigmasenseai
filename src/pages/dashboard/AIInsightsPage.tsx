@@ -93,15 +93,17 @@ export default function AIInsightsPage() {
   }, [organizationId]);
 
   const loadAIInsights = async () => {
+    if (!organizationId) return;
+
     try {
       setLoadingInsights(true);
       
       // Load predictive alerts
-      const alerts = await generatePredictiveAlerts();
+      const alerts = await generatePredictiveAlerts(organizationId);
       setPredictiveAlerts(alerts);
 
       // Load recommendations
-      const recs = await generateRecommendations();
+      const recs = await generateRecommendations(organizationId);
       setRecommendations(recs);
 
       // Load patterns from first metric

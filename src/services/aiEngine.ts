@@ -428,7 +428,7 @@ export async function generateAdvancedForecast(
 }
 
 // Generate recommendations based on real data
-export async function generateRecommendations(): Promise<Recommendation[]> {
+export async function generateRecommendations(organizationId: string): Promise<Recommendation[]> {
   try {
     const recommendations: Recommendation[] = [];
 
@@ -436,17 +436,19 @@ export async function generateRecommendations(): Promise<Recommendation[]> {
     const { data: metrics } = await supabase
       .from('metrics')
       .select('*')
+      .eq('organization_id', organizationId)
       .order('created_at', { ascending: false })
       .limit(10);
 
     if (metrics) {
       for (const metric of metrics) {
-        const { data: metricData } = await supabase
-          .from('metric_data')
-          .select('value')
-          .eq('metric_id', metric.id)
-          .order('date', { ascending: false })
-          .limit(30);
+          const { data: metricData } = await supabase
+            .from('metric_data')
+            .select('value')
+            .eq('metric_id', metric.id)
+            .eq('organization_id', organizationId)
+            .order('timestamp', { ascending: false })
+            .limit(30);
 
         if (metricData && metricData.length >= 10) {
           const values = metricData.map(d => d.value);
@@ -490,6 +492,7 @@ export async function generateRecommendations(): Promise<Recommendation[]> {
     const { data: qualityResults } = await supabase
       .from('data_quality_results')
       .select('*')
+      .eq('organization_id', organizationId)
       .eq('status', 'failed')
       .order('checked_at', { ascending: false })
       .limit(20);
@@ -522,6 +525,7 @@ export async function generateRecommendations(): Promise<Recommendation[]> {
     const { data: projects } = await supabase
       .from('dmaic_projects')
       .select('*')
+      .eq('organization_id', organizationId)
       .eq('status', 'in_progress')
       .not('target_completion_date', 'is', null);
 
@@ -568,7 +572,7 @@ export async function generateRecommendations(): Promise<Recommendation[]> {
 }
 
 // Generate predictive alerts with literal interpretations
-export async function generatePredictiveAlerts(): Promise<PredictiveAlert[]> {
+export async function generatePredictiveAlerts(organizationId: string): Promise<PredictiveAlert[]> {
   try {
     const alerts: PredictiveAlert[] = [];
 
@@ -576,6 +580,7 @@ export async function generatePredictiveAlerts(): Promise<PredictiveAlert[]> {
     const { data: metrics } = await supabase
       .from('metrics')
       .select('*')
+      .eq('organization_id', organizationId)
       .order('created_at', { ascending: false })
       .limit(20);
 
@@ -586,6 +591,7 @@ export async function generatePredictiveAlerts(): Promise<PredictiveAlert[]> {
           .from('metric_data')
           .select('value, timestamp')
           .eq('metric_id', metric.id)
+          .eq('organization_id', organizationId)
           .order('timestamp', { ascending: false })
           .limit(30);
 
@@ -652,6 +658,7 @@ export async function generatePredictiveAlerts(): Promise<PredictiveAlert[]> {
     const { data: qualityResults } = await supabase
       .from('data_quality_results')
       .select('*, data_quality_checks(*)')
+      .eq('organization_id', organizationId)
       .eq('status', 'failed')
       .order('checked_at', { ascending: false })
       .limit(15);
