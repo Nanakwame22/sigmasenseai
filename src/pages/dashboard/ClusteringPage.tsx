@@ -39,6 +39,29 @@ const getErrorMessage = (error: unknown) => {
   return 'Failed to run clustering analysis';
 };
 
+const getClusteringNarrative = (analysis: ClusteringAnalysis) => {
+  const silhouette = Number(analysis.metrics?.silhouette_score || 0);
+  const largestCluster = analysis.clusters?.clusters?.reduce((largest: any, cluster: any) => {
+    if (!largest || cluster.size > largest.size) return cluster;
+    return largest;
+  }, null);
+
+  const separation =
+    silhouette >= 0.7 ? 'well separated' :
+    silhouette >= 0.5 ? 'fairly distinct' :
+    'still overlapping and should be interpreted carefully';
+
+  return {
+    summary: `This analysis found ${analysis.num_clusters} groups in your data. The groups are ${separation}, which means the segmentation is ${silhouette >= 0.5 ? 'useful for understanding patterns' : 'more exploratory than decisive'} right now.`,
+    largest: largestCluster
+      ? `${largestCluster.name} is the biggest group so far, representing ${(largestCluster.size / Math.max(1, Number(analysis.metrics?.num_points || 1)) * 100).toFixed(1)}% of the analyzed records.`
+      : 'No dominant group could be identified yet.',
+    guidance: silhouette >= 0.5
+      ? 'Use these clusters to tailor workflows, interventions, or reporting by segment instead of treating every record the same way.'
+      : 'Try different features or a different number of clusters before using this analysis operationally.',
+  };
+};
+
 export default function ClusteringPage() {
   const { user, organizationId } = useAuth();
   const { showToast } = useToast();
@@ -638,6 +661,16 @@ export default function ClusteringPage() {
             <div className="text-xs text-gray-500 pt-3 border-t border-gray-100">
               Created {new Date(analysis.created_at).toLocaleDateString()}
             </div>
+
+            <div className="mt-4 bg-slate-50 border border-slate-200 rounded-lg p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <i className="ri-chat-1-line text-teal-600"></i>
+                <span className="text-sm font-semibold text-slate-900">What this means</span>
+              </div>
+              <p className="text-sm text-slate-700 leading-relaxed">
+                {getClusteringNarrative(analysis).summary}
+              </p>
+            </div>
           </div>
         ))}
       </div>
@@ -827,6 +860,18 @@ export default function ClusteringPage() {
                 </div>
               </div>
             )}
+
+            <div className="bg-gradient-to-br from-teal-50 to-cyan-50 border border-teal-200 rounded-lg p-5 mb-6">
+              <div className="flex items-center gap-2 mb-3">
+                <i className="ri-chat-quote-line text-teal-600"></i>
+                <h3 className="font-semibold text-slate-900">Plain-English Summary</h3>
+              </div>
+              <div className="space-y-3 text-sm text-slate-700 leading-relaxed">
+                <p>{getClusteringNarrative(selectedAnalysis).summary}</p>
+                <p>{getClusteringNarrative(selectedAnalysis).largest}</p>
+                <p>{getClusteringNarrative(selectedAnalysis).guidance}</p>
+              </div>
+            </div>
 
             {/* Scatter Plot */}
             <div className="bg-gray-50 rounded-lg p-4 mb-6">

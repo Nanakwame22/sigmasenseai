@@ -208,6 +208,36 @@ const deriveModelMetricsFromSource = (
   };
 };
 
+const getClassificationNarrative = (model: ClassificationModel) => {
+  const accuracy = model.accuracy || 0;
+  const recall = model.recall || 0;
+  const precision = model.precision_score || 0;
+  const strongestFeature = model.feature_importance?.[0]?.feature || 'the top-ranked feature';
+
+  const reliability =
+    accuracy >= 0.9 ? 'very reliable' :
+    accuracy >= 0.8 ? 'reasonably reliable' :
+    'still early and should be used with caution';
+
+  const missRisk =
+    recall >= 0.9 ? 'it is catching most of the cases you care about' :
+    recall >= 0.75 ? 'it is catching many of the important cases, but not all of them' :
+    'it is still missing too many important cases';
+
+  const falsePositiveRisk =
+    precision >= 0.9 ? 'When it flags a case, it is usually right.' :
+    precision >= 0.75 ? 'When it flags a case, it is often right, but some flagged cases will be false alarms.' :
+    'It currently produces a noticeable number of false alarms.';
+
+  return {
+    summary: `This model is ${reliability}. In plain terms, ${missRisk} ${falsePositiveRisk}`,
+    driver: `${strongestFeature} is currently the strongest driver in the model, which means changes in that field influence predictions more than the other selected inputs.`,
+    guidance: accuracy >= 0.8
+      ? 'This is good enough to support prioritization and early warning workflows, but people should still review the outcome before acting.'
+      : 'This should be treated as directional guidance for now. Improve the source data or target labeling before using it for important decisions.',
+  };
+};
+
 export default function ClassificationPage() {
   const { user, organizationId } = useAuth();
   const { showToast } = useToast();
@@ -577,6 +607,16 @@ export default function ClassificationPage() {
             <div className="text-xs text-gray-500 pt-3 border-t border-gray-100">
               Trained {new Date(model.created_at).toLocaleDateString()}
             </div>
+
+            <div className="mt-4 bg-slate-50 border border-slate-200 rounded-lg p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <i className="ri-chat-1-line text-teal-600"></i>
+                <span className="text-sm font-semibold text-slate-900">What this means</span>
+              </div>
+              <p className="text-sm text-slate-700 leading-relaxed">
+                {getClassificationNarrative(model).summary}
+              </p>
+            </div>
           </div>
         ))}
       </div>
@@ -797,6 +837,18 @@ export default function ClassificationPage() {
                     <li><strong>F1 Score:</strong> Harmonic mean of precision and recall. Best overall metric when you need balance.</li>
                   </ul>
                 </div>
+              </div>
+            </div>
+
+            <div className="bg-gradient-to-br from-teal-50 to-cyan-50 border border-teal-200 rounded-lg p-5 mb-6">
+              <div className="flex items-center gap-2 mb-3">
+                <i className="ri-chat-quote-line text-teal-600"></i>
+                <h3 className="font-semibold text-slate-900">Plain-English Summary</h3>
+              </div>
+              <div className="space-y-3 text-sm text-slate-700 leading-relaxed">
+                <p>{getClassificationNarrative(selectedModel).summary}</p>
+                <p>{getClassificationNarrative(selectedModel).driver}</p>
+                <p>{getClassificationNarrative(selectedModel).guidance}</p>
               </div>
             </div>
 

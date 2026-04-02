@@ -96,6 +96,28 @@ const calculateStdDev = (values: number[]) => {
   return Math.sqrt(variance);
 };
 
+const getControlNarrative = (state: ForecastState) => {
+  const stability =
+    state.outOfControlCount === 0 ? 'stable' :
+    state.outOfControlCount <= 2 ? 'showing early warning signs' :
+    'unstable and needs attention';
+
+  const drift =
+    state.driftRisk < 3 ? 'very low' :
+    state.driftRisk < 6 ? 'moderate' :
+    'high';
+
+  return {
+    summary: `${state.metricName} is currently ${stability}. In simple terms, the process is ${state.currentValue <= state.targetValue ? 'meeting or beating the goal' : 'running above the desired goal'} and the near-term drift risk is ${drift}.`,
+    trend: state.forecastSlope > 0
+      ? 'Recent values are trending upward, so the process may continue drifting away from the target if nothing changes.'
+      : 'Recent values are stable or improving, which suggests the process is holding its gains for now.',
+    guidance: state.driftRisk >= 6 || state.outOfControlCount > 0
+      ? 'This is a good moment for an operational review and closer monitoring, but it is not automatically a full process failure.'
+      : 'This looks healthy enough for routine monitoring, with the focus on preventing backsliding.',
+  };
+};
+
 const ControlPage = () => {
   const { organizationId } = useAuth();
   const [selectedChart, setSelectedChart] = useState<'xbar-r' | 'i-mr' | 'p-chart' | 'c-chart' | 'u-chart'>('i-mr');
@@ -622,6 +644,18 @@ const ControlPage = () => {
                 <span>Baseline</span>
                 <span className="font-semibold text-slate-900">Current: {forecastState.sustainabilityPct.toFixed(0)}%</span>
                 <span>Target: 95%</span>
+              </div>
+
+              <div className="mt-6 p-5 bg-gradient-to-br from-teal-50 to-cyan-50 rounded-xl border border-teal-200">
+                <div className="flex items-center gap-2 mb-3">
+                  <i className="ri-chat-quote-line text-teal-600"></i>
+                  <h3 className="text-sm font-bold text-slate-900">What this means in plain English</h3>
+                </div>
+                <div className="space-y-2 text-sm text-slate-700 leading-relaxed">
+                  <p>{getControlNarrative(forecastState).summary}</p>
+                  <p>{getControlNarrative(forecastState).trend}</p>
+                  <p>{getControlNarrative(forecastState).guidance}</p>
+                </div>
               </div>
             </div>
           </div>
