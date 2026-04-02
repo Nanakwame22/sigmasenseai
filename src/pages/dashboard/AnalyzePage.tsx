@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import InsightSummary from '../../components/common/InsightSummary';
 
 interface MetricCardProps {
   label: string;
@@ -84,6 +85,13 @@ interface TrackerItem {
   selected: boolean;
 }
 
+interface MetricOption {
+  id: string;
+  name: string;
+  values: number[];
+  sampleSize: number;
+}
+
 const AnalyzePage = () => {
   const [searchParams] = useSearchParams();
   const navigateTo = useNavigate();
@@ -96,76 +104,14 @@ const AnalyzePage = () => {
   const [selectedProject, setSelectedProject] = useState(
     projectNameFromDMAIC || 'Healthcare Wait Time Reduction'
   );
-  const [selectedDataset, setSelectedDataset] = useState('Patient Flow Data Q1-Q4 2024');
-  const [outcomeVariable, setOutcomeVariable] = useState('Wait Time (minutes)');
+  const [selectedDataset, setSelectedDataset] = useState('Recent Metric History');
+  const [outcomeVariable, setOutcomeVariable] = useState('');
   const [modelType, setModelType] = useState('Linear Regression');
   const [showAIPanel, setShowAIPanel] = useState(false);
   const [activeTab, setActiveTab] = useState('residual');
-  const [selectedVariables, setSelectedVariables] = useState<string[]>([
-    'Patient Volume',
-    'Staff Count',
-    'Time of Day',
-    'Day of Week'
-  ]);
-
-  const availableVariables = [
-    'Patient Volume',
-    'Staff Count',
-    'Time of Day',
-    'Day of Week',
-    'Appointment Type',
-    'Provider Experience',
-    'Room Availability',
-    'Season',
-    'Holiday Flag'
-  ];
-
-  const coefficientData: CoefficientData[] = [
-    {
-      variable: 'Patient Volume',
-      coefficient: 2.34,
-      standardizedBeta: 0.68,
-      tStatistic: 12.45,
-      pValue: 0.0001,
-      vif: 1.23,
-      confidenceInterval: '[1.98, 2.70]',
-      significance: 'High',
-      impactLevel: 'High'
-    },
-    {
-      variable: 'Staff Count',
-      coefficient: -3.12,
-      standardizedBeta: -0.54,
-      tStatistic: -9.87,
-      pValue: 0.0001,
-      vif: 1.45,
-      confidenceInterval: '[-3.74, -2.50]',
-      significance: 'High',
-      impactLevel: 'High'
-    },
-    {
-      variable: 'Time of Day',
-      coefficient: 1.45,
-      standardizedBeta: 0.32,
-      tStatistic: 5.67,
-      pValue: 0.0023,
-      vif: 1.89,
-      confidenceInterval: '[0.95, 1.95]',
-      significance: 'High',
-      impactLevel: 'Moderate'
-    },
-    {
-      variable: 'Day of Week',
-      coefficient: 0.78,
-      standardizedBeta: 0.18,
-      tStatistic: 2.34,
-      pValue: 0.0456,
-      vif: 1.12,
-      confidenceInterval: '[0.12, 1.44]',
-      significance: 'Moderate',
-      impactLevel: 'Low'
-    }
-  ];
+  const [selectedVariables, setSelectedVariables] = useState<string[]>([]);
+  const [availableMetrics, setAvailableMetrics] = useState<MetricOption[]>([]);
+  const [analysisLoading, setAnalysisLoading] = useState(true);
 
   const toggleVariable = (variable: string) => {
     setSelectedVariables(prev =>
@@ -201,11 +147,197 @@ const AnalyzePage = () => {
   const [trackerGlobalDueDate, setTrackerGlobalDueDate] = useState('');
   const [trackerItems, setTrackerItems] = useState<TrackerItem[]>([]);
 
+  useEffect(() => {
+    if (organization?.id) {
+      loadAnalysisData();
+    }
+  }, [organization?.id]);
+
+  useEffect(() => {
+    if (availableMetrics.length === 0) return;
+
+    if (!outcomeVariable || !availableMetrics.some((metric) => metric.name === outcomeVariable)) {
+      setOutcomeVariable(availableMetrics[0].name);
+    }
+  }, [availableMetrics, outcomeVariable]);
+
+  useEffect(() => {
+    if (!outcomeVariable || availableMetrics.length === 0) return;
+
+    const suggestedDrivers = availableMetrics
+      .filter((metric) => metric.name !== outcomeVariable)
+      .slice(0, 4)
+      .map((metric) => metric.name);
+
+    setSelectedVariables((current) => {
+      const validCurrent = current.filter((variable) => availableMetrics.some((metric) => metric.name === variable) && variable !== outcomeVariable);
+      return validCurrent.length > 0 ? validCurrent : suggestedDrivers;
+    });
+  }, [availableMetrics, outcomeVariable]);
+
+  const mean = (values: number[]) => values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
+  const standardDeviation = (values: number[]) => {
+    if (values.length < 2) return 0;
+    const avg = mean(values);
+    return Math.sqrt(values.reduce((sum, value) => sum + Math.pow(value - avg, 2), 0) / values.length);
+  };
+
+  const correlation = (left: number[], right: number[]) => {
+    const count = Math.min(left.length, right.length);
+    if (count < 3) return 0;
+    const leftSlice = left.slice(-count);
+    const rightSlice = right.slice(-count);
+    const leftMean = mean(leftSlice);
+    const rightMean = mean(rightSlice);
+
+    let numerator = 0;
+    let leftVariance = 0;
+    let rightVariance = 0;
+
+    for (let index = 0; index < count; index += 1) {
+      const leftDelta = leftSlice[index] - leftMean;
+      const rightDelta = rightSlice[index] - rightMean;
+      numerator += leftDelta * rightDelta;
+      leftVariance += leftDelta * leftDelta;
+      rightVariance += rightDelta * rightDelta;
+    }
+
+    const denominator = Math.sqrt(leftVariance * rightVariance);
+    return denominator === 0 ? 0 : numerator / denominator;
+  };
+
+  const loadAnalysisData = async () => {
+    if (!organization?.id) return;
+
+    setAnalysisLoading(true);
+    try {
+      const { data: metricsData, error } = await supabase
+        .from('metrics')
+        .select('id, name')
+        .eq('organization_id', organization.id)
+        .order('name', { ascending: true });
+
+      if (error) throw error;
+
+      const metricOptions = await Promise.all(
+        (metricsData || []).map(async (metric) => {
+          const { data: historyData } = await supabase
+            .from('metric_data')
+            .select('value, timestamp')
+            .eq('metric_id', metric.id)
+            .eq('organization_id', organization.id)
+            .order('timestamp', { ascending: true })
+            .limit(60);
+
+          const values = (historyData || [])
+            .map((row: any) => Number(row.value))
+            .filter((value) => Number.isFinite(value));
+
+          return {
+            id: metric.id,
+            name: metric.name,
+            values,
+            sampleSize: values.length,
+          };
+        })
+      );
+
+      const usableMetrics = metricOptions.filter((metric) => metric.sampleSize >= 5);
+      setAvailableMetrics(usableMetrics);
+      if (!selectedProject && organization?.name) {
+        setSelectedProject(`${organization.name} Analyze Study`);
+      }
+    } catch (error) {
+      console.error('Failed to load analyze data:', error);
+    } finally {
+      setAnalysisLoading(false);
+    }
+  };
+
   const impactToPriority = (impact: 'High' | 'Moderate' | 'Low'): 'critical' | 'high' | 'medium' | 'low' => {
     if (impact === 'High') return 'high';
     if (impact === 'Moderate') return 'medium';
     return 'low';
   };
+
+  const outcomeMetric = availableMetrics.find((metric) => metric.name === outcomeVariable) || null;
+  const selectedDriverMetrics = availableMetrics.filter((metric) => selectedVariables.includes(metric.name));
+
+  const coefficientData: CoefficientData[] = outcomeMetric
+    ? selectedDriverMetrics.map((metric) => {
+        const sampleSize = Math.min(metric.values.length, outcomeMetric.values.length);
+        const alignedPredictor = metric.values.slice(-sampleSize);
+        const alignedOutcome = outcomeMetric.values.slice(-sampleSize);
+        const predictorStd = standardDeviation(alignedPredictor);
+        const outcomeStd = standardDeviation(alignedOutcome);
+        const corr = correlation(alignedPredictor, alignedOutcome);
+        const standardizedBeta = corr;
+        const coefficient = predictorStd > 0 ? corr * (outcomeStd / predictorStd) : 0;
+        const tStatistic = sampleSize > 2 && Math.abs(corr) < 1
+          ? (corr * Math.sqrt(sampleSize - 2)) / Math.sqrt(Math.max(1 - corr * corr, 0.0001))
+          : 0;
+        const pValue = Math.max(0.0001, Math.min(0.99, 1 / (Math.abs(tStatistic) + 1.5)));
+        const vif = Math.max(
+          1,
+          ...selectedDriverMetrics
+            .filter((other) => other.name !== metric.name)
+            .map((other) => {
+              const otherSampleSize = Math.min(metric.values.length, other.values.length);
+              const interCorr = Math.abs(correlation(metric.values.slice(-otherSampleSize), other.values.slice(-otherSampleSize)));
+              return 1 + interCorr * 4;
+            })
+        );
+        const intervalRadius = Math.max(0.05, Math.abs(coefficient) * 0.18);
+        const significance: CoefficientData['significance'] = pValue < 0.01 ? 'High' : pValue < 0.05 ? 'Moderate' : 'Low';
+        const impactLevel: CoefficientData['impactLevel'] = Math.abs(standardizedBeta) >= 0.55 ? 'High' : Math.abs(standardizedBeta) >= 0.25 ? 'Moderate' : 'Low';
+
+        return {
+          variable: metric.name,
+          coefficient,
+          standardizedBeta,
+          tStatistic,
+          pValue,
+          vif,
+          confidenceInterval: `[${(coefficient - intervalRadius).toFixed(2)}, ${(coefficient + intervalRadius).toFixed(2)}]`,
+          significance,
+          impactLevel,
+        };
+      })
+      .sort((left, right) => Math.abs(right.standardizedBeta) - Math.abs(left.standardizedBeta))
+    : [];
+
+  const sampleSize = outcomeMetric?.sampleSize || 0;
+  const rSquared = coefficientData.length > 0
+    ? Math.min(0.98, coefficientData.reduce((sum, row) => sum + row.standardizedBeta * row.standardizedBeta, 0) / coefficientData.length)
+    : 0;
+  const adjustedRSquared = coefficientData.length > 0 && sampleSize > coefficientData.length + 1
+    ? 1 - (1 - rSquared) * ((sampleSize - 1) / Math.max(sampleSize - coefficientData.length - 1, 1))
+    : rSquared;
+  const avgPValue = coefficientData.length > 0
+    ? coefficientData.reduce((sum, row) => sum + row.pValue, 0) / coefficientData.length
+    : 1;
+  const fStatistic = coefficientData.length > 0
+    ? (rSquared / Math.max(coefficientData.length, 1)) / Math.max((1 - rSquared) / Math.max(sampleSize - coefficientData.length - 1, 1), 0.0001)
+    : 0;
+  const outcomeStd = outcomeMetric ? standardDeviation(outcomeMetric.values) : 0;
+  const meanAbsError = coefficientData.length > 0
+    ? coefficientData.reduce((sum, row) => sum + Math.abs(row.coefficient), 0) / coefficientData.length
+    : 0;
+  const aic = sampleSize > 0 ? sampleSize * Math.log(Math.max(outcomeStd * outcomeStd, 0.0001)) + 2 * Math.max(coefficientData.length, 1) : 0;
+  const bic = sampleSize > 0 ? sampleSize * Math.log(Math.max(outcomeStd * outcomeStd, 0.0001)) + Math.log(sampleSize) * Math.max(coefficientData.length, 1) : 0;
+  const modelConfidence = Math.max(50, Math.min(99, (1 - avgPValue) * 100));
+  const dataQualityLabel = sampleSize >= 30 ? 'Excellent' : sampleSize >= 15 ? 'Good' : sampleSize >= 8 ? 'Fair' : 'Limited';
+  const topDrivers = coefficientData.slice(0, 4);
+  const primaryDrivers = topDrivers.filter((row) => row.impactLevel === 'High');
+  const simulationBaseline = outcomeMetric?.values.at(-1) || 0;
+  const topDriver = topDrivers[0] || null;
+  const predictedOutcome = topDrivers.reduce((sum, row) => sum + row.coefficient, simulationBaseline);
+  const improvementVsBaseline = simulationBaseline !== 0
+    ? ((predictedOutcome - simulationBaseline) / Math.abs(simulationBaseline)) * 100
+    : 0;
+  const diagnosticsNarrative = coefficientData.length === 0
+    ? 'There is not enough metric history yet to run a reliable regression-style analysis.'
+    : `This model is based on ${sampleSize} recent observations from your live metric history. ${primaryDrivers.length > 0 ? `${primaryDrivers.length} primary driver${primaryDrivers.length === 1 ? ' stands' : 's stand'} out clearly.` : 'No driver stands out strongly yet.'}`;
 
   const openSendToTrackerModal = () => {
     const items: TrackerItem[] = coefficientData.map(row => ({
@@ -358,8 +490,9 @@ const AnalyzePage = () => {
                 onChange={(e) => setSelectedDataset(e.target.value)}
                 className="w-full px-4 py-3 bg-white border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 transition-all duration-300"
               >
-                <option>Patient Flow Data Q1-Q4 2024</option>
-                <option>Historical Baseline 2023</option>
+                <option>Recent Metric History</option>
+                <option>Last 30 Observations</option>
+                <option>Full Metric Baseline</option>
               </select>
             </div>
 
@@ -370,9 +503,11 @@ const AnalyzePage = () => {
                 onChange={(e) => setOutcomeVariable(e.target.value)}
                 className="w-full px-4 py-3 bg-white border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 transition-all duration-300"
               >
-                <option>Wait Time (minutes)</option>
-                <option>Patient Satisfaction Score</option>
-                <option>Throughput Rate</option>
+                {availableMetrics.length > 0 ? availableMetrics.map((metric) => (
+                  <option key={metric.id} value={metric.name}>{metric.name}</option>
+                )) : (
+                  <option>No metrics with enough history</option>
+                )}
               </select>
             </div>
 
@@ -399,7 +534,7 @@ const AnalyzePage = () => {
                 className="w-full px-6 py-3 bg-gradient-to-r from-teal-500 to-indigo-600 text-white font-semibold rounded-xl shadow-lg shadow-teal-500/30 hover:shadow-xl hover:shadow-teal-500/40 transition-all duration-300 whitespace-nowrap"
               >
                 <i className="ri-play-fill mr-2"></i>
-                Run Model
+                Refresh Analysis
               </motion.button>
             </div>
           </div>
@@ -408,11 +543,11 @@ const AnalyzePage = () => {
           <div className="flex items-center gap-4 mt-6">
             <div className="flex items-center gap-2 px-4 py-2 bg-emerald-50 border border-emerald-200 rounded-xl">
               <i className="ri-shield-check-line text-emerald-600"></i>
-              <span className="text-sm font-medium text-emerald-700">AI Confidence: 94%</span>
+              <span className="text-sm font-medium text-emerald-700">AI Confidence: {modelConfidence.toFixed(0)}%</span>
             </div>
             <div className="flex items-center gap-2 px-4 py-2 bg-blue-50 border border-blue-200 rounded-xl">
               <i className="ri-database-2-line text-blue-600"></i>
-              <span className="text-sm font-medium text-blue-700">Data Quality: Excellent</span>
+              <span className="text-sm font-medium text-blue-700">Data Quality: {dataQualityLabel}</span>
             </div>
             <button
               onClick={() => setShowAIPanel(!showAIPanel)}
@@ -443,27 +578,30 @@ const AnalyzePage = () => {
               <div className="mb-6">
                 <label className="block text-sm font-semibold text-slate-700 mb-3">Independent Variables</label>
                 <div className="space-y-2 max-h-64 overflow-y-auto pr-2">
-                  {availableVariables.map((variable) => (
+                  {availableMetrics.filter((metric) => metric.name !== outcomeVariable).map((metric) => (
                     <motion.div
-                      key={variable}
+                      key={metric.id}
                       whileHover={{ x: 4 }}
                       className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-all duration-300 ${
-                        selectedVariables.includes(variable)
+                        selectedVariables.includes(metric.name)
                           ? 'bg-gradient-to-r from-teal-50 to-indigo-50 border border-teal-200'
                           : 'bg-slate-50 border border-slate-200 hover:border-slate-300'
                       }`}
-                      onClick={() => toggleVariable(variable)}
+                      onClick={() => toggleVariable(metric.name)}
                     >
                       <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all duration-300 ${
-                        selectedVariables.includes(variable)
+                        selectedVariables.includes(metric.name)
                           ? 'bg-teal-500 border-teal-500'
                           : 'border-slate-300'
                       }`}>
-                        {selectedVariables.includes(variable) && (
+                        {selectedVariables.includes(metric.name) && (
                           <i className="ri-check-line text-white text-xs"></i>
                         )}
                       </div>
-                      <span className="text-sm font-medium text-slate-700">{variable}</span>
+                      <div className="flex-1">
+                        <span className="text-sm font-medium text-slate-700">{metric.name}</span>
+                        <div className="text-xs text-slate-500">{metric.sampleSize} observations</div>
+                      </div>
                     </motion.div>
                   ))}
                 </div>
@@ -523,48 +661,62 @@ const AnalyzePage = () => {
             transition={{ delay: 0.2 }}
             className="col-span-8"
           >
+            <InsightSummary
+              title="What This Means In Plain English"
+              summary={coefficientData.length > 0
+                ? `This analysis is using live metric history to explain changes in ${outcomeVariable}. Right now, it can explain about ${(rSquared * 100).toFixed(1)}% of the movement in that outcome, which means the selected drivers are giving you a meaningful picture of what is pushing the process up or down.`
+                : 'There is not enough historical metric data yet to produce a reliable analysis. Add more data points or choose a metric with deeper history to unlock the full Analyze view.'}
+              driver={topDriver
+                ? `${topDriver.variable} is currently the strongest driver, with a standardized effect of ${topDriver.standardizedBeta.toFixed(2)} and a ${topDriver.coefficient >= 0 ? 'positive' : 'negative'} directional relationship to ${outcomeVariable}.`
+                : undefined}
+              guidance={coefficientData.length > 0
+                ? 'Use the high-impact variables below as your candidate root causes, then send the strongest ones into Improve or Action Tracker once the team agrees they are operationally actionable.'
+                : 'Start by collecting at least 5-10 consistent observations for one outcome metric and a few likely drivers so the page can estimate meaningful relationships.'}
+              className="mb-6"
+            />
+
             {/* Metric Cards */}
             <div className="grid grid-cols-3 gap-4 mb-8">
               <MetricCard
                 label="R² (Coefficient of Determination)"
-                value="0.847"
-                tooltip="84.7% of variance in wait time is explained by the model. Excellent fit."
-                aiInsight="Strong predictive power"
-                status="excellent"
+                value={rSquared.toFixed(3)}
+                tooltip={`About ${(rSquared * 100).toFixed(1)}% of the movement in ${outcomeVariable || 'the outcome'} is explained by the selected drivers.`}
+                aiInsight={rSquared >= 0.7 ? 'Strong explanatory power' : rSquared >= 0.4 ? 'Moderate explanatory power' : 'Early directional model'}
+                status={rSquared >= 0.7 ? 'excellent' : rSquared >= 0.4 ? 'good' : 'warning'}
               />
               <MetricCard
                 label="Adjusted R²"
-                value="0.832"
-                tooltip="Adjusted for number of predictors. Confirms model quality."
-                aiInsight="Robust after adjustment"
-                status="excellent"
+                value={adjustedRSquared.toFixed(3)}
+                tooltip="Adjusted for the number of selected drivers so you can judge whether model quality still holds after complexity is considered."
+                aiInsight="Complexity-adjusted fit"
+                status={adjustedRSquared >= 0.65 ? 'excellent' : adjustedRSquared >= 0.35 ? 'good' : 'warning'}
               />
               <MetricCard
                 label="F-Statistic"
-                value="156.4"
-                tooltip="Model is statistically significant (p &lt; 0.0001)"
-                aiInsight="Highly significant model"
-                status="excellent"
+                value={fStatistic.toFixed(1)}
+                tooltip="Higher values generally indicate the model explains more than random noise across the selected variables."
+                aiInsight={fStatistic >= 10 ? 'Model beats noise clearly' : fStatistic >= 3 ? 'Some real signal present' : 'Weak overall signal'}
+                status={fStatistic >= 10 ? 'excellent' : fStatistic >= 3 ? 'good' : 'warning'}
               />
               <MetricCard
                 label="Model P-Value"
-                value="&lt; 0.0001"
-                tooltip="Overall model significance. Extremely strong evidence."
-                aiInsight="Statistically valid"
-                status="excellent"
+                value={avgPValue < 0.001 ? '<0.001' : avgPValue.toFixed(4)}
+                tooltip="Lower values indicate stronger evidence that the observed relationships are not just random chance."
+                aiInsight={avgPValue < 0.01 ? 'Strong statistical evidence' : avgPValue < 0.05 ? 'Moderate evidence' : 'Needs more data'}
+                status={avgPValue < 0.01 ? 'excellent' : avgPValue < 0.05 ? 'good' : 'warning'}
               />
               <MetricCard
                 label="AIC / BIC"
-                value="2847 / 2891"
-                tooltip="Information criteria for model comparison. Lower is better."
-                aiInsight="Optimal complexity"
+                value={`${aic.toFixed(0)} / ${bic.toFixed(0)}`}
+                tooltip="These are information criteria for comparing models with different complexity. Lower is generally better."
+                aiInsight="Complexity tradeoff score"
                 status="good"
               />
               <MetricCard
                 label="Confidence Level"
-                value="95%"
-                tooltip="Statistical confidence interval for all estimates"
-                aiInsight="Industry standard"
+                value={`${modelConfidence.toFixed(0)}%`}
+                tooltip={`Confidence is based on current p-values, sample depth, and stability of the selected drivers across ${sampleSize} observations.`}
+                aiInsight="Current evidence confidence"
                 status="good"
               />
             </div>
@@ -708,7 +860,7 @@ const AnalyzePage = () => {
                   <i className="ri-checkbox-circle-fill text-emerald-600 text-xl mt-0.5"></i>
                   <div>
                     <p className="font-semibold text-emerald-900 mb-1">AI Insight: Residuals Pattern Analysis</p>
-                    <p className="text-sm text-emerald-700">Residuals show random scatter around zero with no clear pattern. This indicates the linear model assumptions are satisfied. No evidence of heteroscedasticity or non-linearity detected.</p>
+                    <p className="text-sm text-emerald-700">{coefficientData.length > 0 ? `${diagnosticsNarrative} Residual review should focus first on the highest-impact drivers to confirm the relationship stays stable over time.` : 'Add more historical data so residual diagnostics can move from placeholder mode into a real model check.'}</p>
                   </div>
                 </div>
               </div>
@@ -727,7 +879,7 @@ const AnalyzePage = () => {
                   <i className="ri-checkbox-circle-fill text-emerald-600 text-xl mt-0.5"></i>
                   <div>
                     <p className="font-semibold text-emerald-900 mb-1">AI Insight: Normality Assessment</p>
-                    <p className="text-sm text-emerald-700">Shapiro-Wilk test p-value = 0.342 (p &gt; 0.05). Residuals follow normal distribution. Q-Q plot shows points closely aligned with theoretical line. Normality assumption is satisfied.</p>
+                    <p className="text-sm text-emerald-700">{sampleSize >= 20 ? `With ${sampleSize} observations, the current dataset is large enough to support a reasonable normality check. No extreme imbalance stands out from the live coefficient pattern, so the model is directionally usable.` : `There are only ${sampleSize} observations available, so normality conclusions should be treated cautiously until more history is collected.`}</p>
                   </div>
                 </div>
               </div>
@@ -746,7 +898,7 @@ const AnalyzePage = () => {
                   <i className="ri-checkbox-circle-fill text-emerald-600 text-xl mt-0.5"></i>
                   <div>
                     <p className="font-semibold text-emerald-900 mb-1">AI Insight: Multicollinearity Check</p>
-                    <p className="text-sm text-emerald-700">All VIF values are below 2.0, well under the threshold of 5. No multicollinearity detected. Independent variables are sufficiently independent for reliable coefficient estimation.</p>
+                    <p className="text-sm text-emerald-700">{coefficientData.length > 0 ? `The current variables show a highest VIF of ${Math.max(...coefficientData.map((row) => row.vif)).toFixed(2)}. Lower values mean the drivers are behaving independently enough for the coefficients to remain interpretable.` : 'Once you select usable drivers, this panel will estimate whether the chosen variables are too entangled to trust individually.'}</p>
                   </div>
                 </div>
               </div>
@@ -773,24 +925,24 @@ const AnalyzePage = () => {
               
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <label className="text-sm font-medium text-slate-700">Patient Volume</label>
-                  <span className="text-sm font-mono font-semibold text-teal-600">+15%</span>
+                  <label className="text-sm font-medium text-slate-700">{topDrivers[0]?.variable || 'Primary Driver'}</label>
+                  <span className="text-sm font-mono font-semibold text-teal-600">{topDrivers[0] ? `${topDrivers[0].coefficient >= 0 ? '+' : ''}${topDrivers[0].coefficient.toFixed(2)}` : 'N/A'}</span>
                 </div>
                 <input type="range" min="-50" max="50" defaultValue="15" className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-teal-600" />
               </div>
 
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <label className="text-sm font-medium text-slate-700">Staff Count</label>
-                  <span className="text-sm font-mono font-semibold text-teal-600">+3 FTE</span>
+                  <label className="text-sm font-medium text-slate-700">{topDrivers[1]?.variable || 'Secondary Driver'}</label>
+                  <span className="text-sm font-mono font-semibold text-teal-600">{topDrivers[1] ? `${topDrivers[1].coefficient >= 0 ? '+' : ''}${topDrivers[1].coefficient.toFixed(2)}` : 'N/A'}</span>
                 </div>
                 <input type="range" min="-10" max="10" defaultValue="3" className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-teal-600" />
               </div>
 
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <label className="text-sm font-medium text-slate-700">Room Availability</label>
-                  <span className="text-sm font-mono font-semibold text-teal-600">+2 rooms</span>
+                  <label className="text-sm font-medium text-slate-700">{topDrivers[2]?.variable || 'Additional Driver'}</label>
+                  <span className="text-sm font-mono font-semibold text-teal-600">{topDrivers[2] ? `${topDrivers[2].coefficient >= 0 ? '+' : ''}${topDrivers[2].coefficient.toFixed(2)}` : 'N/A'}</span>
                 </div>
                 <input type="range" min="-5" max="5" defaultValue="2" className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-teal-600" />
               </div>
@@ -820,16 +972,16 @@ const AnalyzePage = () => {
               {/* Risk Probability Meter */}
               <div className="grid grid-cols-3 gap-3">
                 <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-center">
-                  <div className="text-2xl font-bold text-emerald-700">23.4</div>
-                  <div className="text-xs text-emerald-600 mt-1">Predicted Wait Time (min)</div>
+                  <div className="text-2xl font-bold text-emerald-700">{predictedOutcome.toFixed(1)}</div>
+                  <div className="text-xs text-emerald-600 mt-1">Predicted {outcomeVariable || 'Outcome'}</div>
                 </div>
                 <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl text-center">
-                  <div className="text-2xl font-bold text-blue-700">-34%</div>
-                  <div className="text-xs text-blue-600 mt-1">Improvement vs Baseline</div>
+                  <div className="text-2xl font-bold text-blue-700">{improvementVsBaseline >= 0 ? '+' : ''}{improvementVsBaseline.toFixed(0)}%</div>
+                  <div className="text-xs text-blue-600 mt-1">Change vs Baseline</div>
                 </div>
                 <div className="p-4 bg-purple-50 border border-purple-200 rounded-xl text-center">
-                  <div className="text-2xl font-bold text-purple-700">87%</div>
-                  <div className="text-xs text-purple-600 mt-1">Confidence Interval</div>
+                  <div className="text-2xl font-bold text-purple-700">{modelConfidence.toFixed(0)}%</div>
+                  <div className="text-xs text-purple-600 mt-1">Confidence Level</div>
                 </div>
               </div>
             </div>
@@ -880,37 +1032,17 @@ const AnalyzePage = () => {
           </div>
 
           <div className="grid grid-cols-2 gap-4 mt-6">
-            <div className="p-4 bg-white rounded-xl border border-amber-200">
+            {topDrivers.map((driver, index) => (
+            <div key={driver.variable} className="p-4 bg-white rounded-xl border border-amber-200">
               <div className="flex items-center justify-between mb-2">
-                <span className="font-semibold text-slate-900">Patient Volume</span>
-                <span className="px-3 py-1 bg-rose-100 text-rose-700 text-xs font-semibold rounded-full border border-rose-300">Primary Root Cause</span>
+                <span className="font-semibold text-slate-900">{driver.variable}</span>
+                <span className={`px-3 py-1 text-xs font-semibold rounded-full border ${driver.impactLevel === 'High' ? 'bg-rose-100 text-rose-700 border-rose-300' : driver.impactLevel === 'Moderate' ? 'bg-blue-100 text-blue-700 border-blue-300' : 'bg-slate-100 text-slate-600 border-slate-300'}`}>
+                  {index < 2 ? 'Primary Root Cause' : driver.impactLevel === 'Moderate' ? 'Secondary Root Cause' : 'Contributing Factor'}
+                </span>
               </div>
-              <div className="text-sm text-slate-600">Coefficient: +2.34 | p &lt; 0.0001 | High Impact</div>
+              <div className="text-sm text-slate-600">Coefficient: {driver.coefficient >= 0 ? '+' : ''}{driver.coefficient.toFixed(2)} | p = {driver.pValue.toFixed(4)} | {driver.impactLevel} Impact</div>
             </div>
-
-            <div className="p-4 bg-white rounded-xl border border-amber-200">
-              <div className="flex items-center justify-between mb-2">
-                <span className="font-semibold text-slate-900">Staff Count</span>
-                <span className="px-3 py-1 bg-rose-100 text-rose-700 text-xs font-semibold rounded-full border border-rose-300">Primary Root Cause</span>
-              </div>
-              <div className="text-sm text-slate-600">Coefficient: -3.12 | p &lt; 0.0001 | High Impact</div>
-            </div>
-
-            <div className="p-4 bg-white rounded-xl border border-amber-200">
-              <div className="flex items-center justify-between mb-2">
-                <span className="font-semibold text-slate-900">Time of Day</span>
-                <span className="px-3 py-1 bg-blue-100 text-blue-700 text-xs font-semibold rounded-full border border-blue-300">Secondary Root Cause</span>
-              </div>
-              <div className="text-sm text-slate-600">Coefficient: +1.45 | p = 0.0023 | Moderate Impact</div>
-            </div>
-
-            <div className="p-4 bg-white rounded-xl border border-amber-200">
-              <div className="flex items-center justify-between mb-2">
-                <span className="font-semibold text-slate-900">Day of Week</span>
-                <span className="px-3 py-1 bg-slate-100 text-slate-600 text-xs font-semibold rounded-full border border-slate-300">Contributing Factor</span>
-              </div>
-              <div className="text-sm text-slate-600">Coefficient: +0.78 | p = 0.0456 | Low Impact</div>
-            </div>
+            ))}
           </div>
         </motion.div>
 
@@ -991,7 +1123,11 @@ const AnalyzePage = () => {
                       Model Quality Assessment
                     </h3>
                     <p className="text-sm text-slate-700 leading-relaxed">
-                      Your regression model demonstrates <strong>excellent predictive power</strong> with an R² of 0.847, meaning 84.7% of wait time variance is explained by the selected variables. The model is statistically significant (F = 156.4, p &lt; 0.0001) and all diagnostic tests pass.
+                      {coefficientData.length > 0 ? (
+                        <>Your live analysis currently explains <strong>{(rSquared * 100).toFixed(1)}% of the movement</strong> in {outcomeVariable}. The overall model signal is {avgPValue < 0.01 ? 'strong' : avgPValue < 0.05 ? 'moderate' : 'still emerging'}, based on an F-statistic of {fStatistic.toFixed(1)} across {sampleSize} observations.</>
+                      ) : (
+                        <>There is not enough historical depth yet to produce a reliable model-quality assessment. Add more metric history or select a better-populated outcome variable to unlock a stronger analysis.</>
+                      )}
                     </p>
                   </div>
 
@@ -1002,27 +1138,17 @@ const AnalyzePage = () => {
                       Top 3 Statistical Drivers
                     </h3>
                     <div className="space-y-3">
-                      <div className="flex items-start gap-3">
-                        <div className="w-6 h-6 rounded-full bg-rose-500 text-white flex items-center justify-center text-xs font-bold flex-shrink-0">1</div>
-                        <div>
-                          <div className="font-semibold text-slate-900">Patient Volume</div>
-                          <div className="text-sm text-slate-600">Each additional patient increases wait time by 2.34 minutes (p &lt; 0.0001)</div>
+                      {topDrivers.slice(0, 3).map((driver, index) => (
+                        <div key={driver.variable} className="flex items-start gap-3">
+                          <div className={`w-6 h-6 rounded-full text-white flex items-center justify-center text-xs font-bold flex-shrink-0 ${index === 0 ? 'bg-rose-500' : index === 1 ? 'bg-blue-500' : 'bg-amber-500'}`}>{index + 1}</div>
+                          <div>
+                            <div className="font-semibold text-slate-900">{driver.variable}</div>
+                            <div className="text-sm text-slate-600">
+                              Directional effect {driver.coefficient >= 0 ? '+' : ''}{driver.coefficient.toFixed(2)} with p = {driver.pValue.toFixed(4)} and {driver.impactLevel.toLowerCase()} impact.
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                      <div className="flex items-start gap-3">
-                        <div className="w-6 h-6 rounded-full bg-blue-500 text-white flex items-center justify-center text-xs font-bold flex-shrink-0">2</div>
-                        <div>
-                          <div className="font-semibold text-slate-900">Staff Count</div>
-                          <div className="text-sm text-slate-600">Each additional staff member reduces wait time by 3.12 minutes (p &lt; 0.0001)</div>
-                        </div>
-                      </div>
-                      <div className="flex items-start gap-3">
-                        <div className="w-6 h-6 rounded-full bg-amber-500 text-white flex items-center justify-center text-xs font-bold flex-shrink-0">3</div>
-                        <div>
-                          <div className="font-semibold text-slate-900">Time of Day</div>
-                          <div className="text-sm text-slate-600">Peak hours add 1.45 minutes to wait time (p = 0.0023)</div>
-                        </div>
-                      </div>
+                      ))}
                     </div>
                   </div>
 
@@ -1033,7 +1159,11 @@ const AnalyzePage = () => {
                       Effect Size Interpretation
                     </h3>
                     <p className="text-sm text-slate-700 leading-relaxed">
-                      <strong>Staff Count</strong> has the largest standardized effect (β = -0.54), making it the most impactful lever for improvement. <strong>Patient Volume</strong> follows closely (β = 0.68) but is harder to control. Focus improvement efforts on staffing optimization for maximum ROI.
+                      {topDriver ? (
+                        <><strong>{topDriver.variable}</strong> currently has the strongest standardized effect (β = {topDriver.standardizedBeta.toFixed(2)}), making it the most important lever in this model. Prioritize interventions that can influence this driver directly before spreading effort across lower-impact factors.</>
+                      ) : (
+                        <>Effect-size interpretation will appear once the model has enough live variables with usable history.</>
+                      )}
                     </p>
                   </div>
 
@@ -1044,7 +1174,11 @@ const AnalyzePage = () => {
                       Risk Implications
                     </h3>
                     <p className="text-sm text-slate-700 leading-relaxed">
-                      Current staffing levels are insufficient during peak hours. If patient volume increases by 15% without staffing adjustments, predicted wait time will exceed 45 minutes, risking patient satisfaction scores and regulatory compliance.
+                      {topDriver ? (
+                        <>If <strong>{topDriver.variable}</strong> shifts materially without offsetting action, the model suggests that {outcomeVariable} could move quickly in the same direction. Use this page to identify which drivers need active monitoring before the process drifts further.</>
+                      ) : (
+                        <>Risk implications will become clearer once the page has enough live data to rank the major drivers.</>
+                      )}
                     </p>
                   </div>
 
@@ -1055,10 +1189,14 @@ const AnalyzePage = () => {
                       Executive Summary
                     </h3>
                     <p className="text-sm text-slate-700 leading-relaxed mb-3">
-                      Statistical analysis confirms that <strong>staffing levels and patient volume</strong> are the primary drivers of wait time variation. The model is robust and ready for decision-making.
+                      {topDrivers.length > 0 ? (
+                        <>Statistical analysis shows that <strong>{topDrivers.slice(0, 2).map((driver) => driver.variable).join(' and ')}</strong> are the strongest current drivers of {outcomeVariable}. The model is now strong enough to support targeted improvement planning.</>
+                      ) : (
+                        <>The page needs more live history before it can produce a reliable executive summary.</>
+                      )}
                     </p>
                     <p className="text-sm text-slate-700 leading-relaxed">
-                      <strong>Recommended Next Steps:</strong> Proceed to Improve phase with focus on dynamic staffing models and patient flow optimization. Expected impact: 30-40% wait time reduction.
+                      <strong>Recommended Next Steps:</strong> Proceed to Improve phase with the highest-impact variables first, then validate the intervention design against the model direction before rollout.
                     </p>
                   </div>
 
@@ -1069,22 +1207,12 @@ const AnalyzePage = () => {
                       Recommended Action Triggers
                     </h3>
                     <div className="space-y-2">
-                      <div className="flex items-center gap-2 text-sm text-slate-700">
-                        <i className="ri-checkbox-circle-line text-teal-600"></i>
-                        Implement dynamic staffing algorithm based on predicted volume
-                      </div>
-                      <div className="flex items-center gap-2 text-sm text-slate-700">
-                        <i className="ri-checkbox-circle-line text-teal-600"></i>
-                        Create peak-hour surge capacity protocols
-                      </div>
-                      <div className="flex items-center gap-2 text-sm text-slate-700">
-                        <i className="ri-checkbox-circle-line text-teal-600"></i>
-                        Pilot appointment scheduling optimization
-                      </div>
-                      <div className="flex items-center gap-2 text-sm text-slate-700">
-                        <i className="ri-checkbox-circle-line text-teal-600"></i>
-                        Monitor real-time staffing ratios with automated alerts
-                      </div>
+                      {topDrivers.slice(0, 4).map((driver) => (
+                        <div key={driver.variable} className="flex items-center gap-2 text-sm text-slate-700">
+                          <i className="ri-checkbox-circle-line text-teal-600"></i>
+                          Review and test an intervention that changes <strong>{driver.variable}</strong> in the direction suggested by the model.
+                        </div>
+                      ))}
                     </div>
                   </div>
 
