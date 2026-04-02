@@ -5,6 +5,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsi
 import { useToast } from '../../hooks/useToast';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import { createAlertsFromAnomalies } from '../../services/anomalyAlertBridge';
+import InsightSummary from '../../components/common/InsightSummary';
 
 interface Anomaly {
   id: string;
@@ -302,6 +303,48 @@ export default function AnomalyDetectionPage() {
     resolved: anomalies.filter(a => a.status === 'resolved').length,
   };
 
+  const focusAnomaly =
+    filteredAnomalies.find((anomaly) => anomaly.id === selectedAnomalyForChart) ||
+    filteredAnomalies[0] ||
+    null;
+
+  const getAnomalyNarrative = () => {
+    if (filteredAnomalies.length === 0) {
+      return {
+        summary: 'No anomalies are currently visible in this view, so the monitored metrics appear to be behaving within their usual range.',
+        driver: 'That usually means your recent values are staying close to the expected pattern instead of suddenly spiking or dropping.',
+        guidance: 'Keep detection running regularly so new issues are surfaced quickly when conditions change.',
+      };
+    }
+
+    if (!focusAnomaly) {
+      return {
+        summary: 'This view contains anomaly activity, but no single anomaly is selected yet.',
+        driver: `There are ${filteredAnomalies.length} flagged event${filteredAnomalies.length === 1 ? '' : 's'} in the current filter set, including ${stats.critical} critical issue${stats.critical === 1 ? '' : 's'}.`,
+        guidance: 'Select an anomaly or metric trend to review what changed and decide whether the team should investigate, acknowledge, or resolve it.',
+      };
+    }
+
+    const confidence = Math.round((focusAnomaly.confidence_score || 0) * 100);
+    const deviation = focusAnomaly.deviation ? Math.abs(focusAnomaly.deviation).toFixed(2) : null;
+    const direction = focusAnomaly.anomaly_type === 'drop' ? 'dropped below' : 'rose above';
+    const expectedValue = focusAnomaly.expected_value?.toFixed(2);
+
+    return {
+      summary: `${focusAnomaly.metric?.name || 'This metric'} ${direction} its normal range with a ${focusAnomaly.severity} severity signal, so the system believes this change is unusual enough to deserve attention.`,
+      driver: deviation && expectedValue
+        ? `The current reading is ${deviation} away from the expected value of ${expectedValue}, and the model confidence for this anomaly is ${confidence}%.`
+        : `This anomaly was flagged by the ${focusAnomaly.detection_method} detector with ${confidence}% confidence based on recent historical behavior.`,
+      guidance: focusAnomaly.status === 'resolved'
+        ? 'This one has already been closed out, so the next step is to confirm the metric has stayed stable after the fix.'
+        : focusAnomaly.status === 'acknowledged'
+          ? 'Someone has already taken ownership, so the next step is to investigate the cause and document the resolution once the metric stabilizes.'
+          : 'Treat this as a prompt to check the underlying process now, especially if the anomaly is critical or affecting patient flow, staffing, or turnaround time.',
+    };
+  };
+
+  const anomalyNarrative = getAnomalyNarrative();
+
   const getSeverityColor = (severity: string) => {
     switch (severity) {
       case 'critical': return 'text-red-600 bg-red-50 border-red-200';
@@ -562,6 +605,14 @@ export default function AnomalyDetectionPage() {
               </div>
             </div>
           </div>
+
+          <InsightSummary
+            title="What This Means In Plain English"
+            summary={anomalyNarrative.summary}
+            driver={anomalyNarrative.driver}
+            guidance={anomalyNarrative.guidance}
+            className="mb-6"
+          />
 
           {/* Chart Section */}
           {chartData.length > 0 && (

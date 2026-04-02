@@ -5,6 +5,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { useToast } from '../../hooks/useToast';
 import ConfirmDialog from '../../components/common/ConfirmDialog';
 import { Link } from 'react-router-dom';
+import InsightSummary from '../../components/common/InsightSummary';
 
 interface RootCauseAnalysis {
   id: string;
@@ -412,6 +413,51 @@ export default function RootCausePage() {
     
     if (implementationCost === 0) return 0;
     return ((estimatedSavings - implementationCost) / implementationCost * 100);
+  };
+
+  const getRootCauseNarrative = (analysis: RootCauseAnalysis) => {
+    const causes =
+      analysis.analysis_type === 'fishbone'
+        ? analysis.categories?.flatMap((category: any) => category.causes || []) || []
+        : analysis.analysis_type === 'pareto'
+          ? analysis.causes?.causes || []
+          : analysis.causes?.whys || [];
+    const actionItems = analysis.action_items || [];
+    const completedActions = actionItems.filter((item: ActionItem) => item.status === 'completed').length;
+    const riskScore = analysis.categories
+      ? calculateRiskScore(analysis.categories.flatMap((category: any) => category.causes || []))
+      : 0;
+    const roi = Math.round(calculateROI(analysis));
+    const impactScore = analysis.impact_score || 5;
+    const effortScore = analysis.effort_score || 5;
+    const validatedCauses = causes.filter((cause: any) => cause?.validated || cause?.validation_status === 'validated').length;
+
+    let summary = 'This analysis is still being shaped, so use it as a working investigation rather than a final answer.';
+    if (impactScore >= 8 && effortScore <= 4) {
+      summary = 'This looks like a high-value improvement opportunity: the problem appears serious, but the estimated effort to address it is still manageable.';
+    } else if (impactScore >= 8 && effortScore > 4) {
+      summary = 'This issue appears important, but solving it may require a larger cross-functional effort or a phased rollout.';
+    } else if (impactScore <= 4 && effortScore <= 4) {
+      summary = 'This looks like a contained issue, which makes it a good candidate for a quick corrective action rather than a major transformation project.';
+    }
+
+    const driver =
+      analysis.analysis_type === 'fishbone'
+        ? `You have ${causes.length} suspected causes across ${analysis.categories?.length || 0} categories, with ${validatedCauses} already validated and a current risk score of ${riskScore}/25.`
+        : analysis.analysis_type === 'pareto'
+          ? `The Pareto view currently tracks ${causes.length} contributing causes, which helps you focus on the few issues likely driving most of the impact.`
+          : `The 5 Whys chain currently contains ${causes.length} reasoning steps, which helps show whether the team has drilled down to a concrete root cause yet.`;
+
+    const guidance =
+      actionItems.length === 0
+        ? 'The next step is to turn the strongest suspected causes into a small action plan so the analysis leads to operational change.'
+        : completedActions === actionItems.length
+          ? `All ${actionItems.length} action items are marked complete, so the next step is to confirm the problem metric actually improved and then standardize the fix.`
+          : roi > 0
+            ? `${completedActions} of ${actionItems.length} action items are done. Keep pushing the highest-impact actions first, especially the ones most likely to unlock the estimated ${roi}% return.`
+            : `${completedActions} of ${actionItems.length} action items are done. Prioritize actions that reduce risk fastest, even if the financial return is still uncertain.`;
+
+    return { summary, driver, guidance };
   };
 
   const createFromTemplate = (template: any) => {
@@ -2151,6 +2197,13 @@ export default function RootCausePage() {
             {/* Tab Content */}
             {activeTab === 'overview' && (
               <div className="space-y-6">
+                <InsightSummary
+                  title="What This Means In Plain English"
+                  summary={getRootCauseNarrative(selectedAnalysis).summary}
+                  driver={getRootCauseNarrative(selectedAnalysis).driver}
+                  guidance={getRootCauseNarrative(selectedAnalysis).guidance}
+                />
+
                 {/* Premium Metrics Dashboard */}
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                   <div className="bg-blue-50 rounded-lg p-4 text-center">
@@ -2250,6 +2303,14 @@ export default function RootCausePage() {
 
             {activeTab === 'analysis' && (
               <div>
+                <InsightSummary
+                  title="How To Read This Analysis"
+                  summary={getRootCauseNarrative(selectedAnalysis).summary}
+                  driver={getRootCauseNarrative(selectedAnalysis).driver}
+                  guidance={getRootCauseNarrative(selectedAnalysis).guidance}
+                  className="mb-6"
+                />
+
                 {/* Enhanced Fishbone Diagram */}
                 {selectedAnalysis.analysis_type === 'fishbone' && selectedAnalysis.categories && (
                   <div className="bg-gray-50 rounded-lg p-6">
