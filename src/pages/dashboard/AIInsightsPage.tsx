@@ -19,6 +19,12 @@ interface Message {
   chartType?: 'line' | 'bar' | 'pie' | 'area';
 }
 
+interface TrustAssessment {
+  label: string;
+  className: string;
+  explanation: string;
+}
+
 export default function AIInsightsPage() {
   const { organizationId } = useAuth();
   const [query, setQuery] = useState('');
@@ -342,6 +348,146 @@ export default function AIInsightsPage() {
     }
   };
 
+  const getAlertTrustAssessment = (alert: any): TrustAssessment => {
+    if (alert.confidence >= 88 && alert.daysUntil <= 7) {
+      return {
+        label: 'Decision-ready',
+        className: 'bg-emerald-100 text-emerald-700',
+        explanation: 'This signal is high confidence and close enough in time to act on directly.',
+      };
+    }
+
+    if (alert.confidence >= 75) {
+      return {
+        label: 'Monitor closely',
+        className: 'bg-amber-100 text-amber-700',
+        explanation: 'The signal is meaningful, but teams should verify local conditions before escalating.',
+      };
+    }
+
+    return {
+      label: 'Directional only',
+      className: 'bg-rose-100 text-rose-700',
+      explanation: 'Use this as an early warning, not as a standalone operational decision trigger.',
+    };
+  };
+
+  const getRecommendationTrustAssessment = (rec: any): TrustAssessment => {
+    if (rec.confidence >= 88 && rec.priority >= 80) {
+      return {
+        label: 'Ready to action',
+        className: 'bg-emerald-100 text-emerald-700',
+        explanation: 'SigmaSense sees a strong enough signal to move this from suggestion into execution.',
+      };
+    }
+
+    if (rec.confidence >= 75) {
+      return {
+        label: 'Validate first',
+        className: 'bg-amber-100 text-amber-700',
+        explanation: 'The recommendation is useful, but it should be checked against staffing, workflow, or frontline constraints.',
+      };
+    }
+
+    return {
+      label: 'Exploratory',
+      className: 'bg-rose-100 text-rose-700',
+      explanation: 'Treat this as a coaching prompt rather than a firm action plan.',
+    };
+  };
+
+  const getPatternTrustAssessment = (pattern: any): TrustAssessment => {
+    if (pattern.confidence >= 85 && pattern.period) {
+      return {
+        label: 'Recurring signal',
+        className: 'bg-emerald-100 text-emerald-700',
+        explanation: 'This pattern looks repeatable enough to plan around operationally.',
+      };
+    }
+
+    if (pattern.confidence >= 70) {
+      return {
+        label: 'Likely pattern',
+        className: 'bg-amber-100 text-amber-700',
+        explanation: 'The pattern is plausible, but it still needs more history or repeat cycles to trust fully.',
+      };
+    }
+
+    return {
+      label: 'Watch only',
+      className: 'bg-rose-100 text-rose-700',
+      explanation: 'There is not enough signal here yet to rely on the pattern in planning.',
+    };
+  };
+
+  const getAlertEvidence = (alert: any) => {
+    const evidence = [
+      `${alert.confidence.toFixed(0)}% model confidence`,
+      `${alert.daysUntil} day prediction horizon`,
+      alert.category || 'Operational category detected',
+    ];
+
+    if (alert.type === 'critical') {
+      evidence.push('Severity is already critical');
+    }
+
+    return evidence;
+  };
+
+  const getAlertCaution = (alert: any) => {
+    if (alert.confidence < 75) {
+      return 'Confidence is moderate, so confirm the source metric and recent local conditions before acting.';
+    }
+
+    if (alert.daysUntil > 14) {
+      return 'The horizon is longer-term, so this is better for preparation than immediate escalation.';
+    }
+
+    return 'This alert is strong, but teams should still confirm staffing, operational constraints, and any recent interventions.';
+  };
+
+  const getRecommendationEvidence = (rec: any) => [
+    `${rec.confidence.toFixed(0)}% recommendation confidence`,
+    `${rec.priority}/100 priority`,
+    `${rec.effort} implementation effort`,
+    rec.timeframe,
+  ];
+
+  const getRecommendationCaution = (rec: any) => {
+    if (rec.confidence < 75) {
+      return 'This is a lower-confidence suggestion, so use it to guide discussion rather than to trigger immediate change.';
+    }
+
+    if (String(rec.effort).toLowerCase() === 'high') {
+      return 'The likely impact is meaningful, but the effort is high enough that the operating team should confirm resourcing first.';
+    }
+
+    return 'This recommendation is actionable, but it should still be checked against current staffing, budget, and shift timing.';
+  };
+
+  const getPatternEvidence = (pattern: any) => {
+    const evidence = [`${pattern.confidence.toFixed(0)}% pattern confidence`];
+
+    if (pattern.period) {
+      evidence.push(`Repeats about every ${pattern.period} days`);
+    }
+
+    evidence.push(`${pattern.type} behavior detected`);
+    return evidence;
+  };
+
+  const getPatternCaution = (pattern: any) => {
+    if (!pattern.period) {
+      return 'SigmaSense sees signal, but not enough repeat structure yet to call this a dependable cycle.';
+    }
+
+    if (pattern.confidence < 80) {
+      return 'This pattern is useful directionally, but it still needs more history before you hardwire thresholds or schedules around it.';
+    }
+
+    return 'This looks stable enough to plan around, but keep validating it as new data arrives.';
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -510,6 +656,10 @@ export default function AIInsightsPage() {
             ) : (
               <div className="space-y-4">
                 {predictiveAlerts.map((alert, index) => (
+                  (() => {
+                    const trust = getAlertTrustAssessment(alert);
+                    const evidence = getAlertEvidence(alert);
+                    return (
                   <div
                     key={alert.id}
                     className={`border-l-4 rounded-lg p-4 ${getSeverityColor(alert.type)} animate-slide-up`}
@@ -521,6 +671,9 @@ export default function AIInsightsPage() {
                           <h3 className="text-base font-semibold">{alert.title}</h3>
                           <span className="px-2 py-0.5 bg-white rounded-full text-xs font-medium">
                             {alert.confidence.toFixed(0)}% confidence
+                          </span>
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${trust.className}`}>
+                            {trust.label}
                           </span>
                         </div>
                         <p className="text-sm mb-2">{alert.description}</p>
@@ -536,6 +689,17 @@ export default function AIInsightsPage() {
                         </div>
                       </div>
                     </div>
+                    <div className="bg-white bg-opacity-60 rounded-lg p-3 mb-3">
+                      <p className="text-xs font-medium mb-2">Why SigmaSense flagged this</p>
+                      <div className="flex flex-wrap gap-2 mb-2">
+                        {evidence.map((item, idx) => (
+                          <span key={idx} className="px-2 py-1 bg-white rounded-full text-xs border border-current border-opacity-15">
+                            {item}
+                          </span>
+                        ))}
+                      </div>
+                      <p className="text-xs">{trust.explanation}</p>
+                    </div>
                     <div className="bg-white bg-opacity-50 rounded-lg p-3">
                       <p className="text-xs font-medium mb-2">Recommended Actions:</p>
                       <ul className="space-y-1">
@@ -547,7 +711,13 @@ export default function AIInsightsPage() {
                         ))}
                       </ul>
                     </div>
+                    <div className="mt-3 rounded-lg border border-white border-opacity-60 bg-white bg-opacity-40 p-3">
+                      <p className="text-xs font-medium mb-1">Use with caution if</p>
+                      <p className="text-xs">{getAlertCaution(alert)}</p>
+                    </div>
                   </div>
+                    );
+                  })()
                 ))}
               </div>
             )}
@@ -570,6 +740,10 @@ export default function AIInsightsPage() {
             ) : (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 {recommendations.map((rec, index) => (
+                  (() => {
+                    const trust = getRecommendationTrustAssessment(rec);
+                    const evidence = getRecommendationEvidence(rec);
+                    return (
                   <div
                     key={rec.id}
                     className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-lg transition-all card-hover animate-slide-up"
@@ -581,6 +755,9 @@ export default function AIInsightsPage() {
                           <h3 className="text-base font-semibold text-gray-900">{rec.title}</h3>
                           <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${getEffortColor(rec.effort)}`}>
                             {rec.effort} effort
+                          </span>
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${trust.className}`}>
+                            {trust.label}
                           </span>
                         </div>
                         <p className="text-sm text-gray-600 mb-2">{rec.description}</p>
@@ -600,6 +777,17 @@ export default function AIInsightsPage() {
                         <p className="text-sm font-semibold text-gray-900">{rec.timeframe}</p>
                       </div>
                     </div>
+                    <div className="rounded-lg border border-teal-100 bg-teal-50 p-3 mb-3">
+                      <p className="text-xs font-medium text-teal-900 mb-2">Why SigmaSense recommended this</p>
+                      <div className="flex flex-wrap gap-2 mb-2">
+                        {evidence.map((item, idx) => (
+                          <span key={idx} className="px-2 py-1 rounded-full bg-white text-xs text-teal-800 border border-teal-100">
+                            {item}
+                          </span>
+                        ))}
+                      </div>
+                      <p className="text-xs text-teal-800">{trust.explanation}</p>
+                    </div>
                     <div className="bg-teal-50 rounded-lg p-3">
                       <p className="text-xs font-medium text-teal-900 mb-2">Action Steps:</p>
                       <ul className="space-y-1">
@@ -611,7 +799,13 @@ export default function AIInsightsPage() {
                         ))}
                       </ul>
                     </div>
+                    <div className="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
+                      <p className="text-xs font-medium text-gray-700 mb-1">Before you act</p>
+                      <p className="text-xs text-gray-600">{getRecommendationCaution(rec)}</p>
+                    </div>
                   </div>
+                    );
+                  })()
                 ))}
               </div>
             )}
@@ -634,6 +828,10 @@ export default function AIInsightsPage() {
             ) : (
               <div className="space-y-4">
                 {patterns.map((pattern, index) => (
+                  (() => {
+                    const trust = getPatternTrustAssessment(pattern);
+                    const evidence = getPatternEvidence(pattern);
+                    return (
                   <div
                     key={index}
                     className="bg-gradient-to-r from-teal-50 to-cyan-50 border border-teal-200 rounded-lg p-4 animate-slide-up"
@@ -660,7 +858,21 @@ export default function AIInsightsPage() {
                       <div className="text-right">
                         <div className="text-2xl font-bold text-teal-600">{pattern.confidence.toFixed(0)}%</div>
                         <div className="text-xs text-gray-500">Confidence</div>
+                        <div className={`mt-2 inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${trust.className}`}>
+                          {trust.label}
+                        </div>
                       </div>
+                    </div>
+                    <div className="rounded-lg border border-white border-opacity-60 bg-white bg-opacity-60 p-3 mb-3">
+                      <p className="text-xs font-medium text-gray-700 mb-2">Why this insight matters</p>
+                      <div className="flex flex-wrap gap-2 mb-2">
+                        {evidence.map((item, idx) => (
+                          <span key={idx} className="px-2 py-1 rounded-full bg-white text-xs text-teal-800 border border-teal-100">
+                            {item}
+                          </span>
+                        ))}
+                      </div>
+                      <p className="text-xs text-gray-600">{trust.explanation}</p>
                     </div>
                     {pattern.period && (
                       <div className="bg-white bg-opacity-50 rounded-lg p-3">
@@ -670,7 +882,13 @@ export default function AIInsightsPage() {
                         </p>
                       </div>
                     )}
+                    <div className="mt-3 rounded-lg border border-teal-100 bg-white bg-opacity-70 p-3">
+                      <p className="text-xs font-medium text-gray-700 mb-1">Use with caution if</p>
+                      <p className="text-xs text-gray-600">{getPatternCaution(pattern)}</p>
+                    </div>
                   </div>
+                    );
+                  })()
                 ))}
               </div>
             )}
