@@ -73,6 +73,13 @@ interface Solution {
   pilotResults?: string;
 }
 
+interface ControlMetricOption {
+  id: string;
+  name: string;
+  current_value?: number | null;
+  target_value?: number | null;
+}
+
 export default function DMAICPage() {
   const { organization, user } = useAuth();
   const { showToast } = useToast();
@@ -253,11 +260,12 @@ export default function DMAICPage() {
   const [showProjectCloseConfirm, setShowProjectCloseConfirm] = useState(false);
 
   // Control Phase State
-  const [selectedKPI, setSelectedKPI] = useState('patient_wait_time');
+  const [selectedKPI, setSelectedKPI] = useState('');
   const [controlChartData, setControlChartData] = useState<any[]>([]);
   const [controlLimits, setControlLimits] = useState({ mean: 0, ucl: 0, lcl: 0 });
   const [chartAlerts, setChartAlerts] = useState<any[]>([]);
   const [monitoringSchedule, setMonitoringSchedule] = useState('daily');
+  const [controlMetrics, setControlMetrics] = useState<ControlMetricOption[]>([]);
   
   // SOP State
   const [sops, setSOPs] = useState<any[]>([]);
@@ -627,6 +635,12 @@ export default function DMAICPage() {
     }
   }, [organization]);
 
+  React.useEffect(() => {
+    if (organization?.id) {
+      loadControlMetrics();
+    }
+  }, [organization?.id]);
+
   // Auto-switch phase from URL param (e.g., coming from Analyze page "Send to Improve Phase")
   React.useEffect(() => {
     const phaseParam = searchParams.get('phase');
@@ -664,6 +678,26 @@ export default function DMAICPage() {
       console.error('Error loading projects:', error);
     } finally {
       setLoadingProjects(false);
+    }
+  };
+
+  const loadControlMetrics = async () => {
+    if (!organization?.id) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('metrics')
+        .select('id, name, current_value, target_value')
+        .eq('organization_id', organization.id)
+        .order('name', { ascending: true });
+
+      if (error) throw error;
+
+      const nextMetrics = data || [];
+      setControlMetrics(nextMetrics);
+      setSelectedKPI((current) => current || nextMetrics[0]?.id || '');
+    } catch (error) {
+      console.error('Error loading control metrics:', error);
     }
   };
 
@@ -1773,33 +1807,47 @@ ${confirmedCauses.map((rc) => `- Monitor signals related to ${rc.evidence_type.t
     return scoreB - scoreA;
   });
 
-  // Generate mock control chart data
-  const generateControlChartData = () => {
-    const baselineMean = 45.3;
-    const stdDev = 12.8;
-    const ucl = baselineMean + (3 * stdDev);
-    const lcl = Math.max(0, baselineMean - (3 * stdDev));
-    
-    setControlLimits({ mean: baselineMean, ucl, lcl });
-
-    // Generate 60 days of data (30 baseline + 30 improvement)
-    const data = [];
-    for (let i = 0; i < 60; i++) {
-      const isImprovement = i >= 30;
-      const targetMean = isImprovement ? 32 : baselineMean;
-      const variation = (Math.random() - 0.5) * stdDev * 1.5;
-      const value = targetMean + variation;
-      
-      data.push({
-        day: i + 1,
-        value: Math.max(0, value),
-        period: isImprovement ? 'improvement' : 'baseline',
-        date: new Date(Date.now() - (60 - i) * 24 * 60 * 60 * 1000).toLocaleDateString()
-      });
+  const generateControlChartData = async () => {
+    if (!organization?.id || !selectedKPI) {
+      showToast('Please select a metric before generating a control chart', 'warning');
+      return false;
     }
-    
-    setControlChartData(data);
-    detectControlChartAlerts(data, { mean: baselineMean, ucl, lcl });
+
+    const { data, error } = await supabase
+      .from('metric_data')
+      .select('timestamp, value')
+      .eq('metric_id', selectedKPI)
+      .order('timestamp', { ascending: true })
+      .limit(120);
+
+    if (error) throw error;
+
+    const points = (data || []).filter((point) => typeof point.value === 'number');
+    if (points.length < 8) {
+      showToast('This metric needs at least 8 data points to generate a control chart', 'warning');
+      return false;
+    }
+
+    const values = points.map((point) => point.value);
+    const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
+    const variance = values.reduce((sum, value) => sum + Math.pow(value - mean, 2), 0) / values.length;
+    const stdDev = Math.sqrt(variance);
+    const ucl = mean + (3 * stdDev);
+    const lcl = Math.max(0, mean - (3 * stdDev));
+
+    setControlLimits({ mean, ucl, lcl });
+
+    const splitIndex = Math.max(1, Math.floor(points.length * 0.6));
+    const chartData = points.map((point, index) => ({
+      day: index + 1,
+      value: point.value,
+      period: index < splitIndex ? 'baseline' : 'improvement',
+      date: new Date(point.timestamp).toLocaleDateString(),
+    }));
+
+    setControlChartData(chartData);
+    detectControlChartAlerts(chartData, { mean, ucl, lcl });
+    return true;
   };
 
   const detectControlChartAlerts = (data: any[], limits: any) => {
@@ -1840,9 +1888,17 @@ ${confirmedCauses.map((rc) => `- Monitor signals related to ${rc.evidence_type.t
     setChartAlerts(alerts);
   };
 
-  const handleGenerateControlChart = () => {
-    generateControlChartData();
-    setClosureChecklist(prev => ({ ...prev, controlChartsActivated: true }));
+  const handleGenerateControlChart = async () => {
+    try {
+      const generated = await generateControlChartData();
+      if (generated) {
+        setClosureChecklist(prev => ({ ...prev, controlChartsActivated: true }));
+        showToast('Control chart generated from real metric history', 'success');
+      }
+    } catch (error) {
+      console.error('Error generating control chart:', error);
+      showToast('Failed to generate control chart', 'error');
+    }
   };
 
   const handleAddSOP = () => {
@@ -1916,18 +1972,51 @@ ${confirmedCauses.map((rc) => `- Monitor signals related to ${rc.evidence_type.t
     calculateTrainingCompletion();
   };
 
-  const handleEnableMonitoring = () => {
-    const mockKPI = {
-      id: '1',
-      name: selectedKPI,
-      currentValue: 32.5,
-      targetValue: 30,
-      status: 'in_control',
-      lastUpdated: new Date().toISOString()
-    };
-    
-    setMonitoringKPIs([mockKPI]);
-    setClosureChecklist(prev => ({ ...prev, monitoringEnabled: true }));
+  const handleEnableMonitoring = async () => {
+    if (!organization?.id || !selectedKPI) {
+      showToast('Please select a metric before enabling monitoring', 'warning');
+      return;
+    }
+
+    try {
+      const selectedMetric = controlMetrics.find((metric) => metric.id === selectedKPI);
+      const { data, error } = await supabase
+        .from('metric_data')
+        .select('timestamp, value')
+        .eq('metric_id', selectedKPI)
+        .order('timestamp', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (error) throw error;
+
+      const currentValue = data?.value ?? selectedMetric?.current_value ?? 0;
+      const targetValue = selectedMetric?.target_value ?? selectedMetric?.current_value ?? currentValue;
+      const status =
+        controlChartData.length > 0
+          ? currentValue > controlLimits.ucl || currentValue < controlLimits.lcl
+            ? 'out_of_control'
+            : 'in_control'
+          : targetValue && currentValue <= targetValue
+            ? 'on_target'
+            : 'in_control';
+
+      setMonitoringKPIs([
+        {
+          id: selectedMetric?.id || selectedKPI,
+          name: selectedMetric?.name || 'Selected Metric',
+          currentValue: Number(currentValue.toFixed ? currentValue.toFixed(2) : currentValue),
+          targetValue: Number(targetValue?.toFixed ? targetValue.toFixed(2) : targetValue),
+          status,
+          lastUpdated: data?.timestamp || new Date().toISOString(),
+        },
+      ]);
+      setClosureChecklist(prev => ({ ...prev, monitoringEnabled: true }));
+      showToast('Monitoring enabled for the selected metric', 'success');
+    } catch (error) {
+      console.error('Error enabling monitoring:', error);
+      showToast('Failed to enable monitoring', 'error');
+    }
   };
 
   const handleCloseProject = async () => {
@@ -3063,6 +3152,7 @@ Total Items: ${Object.values(sipocDiagram).reduce((sum, arr) => sum + arr.length
   };
 
   const dmaicNarrative = getDMAICNarrative();
+  const selectedControlMetric = controlMetrics.find((metric) => metric.id === selectedKPI);
 
   return (
     <>
@@ -3426,9 +3516,15 @@ Total Items: ${Object.values(sipocDiagram).reduce((sum, arr) => sum + arr.length
                             onChange={(e) => setSelectedKPI(e.target.value)}
                             className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                           >
-                            <option value="patient_wait_time">Patient Wait Time</option>
-                            <option value="throughput">Throughput</option>
-                            <option value="defect_rate">Defect Rate</option>
+                            {controlMetrics.length === 0 ? (
+                              <option value="">No metrics available</option>
+                            ) : (
+                              controlMetrics.map((metric) => (
+                                <option key={metric.id} value={metric.id}>
+                                  {metric.name}
+                                </option>
+                              ))
+                            )}
                           </select>
                         </div>
                         <div>
@@ -3473,7 +3569,9 @@ Total Items: ${Object.values(sipocDiagram).reduce((sum, arr) => sum + arr.length
 
                           {/* Chart Visualization */}
                           <div className="bg-white border border-gray-200 rounded-lg p-6">
-                            <h3 className="text-lg font-semibold text-gray-900 mb-4">Control Chart - {selectedKPI.replace(/_/g, ' ')}</h3>
+                            <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                              Control Chart - {selectedControlMetric?.name || 'Selected Metric'}
+                            </h3>
                             <div className="relative h-96 bg-gray-50 rounded-lg p-4">
                               <svg className="w-full h-full">
                                 {/* UCL Line */}
@@ -3767,7 +3865,7 @@ Total Items: ${Object.values(sipocDiagram).reduce((sum, arr) => sum + arr.length
                             {monitoringKPIs.map((kpi) => (
                               <div key={kpi.id} className="bg-white border border-gray-200 rounded-lg p-6">
                                 <div className="flex items-center justify-between mb-4">
-                                  <h3 className="text-lg font-semibold text-gray-900">{kpi.name.replace(/_/g, ' ')}</h3>
+                                  <h3 className="text-lg font-semibold text-gray-900">{kpi.name}</h3>
                                   <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(kpi.status)}`}>
                                     {kpi.status.replace(/_/g, ' ')}
                                   </span>
