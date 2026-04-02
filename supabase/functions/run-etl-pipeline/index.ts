@@ -130,6 +130,14 @@ function calculateNextRun(schedule: string): string {
   return next.toISOString();
 }
 
+function chunkArray<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+  return chunks;
+}
+
 function applyTransformationOperations(
   records: Record<string, unknown>[],
   operations: TransformationOperation[]
@@ -537,6 +545,7 @@ serve(async (req) => {
     let recordsSuccess = 0;
     let recordsFailed = 0;
     const failureSamples: Array<Record<string, unknown>> = [];
+    const latestMetricValues = new Map<string, { value: number; timestamp: string }>();
 
     await logIngestionEvent(adminClient, {
       organization_id: organizationId,
@@ -553,6 +562,39 @@ serve(async (req) => {
           recovery_mode: replayRunId ? 'replay' : windowStart || windowEnd ? 'backfill' : 'standard',
         },
       });
+
+    const missingMetricNames = new Map<string, string>();
+    for (const record of records) {
+      if (!metricNameMapping) break;
+      if (valueMapping.targetMetricId) break;
+      const metricName = String(record[metricNameMapping.sourceField] ?? '').trim();
+      if (!metricName || metricsByName.has(metricName) || missingMetricNames.has(metricName)) continue;
+      const metricUnit = unitMapping ? String(record[unitMapping.sourceField] ?? '') : '';
+      missingMetricNames.set(metricName, metricUnit);
+    }
+
+    if (missingMetricNames.size > 0) {
+      const newMetricRows = Array.from(missingMetricNames.entries()).map(([name, unit]) => ({
+        name,
+        organization_id: organizationId,
+        unit,
+        target_value: 0,
+        current_value: 0,
+      }));
+
+      const { data: insertedMetrics, error: insertedMetricsError } = await adminClient
+        .from('metrics')
+        .insert(newMetricRows)
+        .select('id, name');
+
+      if (insertedMetricsError) {
+        throw new Error(insertedMetricsError.message);
+      }
+
+      (insertedMetrics || []).forEach((metric) => {
+        metricsByName.set(metric.name as string, metric.id as string);
+      });
+    }
 
     for (const [index, record] of records.entries()) {
       try {
@@ -589,27 +631,6 @@ serve(async (req) => {
           }
 
           metricId = metricsByName.get(metricName);
-
-          if (!metricId) {
-            const { data: newMetric, error: newMetricError } = await adminClient
-              .from('metrics')
-              .insert({
-                name: metricName,
-                organization_id: organizationId,
-                unit: unitMapping ? String(record[unitMapping.sourceField] ?? '') : '',
-                target_value: 0,
-                current_value: value,
-              })
-              .select('id, name')
-              .single();
-
-            if (newMetricError || !newMetric?.id) {
-              throw new Error(newMetricError?.message ?? `Failed to create metric "${metricName}"`);
-            }
-
-            metricId = newMetric.id as string;
-            metricsByName.set(newMetric.name as string, metricId);
-          }
         }
 
         if (!metricId) {
@@ -640,12 +661,10 @@ serve(async (req) => {
           timestamp,
           organization_id: organizationId,
         });
-
-        await adminClient
-          .from('metrics')
-          .update({ current_value: value, actual_value: value })
-          .eq('id', metricId)
-          .eq('organization_id', organizationId);
+        const previousLatest = latestMetricValues.get(metricId);
+        if (!previousLatest || new Date(timestamp).getTime() >= new Date(previousLatest.timestamp).getTime()) {
+          latestMetricValues.set(metricId, { value, timestamp });
+        }
 
         recordsSuccess++;
       } catch (error) {
@@ -696,12 +715,26 @@ serve(async (req) => {
         },
       });
 
-      const { error: insertError } = await adminClient
-        .from('metric_data')
-        .insert(dataPoints);
+      for (const chunk of chunkArray(dataPoints, 1000)) {
+        const { error: insertError } = await adminClient
+          .from('metric_data')
+          .insert(chunk);
 
-      if (insertError) {
-        throw new Error(insertError.message);
+        if (insertError) {
+          throw new Error(insertError.message);
+        }
+      }
+
+      for (const [metricId, latestPoint] of latestMetricValues.entries()) {
+        const { error: updateMetricError } = await adminClient
+          .from('metrics')
+          .update({ current_value: latestPoint.value, actual_value: latestPoint.value })
+          .eq('id', metricId)
+          .eq('organization_id', organizationId);
+
+        if (updateMetricError) {
+          throw new Error(updateMetricError.message);
+        }
       }
     }
 
