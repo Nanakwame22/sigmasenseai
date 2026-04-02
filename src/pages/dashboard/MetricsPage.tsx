@@ -813,7 +813,7 @@ export default function MetricsPage() {
 
     try {
       setSeeding(true);
-      addToast('Generating demo metrics with historical data...', 'info');
+      addToast('Creating sandbox demo metrics with sample historical data...', 'info');
 
       // Define 5 realistic metrics with different characteristics
       const demoMetrics = [
@@ -986,12 +986,12 @@ export default function MetricsPage() {
       await fetchMetrics();
 
       addToast(
-        `Successfully created ${insertedMetrics.length} demo metrics with ${allDataPoints.length} historical data points! Forecasting, anomaly detection, and recommendations are now ready to use.`,
+        `Successfully created ${insertedMetrics.length} sandbox demo metrics with ${allDataPoints.length} sample historical data points. These are for exploration only and do not represent live operational data.`,
         'success'
       );
     } catch (error: any) {
       console.error('Error seeding demo data:', error);
-      addToast(`Failed to seed demo data: ${error.message}`, 'error');
+      addToast(`Failed to create sandbox demo data: ${error.message}`, 'error');
     } finally {
       setSeeding(false);
     }
@@ -1034,7 +1034,7 @@ export default function MetricsPage() {
               ) : (
                 <>
                   <i className="ri-magic-line"></i>
-                  Seed Demo Data
+                  Create Sandbox Demo Data
                 </>
               )}
             </button>
@@ -1109,45 +1109,34 @@ export default function MetricsPage() {
         <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
           <i className="ri-line-chart-line text-5xl text-gray-400 mb-4"></i>
           <h3 className="text-lg font-semibold text-gray-900 mb-2">No metrics yet</h3>
-          <p className="text-gray-600 mb-4">Get started by importing real metrics, adding your first metric manually, or using demo data for exploration.</p>
+          <p className="text-gray-600 mb-4">Get started by importing real metrics or adding your first metric manually. Sandbox demo data is available below if you want a safe sample environment.</p>
           <div className="flex gap-3 justify-center">
             <button
-              onClick={handleSeedDemoData}
-              disabled={seeding}
-              className="px-6 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-lg hover:from-purple-700 hover:to-indigo-700 transition-all whitespace-nowrap cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shadow-md font-medium"
-            >
-              {seeding ? (
-                <>
-                  <i className="ri-loader-4-line animate-spin mr-2"></i>
-                  Generating Demo Data...
-                </>
-              ) : (
-                <>
-                  <i className="ri-magic-line mr-2"></i>
-                  Seed Demo Data
-                </>
-              )}
-            </button>
-            <button
               onClick={() => setShowImportModal(true)}
-              className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 whitespace-nowrap cursor-pointer"
+              className="px-4 py-2 bg-teal-600 border border-teal-600 text-white rounded-lg hover:bg-teal-700 whitespace-nowrap cursor-pointer"
             >
               Import CSV
             </button>
             <button
               onClick={() => setShowAddModal(true)}
-              className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 whitespace-nowrap cursor-pointer"
+              className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 whitespace-nowrap cursor-pointer"
             >
               Add Metric
             </button>
           </div>
           
           {/* Demo Data Info */}
-          <div className="mt-6 max-w-2xl mx-auto bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-200 rounded-lg p-4">
+          <div className="mt-6 max-w-2xl mx-auto bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-200 rounded-lg p-4 text-left">
             <div className="flex items-start">
               <i className="ri-lightbulb-line text-purple-600 text-xl mr-3 mt-0.5"></i>
               <div className="text-left flex-1">
-                <p className="text-sm text-purple-900 font-medium mb-2">What does "Seed Demo Data" do?</p>
+                <div className="flex items-center justify-between gap-4 mb-2">
+                  <p className="text-sm text-purple-900 font-medium">Sandbox Demo Mode</p>
+                  <span className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wide bg-purple-100 text-purple-700 rounded-full border border-purple-200">
+                    Sample Only
+                  </span>
+                </div>
+                <p className="text-sm text-purple-800 mb-3">Use this only if you want a safe, non-production sample environment to explore the analytics features before loading live operational data.</p>
                 <ul className="text-sm text-purple-800 space-y-1">
                   <li className="flex items-start">
                     <i className="ri-check-line text-purple-600 mr-2 mt-0.5"></i>
@@ -1166,6 +1155,25 @@ export default function MetricsPage() {
                     <span>Creates a safe sample environment for exploring Forecasting, Anomaly Detection, and Recommendations</span>
                   </li>
                 </ul>
+                <div className="mt-4">
+                  <button
+                    onClick={handleSeedDemoData}
+                    disabled={seeding}
+                    className="px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-lg hover:from-purple-700 hover:to-indigo-700 transition-all whitespace-nowrap cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shadow-md font-medium"
+                  >
+                    {seeding ? (
+                      <>
+                        <i className="ri-loader-4-line animate-spin mr-2"></i>
+                        Creating Sandbox Data...
+                      </>
+                    ) : (
+                      <>
+                        <i className="ri-flask-line mr-2"></i>
+                        Create Sandbox Demo Data
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
