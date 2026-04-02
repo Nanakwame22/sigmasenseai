@@ -5,6 +5,7 @@ import AutoImport from "unplugin-auto-import/vite";
 
 const base = process.env.BASE_PATH || "/";
 const isPreview = process.env.IS_PREVIEW ? true : false;
+const enableSourceMaps = process.env.VITE_ENABLE_SOURCEMAPS === "true";
 // https://vite.dev/config/
 export default defineConfig({
   define: {
@@ -67,7 +68,7 @@ export default defineConfig({
   ],
   base,
   build: {
-    sourcemap: true,
+    sourcemap: enableSourceMaps,
     outDir: "out",
   },
   resolve: {
