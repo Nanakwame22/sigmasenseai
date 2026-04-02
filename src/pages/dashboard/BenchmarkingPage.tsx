@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import InsightSummary from '../../components/common/InsightSummary';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis,
@@ -23,6 +24,14 @@ interface Benchmark {
   data_source: string;
   created_at: string;
   updated_at: string;
+}
+
+interface MetricOption {
+  id: string;
+  name: string;
+  current_value: number | null;
+  unit?: string | null;
+  category?: string | null;
 }
 
 const CATEGORIES = ['Quality', 'Efficiency', 'Cost', 'Delivery', 'Safety', 'Customer Satisfaction'];
@@ -105,9 +114,10 @@ const defaultForm = {
 };
 
 export default function BenchmarkingPage() {
-  const { user } = useAuth();
+  const { user, organizationId } = useAuth();
   const { showToast } = useToast();
   const [benchmarks, setBenchmarks] = useState<Benchmark[]>([]);
+  const [metrics, setMetrics] = useState<MetricOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterCategory, setFilterCategory] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
@@ -123,23 +133,25 @@ export default function BenchmarkingPage() {
   useEffect(() => { fetchBenchmarks(); }, [user]);
 
   const fetchBenchmarks = async () => {
-    if (!user) return;
+    if (!user || !organizationId) return;
     try {
-      const { data: orgData } = await supabase
-        .from('user_organizations')
-        .select('organization_id')
-        .eq('user_id', user.id)
-        .maybeSingle();
-      if (!orgData) return;
-
-      const { data, error } = await supabase
-        .from('benchmarks')
-        .select('*')
-        .eq('organization_id', orgData.organization_id)
-        .order('category', { ascending: true });
+      const [{ data, error }, { data: metricRows, error: metricError }] = await Promise.all([
+        supabase
+          .from('benchmarks')
+          .select('*')
+          .eq('organization_id', organizationId)
+          .order('category', { ascending: true }),
+        supabase
+          .from('metrics')
+          .select('id, name, current_value, unit, category')
+          .eq('organization_id', organizationId)
+          .order('name', { ascending: true }),
+      ]);
 
       if (error) throw error;
+      if (metricError) throw metricError;
       setBenchmarks(data || []);
+      setMetrics(metricRows || []);
     } catch (err) {
       console.error('Error fetching benchmarks:', err);
     } finally {
@@ -180,19 +192,40 @@ export default function BenchmarkingPage() {
     ? Math.round(enriched.reduce((s, b) => s + b.percentile, 0) / enriched.length)
     : 0;
 
+  const summaryBenchmark = enriched[0];
+  const summaryText = enriched.length === 0
+    ? 'There are no benchmarks yet, so this page is ready but not populated. Add a benchmark or seed one from a live metric to compare your current performance against an outside reference.'
+    : `Your organization is currently averaging the ${avgPercentile}th percentile across ${enriched.length} benchmark${enriched.length === 1 ? '' : 's'}. This page is most useful for spotting where you are materially ahead of, near, or behind external standards.`;
+  const summaryDriver = summaryBenchmark
+    ? `${summaryBenchmark.name} is a good example right now: it sits at the ${summaryBenchmark.percentile}th percentile with a ${summaryBenchmark.gap >= 0 ? '+' : ''}${summaryBenchmark.gap}% gap versus the benchmark average.`
+    : undefined;
+  const summaryGuidance = enriched.length === 0
+    ? 'Start by linking one or two important operational metrics to benchmark records so the page becomes a live comparison surface instead of a blank scorecard.'
+    : needsImprovement > 0
+      ? `Focus first on the ${needsImprovement} benchmark${needsImprovement === 1 ? '' : 's'} below the 50th percentile. Those are the clearest candidates for improvement planning or root-cause work.`
+      : 'Use the strongest benchmark gaps to decide which wins are worth standardizing and which leading indicators should be watched more closely.';
+
+  const applyMetricToForm = (metricId: string) => {
+    const metric = metrics.find((item) => item.id === metricId);
+    if (!metric) return;
+
+    setFormData((current) => ({
+      ...current,
+      name: current.name || metric.name,
+      your_value: metric.current_value != null ? String(metric.current_value) : current.your_value,
+      unit: metric.unit || current.unit,
+      category: CATEGORIES.includes(metric.category || '') ? (metric.category as string) : current.category,
+      description: current.description || `Benchmark linked to live metric "${metric.name}"`,
+      data_source: current.data_source || 'Live SigmaSense metric',
+    }));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) return;
+    if (!user || !organizationId) return;
     try {
-      const { data: orgData } = await supabase
-        .from('user_organizations')
-        .select('organization_id')
-        .eq('user_id', user.id)
-        .maybeSingle();
-      if (!orgData) return;
-
       const payload = {
-        organization_id: orgData.organization_id,
+        organization_id: organizationId,
         name: formData.name,
         category: formData.category,
         your_value: parseFloat(formData.your_value as string),
@@ -291,6 +324,13 @@ export default function BenchmarkingPage() {
           <i className="ri-add-line"></i> Add Benchmark
         </button>
       </div>
+
+      <InsightSummary
+        title="What This Means In Plain English"
+        summary={summaryText}
+        driver={summaryDriver}
+        guidance={summaryGuidance}
+      />
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-5">
@@ -524,6 +564,16 @@ export default function BenchmarkingPage() {
               </div>
 
               <div className="p-5">
+                <InsightSummary
+                  title="Benchmark Interpretation"
+                  summary={`This benchmark places your current result at the ${enrichedSelected.percentile}th percentile. In practical terms, that means you are ${enrichedSelected.percentile >= 50 ? 'performing ahead of many peers' : 'lagging a large share of peers'} on this measure.`}
+                  driver={`Your current result is ${enrichedSelected.your_value} ${selectedBenchmark.unit}, compared with an industry average of ${enrichedSelected.industry_avg} and a top-quartile threshold of ${enrichedSelected.top_quartile}.`}
+                  guidance={enrichedSelected.percentile < 50
+                    ? 'Use this benchmark as a priority signal for improvement work, especially if it maps to a metric that is already being tracked operationally.'
+                    : 'Use this result to identify what is working well and consider whether the underlying process should be standardized or scaled.'}
+                  className="mb-4"
+                />
+
                 {selectedBenchmark.description && (
                   <p className="text-sm text-gray-600 mb-4 bg-gray-50 rounded-lg p-3">{selectedBenchmark.description}</p>
                 )}
@@ -587,6 +637,32 @@ export default function BenchmarkingPage() {
               </h2>
             </div>
             <form onSubmit={handleSubmit} className="p-5 space-y-4">
+              {metrics.length > 0 && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Seed From Live Metric</label>
+                  <select
+                    defaultValue=""
+                    onChange={e => {
+                      if (e.target.value) {
+                        applyMetricToForm(e.target.value);
+                        e.currentTarget.value = '';
+                      }
+                    }}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                  >
+                    <option value="">Optional: use a current SigmaSense metric</option>
+                    {metrics.map(metric => (
+                      <option key={metric.id} value={metric.id}>
+                        {metric.name}{metric.current_value != null ? ` (${metric.current_value}${metric.unit ? ` ${metric.unit}` : ''})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1">
+                    This fills in your current value and basic metadata from a live platform metric.
+                  </p>
+                </div>
+              )}
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
                 <input
