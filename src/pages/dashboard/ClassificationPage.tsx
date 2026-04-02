@@ -209,7 +209,7 @@ const deriveModelMetricsFromSource = (
 };
 
 export default function ClassificationPage() {
-  const { user } = useAuth();
+  const { user, organizationId } = useAuth();
   const { showToast } = useToast();
   const [models, setModels] = useState<ClassificationModel[]>([]);
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
@@ -244,19 +244,20 @@ export default function ClassificationPage() {
 
   useEffect(() => {
     loadData();
-  }, [user]);
+  }, [user, organizationId]);
 
   const loadData = async () => {
-    if (!user) return;
+    if (!user || !organizationId) {
+      setLoading(false);
+      return;
+    }
 
     try {
-      const orgId = localStorage.getItem('current_organization_id');
-      
       // Load classification models
       const { data: modelsData } = await supabase
         .from('classification_models')
         .select('*')
-        .eq('organization_id', orgId)
+        .eq('organization_id', organizationId)
         .order('created_at', { ascending: false });
 
       if (modelsData) setModels(modelsData);
@@ -265,7 +266,7 @@ export default function ClassificationPage() {
       const { data: filesData } = await supabase
         .from('uploaded_files')
         .select('id, file_name, file_type, row_count, column_names, uploaded_at')
-        .eq('organization_id', orgId)
+        .eq('organization_id', organizationId)
         .eq('status', 'processed')
         .order('uploaded_at', { ascending: false });
 
@@ -275,7 +276,7 @@ export default function ClassificationPage() {
       const { data: sourcesData } = await supabase
         .from('data_sources')
         .select('id, name, type, records_count, file_data')
-        .eq('organization_id', orgId)
+        .eq('organization_id', organizationId)
         .eq('status', 'active')
         .order('created_at', { ascending: false });
 
@@ -289,14 +290,13 @@ export default function ClassificationPage() {
   };
 
   const loadModels = async () => {
-    if (!user) return;
+    if (!user || !organizationId) return;
 
     try {
-      const orgId = localStorage.getItem('current_organization_id');
       const { data, error } = await supabase
         .from('classification_models')
         .select('*')
-        .eq('organization_id', orgId)
+        .eq('organization_id', organizationId)
         .order('created_at', { ascending: false });
 
       if (data) setModels(data);
@@ -347,11 +347,15 @@ export default function ClassificationPage() {
     }
 
     try {
-      const orgId = localStorage.getItem('current_organization_id');
       const trainingSource = dataSources.find((source) => source.id === formData.training_data_source);
 
       if (!trainingSource?.file_data || trainingSource.file_data.length === 0) {
         showToast('This data source does not contain trainable row data yet. Please use a processed Data Integration source.', 'error');
+        return;
+      }
+
+      if (!organizationId) {
+        showToast('No organization context found for training', 'error');
         return;
       }
 
@@ -363,7 +367,7 @@ export default function ClassificationPage() {
       );
 
       const { error } = await supabase.from('classification_models').insert({
-        organization_id: orgId,
+        organization_id: organizationId,
         name: formData.name,
         algorithm: formData.algorithm,
         target_variable: formData.target_variable,
