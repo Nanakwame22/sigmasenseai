@@ -11,6 +11,7 @@ import { ImproveIntelligenceHub } from './components/ImproveIntelligenceHub';
 import { useToast } from '../../hooks/useToast';
 import ConfirmDialog from '../../components/common/ConfirmDialog';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import InsightSummary from '../../components/common/InsightSummary';
 
 interface DMAICProject {
   id: string;
@@ -3001,6 +3002,83 @@ Total Items: ${Object.values(sipocDiagram).reduce((sum, arr) => sum + arr.length
     setExplorationResults(results);
   };
 
+  const phaseCompletionData = getPhaseCompletionData({
+    projectCharter,
+    stakeholders,
+    sipocDiagram,
+    dataCollectionPlan,
+    msaResults,
+    capabilityAnalysis,
+    dataQualityScore,
+    rootCauses,
+    testResults,
+    evidenceReport,
+    solutions,
+    controlChartData,
+    sops,
+    trainingRecords,
+    monitoringKPIs,
+    closureData,
+  });
+
+  const currentPhaseCompletion =
+    phaseCompletionData.find((phase) => phase.phase.toLowerCase() === currentPhase)?.completion || 0;
+
+  const getDMAICNarrative = () => {
+    const projectName = currentProject?.name || 'this DMAIC project';
+
+    switch (currentPhase) {
+      case 'define':
+        return {
+          summary: `${projectName} is in the Define phase, which means the team is still aligning on the real problem, the boundaries of the work, and what success should look like.`,
+          driver: `Define is ${currentPhaseCompletion}% complete. Progress here mainly depends on the charter, stakeholder list, and SIPOC map being specific enough to guide the rest of the project.`,
+          guidance: currentPhaseCompletion < 70
+            ? 'Before moving on, make sure the problem statement is measurable and narrow enough that the team will know whether improvement actually happened.'
+            : 'You are close to a solid project definition, so the next step is to shift from framing the issue to measuring the current baseline carefully.',
+        };
+      case 'measure':
+        return {
+          summary: `${projectName} is in the Measure phase, so the main question is whether the team has trustworthy baseline data instead of assumptions about current performance.`,
+          driver: `Measure is ${currentPhaseCompletion}% complete, based on the data collection plan, measurement-system checks, capability work, and data quality readiness.`,
+          guidance: currentPhaseCompletion < 70
+            ? 'Focus on making the data reliable first. Weak measurement makes every later analysis harder to trust.'
+            : 'You have enough structure to move toward diagnosis, so the next step is identifying what factors best explain the performance gap.',
+        };
+      case 'analyze':
+        return {
+          summary: `${projectName} is in the Analyze phase, where the goal is to distinguish true root causes from symptoms, noise, and gut feel.`,
+          driver: `Analyze is ${currentPhaseCompletion}% complete, with ${rootCauses.length} root cause candidate${rootCauses.length === 1 ? '' : 's'}, ${testResults.length} statistical test result${testResults.length === 1 ? '' : 's'}, and ${evidenceReport ? 'a completed evidence report' : 'no final evidence report yet'}.`,
+          guidance: currentPhaseCompletion < 70
+            ? 'Do not jump to solutions too early. Make sure the evidence explains why the issue happens, not just where it appears.'
+            : 'You are close to decision-quality analysis, so the next step is to turn the strongest supported causes into targeted improvements.',
+        };
+      case 'improve':
+        return {
+          summary: `${projectName} is in the Improve phase, which means the team should now be testing or implementing changes that directly address the most credible causes.`,
+          driver: `Improve is ${currentPhaseCompletion}% complete, with ${solutions.length} solution idea${solutions.length === 1 ? '' : 's'} tracked and ${solutions.filter((solution) => ['approved', 'implemented', 'in_pilot'].includes(solution.status)).length} already approved, piloted, or implemented.`,
+          guidance: solutions.length === 0
+            ? 'Create a short list of high-impact, feasible changes first so the project can move from diagnosis into action.'
+            : 'Prioritize the solutions that are easiest to test and most tightly linked to the top-ranked causes before scaling them broadly.',
+        };
+      case 'control':
+        return {
+          summary: `${projectName} is in the Control phase, so success now means proving the gains will last, not just showing one short-term improvement.`,
+          driver: `Control is ${currentPhaseCompletion}% complete, with ${controlChartData.length} control-chart point${controlChartData.length === 1 ? '' : 's'}, ${sops.length} SOP${sops.length === 1 ? '' : 's'}, ${trainingRecords.length} training record${trainingRecords.length === 1 ? '' : 's'}, and ${monitoringKPIs.length} monitoring KPI${monitoringKPIs.length === 1 ? '' : 's'} in place.`,
+          guidance: currentPhaseCompletion < 70
+            ? 'Keep strengthening the control system. Monitoring, SOPs, and training are what prevent the process from sliding back.'
+            : 'You are close to a sustainable handoff, so the next step is confirming the controls are being followed consistently and leadership is ready to close the project.',
+        };
+      default:
+        return {
+          summary: 'This DMAIC project is moving through a structured improvement cycle.',
+          driver: `The current phase is ${currentPhase} with ${currentPhaseCompletion}% completion.`,
+          guidance: 'Use the phase workspace and summary together so the team always knows what decision should come next.',
+        };
+    }
+  };
+
+  const dmaicNarrative = getDMAICNarrative();
+
   return (
     <>
       <div className="min-h-screen bg-[#F8F9FB]">
@@ -3236,6 +3314,15 @@ Total Items: ${Object.values(sipocDiagram).reduce((sum, arr) => sum + arr.length
             </div>
           </div>
         )}
+
+        <div className="px-8 pt-6">
+          <InsightSummary
+            title={`What ${currentPhase.toUpperCase()} Means Right Now`}
+            summary={dmaicNarrative.summary}
+            driver={dmaicNarrative.driver}
+            guidance={dmaicNarrative.guidance}
+          />
+        </div>
 
         {/* Main Content */}
         <div className="px-8 py-6">
