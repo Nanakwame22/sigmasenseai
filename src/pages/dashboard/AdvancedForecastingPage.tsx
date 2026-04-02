@@ -28,6 +28,23 @@ interface Metric {
   category?: string | null;
 }
 
+const average = (values: number[]) => values.length > 0
+  ? values.reduce((sum, value) => sum + value, 0) / values.length
+  : 0;
+
+const standardDeviation = (values: number[]) => {
+  if (values.length === 0) return 0;
+  const mean = average(values);
+  return Math.sqrt(values.reduce((sum, value) => sum + Math.pow(value - mean, 2), 0) / values.length);
+};
+
+const getConfidenceMultiplier = (confidenceLevel: number) => {
+  if (confidenceLevel >= 99) return 2.58;
+  if (confidenceLevel >= 95) return 1.96;
+  if (confidenceLevel >= 90) return 1.64;
+  return 1.28;
+};
+
 export default function AdvancedForecastingPage() {
   const { organization } = useAuth();
   const { showToast } = useToast();
@@ -155,7 +172,7 @@ export default function AdvancedForecastingPage() {
 
   const isClinicalMetric = (id: string) => clinicalMetricIds.has(id);
 
-  const generateForecast = async (metricId: string, horizon: number, modelType: string) => {
+  const generateForecast = async (metricId: string, horizon: number, modelType: string, confidenceLevel: number) => {
     const { data: metricData, error } = await supabase
       .from('metric_data')
       .select('*')
@@ -178,11 +195,13 @@ export default function AdvancedForecastingPage() {
       value: item.value
     }));
 
-    // Calculate trend from actual data
     const values = metricData.map(d => d.value);
     const n = values.length;
-    
-    // Simple linear regression for trend
+    const lastDate = new Date(metricData[metricData.length - 1].timestamp);
+    const baselineMean = average(values);
+    const stdDev = standardDeviation(values);
+    const confidenceMultiplier = getConfidenceMultiplier(confidenceLevel);
+
     let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
     for (let i = 0; i < n; i++) {
       sumX += i;
@@ -190,35 +209,59 @@ export default function AdvancedForecastingPage() {
       sumXY += i * values[i];
       sumX2 += i * i;
     }
-    
-    const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+
+    const slopeDenominator = (n * sumX2 - sumX * sumX);
+    const slope = slopeDenominator === 0 ? 0 : (n * sumXY - sumX * sumY) / slopeDenominator;
     const intercept = (sumY - slope * sumX) / n;
-    
-    // Calculate standard deviation for confidence intervals
-    const mean = values.reduce((a, b) => a + b, 0) / n;
-    const variance = values.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / n;
-    const stdDev = Math.sqrt(variance);
-    
-    // Generate forecast
+
+    const seasonalBuckets = metricData.reduce<Record<number, number[]>>((buckets, item) => {
+      const bucket = new Date(item.timestamp).getDay();
+      if (!buckets[bucket]) buckets[bucket] = [];
+      buckets[bucket].push(item.value);
+      return buckets;
+    }, {});
+
+    const smoothedValues: number[] = [];
+    const alpha = 0.35;
+    values.forEach((value, index) => {
+      if (index === 0) {
+        smoothedValues.push(value);
+        return;
+      }
+      smoothedValues.push(alpha * value + (1 - alpha) * smoothedValues[index - 1]);
+    });
+
+    const lastSmoothed = smoothedValues[smoothedValues.length - 1] ?? values[values.length - 1];
+    const recentWindow = values.slice(-Math.min(7, values.length));
+    const recentAverage = average(recentWindow);
+    const recentMomentum = recentWindow.length > 1
+      ? (recentWindow[recentWindow.length - 1] - recentWindow[0]) / (recentWindow.length - 1)
+      : 0;
+
     const forecast = [];
-    const lastDate = new Date(metricData[metricData.length - 1].timestamp);
     
     for (let i = 1; i <= horizon; i++) {
       const forecastDate = new Date(lastDate);
       forecastDate.setDate(forecastDate.getDate() + i);
-      
-      // Predict value using trend
-      const forecastValue = intercept + slope * (n + i - 1);
-      
-      // Confidence interval (wider for smaller datasets)
-      const confidenceMultiplier = n < 10 ? 2.5 : 1.96; // Wider intervals for small datasets
-      const confidence = confidenceMultiplier * stdDev * Math.sqrt(1 + 1/n);
+
+      const weekdayAverage = average(seasonalBuckets[forecastDate.getDay()] || []);
+      let forecastValue = intercept + slope * (n + i - 1);
+
+      if (modelType === 'prophet') {
+        const seasonalAdjustment = weekdayAverage ? weekdayAverage - baselineMean : 0;
+        forecastValue = intercept + slope * (n + i - 1) + seasonalAdjustment;
+      } else if (modelType === 'exponential') {
+        forecastValue = lastSmoothed + recentMomentum * i;
+      }
+
+      const intervalSpread = confidenceMultiplier * stdDev * Math.sqrt(1 + i / Math.max(n, 1));
+      const boundedValue = Math.max(0, forecastValue);
       
       forecast.push({
         date: forecastDate.toISOString().split('T')[0],
-        value: Math.max(0, forecastValue),
-        lower: Math.max(0, forecastValue - confidence),
-        upper: forecastValue + confidence
+        value: boundedValue,
+        lower: Math.max(0, boundedValue - intervalSpread),
+        upper: boundedValue + intervalSpread
       });
     }
 
@@ -266,7 +309,12 @@ export default function AdvancedForecastingPage() {
 
     try {
       setLoading(true);
-      const { historical, forecast } = await generateForecast(formData.metric_id, formData.forecast_horizon, formData.model_type);
+      const { historical, forecast } = await generateForecast(
+        formData.metric_id,
+        formData.forecast_horizon,
+        formData.model_type,
+        formData.confidence_level
+      );
       const accuracy = calculateAccuracy(historical, forecast);
 
       const { error } = await supabase.from('forecasts').insert({
@@ -338,7 +386,7 @@ export default function AdvancedForecastingPage() {
     try {
       for (const metric of eligibleMetrics) {
         try {
-          const { historical, forecast } = await generateForecast(metric.id, 30, 'arima');
+          const { historical, forecast } = await generateForecast(metric.id, 30, 'arima', 95);
           const accuracy = calculateAccuracy(historical, forecast);
 
           const { error } = await supabase.from('forecasts').insert({
