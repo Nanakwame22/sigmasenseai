@@ -1,5 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import DashboardLayout from '../../components/layout/DashboardLayout';
+import { useAuth } from '../../contexts/AuthContext';
+import { supabase } from '../../lib/supabase';
 
 interface KPICard {
   label: string;
@@ -21,6 +23,43 @@ interface Alert {
   owner: string;
 }
 
+interface SPCPoint {
+  x: number;
+  value: number;
+  ucl: number;
+  lcl: number;
+  centerLine: number;
+  isOutOfControl: boolean;
+  timestamp: string;
+}
+
+interface MetricOption {
+  id: string;
+  name: string;
+  unit: string;
+  target_value: number;
+  current_value: number;
+}
+
+interface ForecastState {
+  sustainabilityPct: number;
+  outOfControlCount: number;
+  driftRisk: number;
+  forecast7: number;
+  forecast14: number;
+  forecast21: number;
+  currentValue: number;
+  baselineValue: number;
+  targetValue: number;
+  sigma: number;
+  forecastSlope: number;
+  openActions: number;
+  completedForecasts: number;
+  auditEvents: number;
+  metricName: string;
+  unit: string;
+}
+
 interface ControlPlanItem {
   variable: string;
   frequency: string;
@@ -30,99 +69,62 @@ interface ControlPlanItem {
   auditFreq: string;
 }
 
+const formatMetricValue = (value: number, unit: string) => {
+  if (!Number.isFinite(value)) return '--';
+  if (unit === '%') return `${value.toFixed(1)}%`;
+  if (unit.toLowerCase() === 'usd' || unit === '$') return `$${Math.round(value).toLocaleString()}`;
+  if (unit) return `${value.toFixed(1)} ${unit}`;
+  return value.toFixed(1);
+};
+
+const formatRelativeTime = (timestamp?: string | null) => {
+  if (!timestamp) return 'No data';
+  const diffMs = Date.now() - new Date(timestamp).getTime();
+  const diffMinutes = Math.max(0, Math.floor(diffMs / 60000));
+  if (diffMinutes < 1) return 'Just now';
+  if (diffMinutes < 60) return `${diffMinutes} min ago`;
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+  const diffDays = Math.floor(diffHours / 24);
+  return `${diffDays}d ago`;
+};
+
+const calculateStdDev = (values: number[]) => {
+  if (values.length < 2) return 0;
+  const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
+  const variance = values.reduce((sum, value) => sum + Math.pow(value - mean, 2), 0) / values.length;
+  return Math.sqrt(variance);
+};
+
 const ControlPage = () => {
-  const [selectedProject, setSelectedProject] = useState('Hospital ER Wait Time Reduction');
+  const { organizationId } = useAuth();
   const [selectedChart, setSelectedChart] = useState<'xbar-r' | 'i-mr' | 'p-chart' | 'c-chart' | 'u-chart'>('i-mr');
   const [showAIPanel, setShowAIPanel] = useState(false);
-  const [activeAlerts, setActiveAlerts] = useState<Alert[]>([
-    {
-      id: '1',
-      severity: 'critical',
-      message: 'CTQ value exceeded upper control limit by 2.3σ',
-      timestamp: '2 minutes ago',
-      acknowledged: false,
-      owner: 'Dr. Sarah Chen'
-    },
-    {
-      id: '2',
-      severity: 'moderate',
-      message: '3 consecutive points trending upward — potential early-stage drift',
-      timestamp: '1 hour ago',
-      acknowledged: true,
-      owner: 'Operations Team'
-    },
-    {
-      id: '3',
-      severity: 'low',
-      message: 'Variance increase detected in secondary metric',
-      timestamp: '3 hours ago',
-      acknowledged: true,
-      owner: 'Quality Manager'
-    }
-  ]);
-
-  const [kpiCards] = useState<KPICard[]>([
-    {
-      label: 'Current CTQ Value',
-      value: '42.3 min',
-      target: '35 min',
-      baseline: '68.5 min',
-      improvement: '38.2%',
-      status: 'warning',
-      lastUpdate: '2 min ago',
-      source: 'Measure Phase'
-    },
-    {
-      label: 'Target Value',
-      value: '35 min',
-      target: '35 min',
-      baseline: '68.5 min',
-      improvement: '48.9%',
-      status: 'stable',
-      lastUpdate: 'Live',
-      source: 'Improve Phase'
-    },
-    {
-      label: 'Baseline Value',
-      value: '68.5 min',
-      target: '35 min',
-      baseline: '68.5 min',
-      improvement: '0%',
-      status: 'stable',
-      lastUpdate: 'Historical',
-      source: 'Define Phase'
-    },
-    {
-      label: 'Improvement Sustained',
-      value: '38.2%',
-      target: '48.9%',
-      baseline: '0%',
-      improvement: '+38.2%',
-      status: 'stable',
-      lastUpdate: 'Live',
-      source: 'Multi-Phase'
-    },
-    {
-      label: 'Process Stability',
-      value: 'Moderate',
-      target: 'Stable',
-      baseline: 'Unstable',
-      improvement: '2 Levels',
-      status: 'warning',
-      lastUpdate: '5 min ago',
-      source: 'SPC Engine'
-    },
-    {
-      label: 'Drift Risk Score',
-      value: '6.8/10',
-      target: '&lt;3.0',
-      baseline: '9.2',
-      improvement: '26.1%',
-      status: 'warning',
-      lastUpdate: 'Live',
-      source: 'AI Prediction'
-    }
-  ]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [availableMetrics, setAvailableMetrics] = useState<MetricOption[]>([]);
+  const [selectedMetricId, setSelectedMetricId] = useState('');
+  const [spcData, setSpcData] = useState<SPCPoint[]>([]);
+  const [activeAlerts, setActiveAlerts] = useState<Alert[]>([]);
+  const [kpiCards, setKpiCards] = useState<KPICard[]>([]);
+  const [forecastState, setForecastState] = useState<ForecastState>({
+    sustainabilityPct: 0,
+    outOfControlCount: 0,
+    driftRisk: 0,
+    forecast7: 0,
+    forecast14: 0,
+    forecast21: 0,
+    currentValue: 0,
+    baselineValue: 0,
+    targetValue: 0,
+    sigma: 0,
+    forecastSlope: 0,
+    openActions: 0,
+    completedForecasts: 0,
+    auditEvents: 0,
+    metricName: 'Selected Metric',
+    unit: '',
+  });
 
   const [controlPlan] = useState<ControlPlanItem[]>([
     {
@@ -159,33 +161,228 @@ const ControlPage = () => {
     }
   ]);
 
-  // Generate SPC chart data
-  const generateSPCData = () => {
-    const points = 30;
-    const centerLine = 42.3;
-    const ucl = 52.8;
-    const lcl = 31.8;
-    
-    return Array.from({ length: points }, (_, i) => {
-      const variation = (Math.random() - 0.5) * 8;
-      let value = centerLine + variation;
-      
-      // Add some special cause points
-      if (i === 8 || i === 22) value = ucl + 2;
-      if (i === 15) value = lcl - 1;
-      
-      return {
-        x: i + 1,
-        value: parseFloat(value.toFixed(1)),
-        ucl,
-        lcl,
-        centerLine,
-        isOutOfControl: value > ucl || value < lcl
-      };
-    });
-  };
+  useEffect(() => {
+    const loadControlData = async () => {
+      if (!organizationId) {
+        setLoading(false);
+        return;
+      }
 
-  const [spcData] = useState(generateSPCData());
+      try {
+        setLoading(true);
+        setError(null);
+
+        const { data: metricsData, error: metricsError } = await supabase
+          .from('metrics')
+          .select('id, name, unit, target_value, current_value')
+          .eq('organization_id', organizationId)
+          .order('created_at', { ascending: false });
+
+        if (metricsError) throw metricsError;
+
+        const metrics = (metricsData || []) as MetricOption[];
+        setAvailableMetrics(metrics);
+
+        const fallbackMetricId = selectedMetricId || metrics[0]?.id || '';
+        setSelectedMetricId(fallbackMetricId);
+
+        const [
+          metricDataResponse,
+          alertsResponse,
+          actionItemsResponse,
+          forecastsResponse,
+          auditLogResponse,
+        ] = await Promise.all([
+          fallbackMetricId
+            ? supabase
+                .from('metric_data')
+                .select('value, timestamp')
+                .eq('organization_id', organizationId)
+                .eq('metric_id', fallbackMetricId)
+                .order('timestamp', { ascending: true })
+                .limit(60)
+            : Promise.resolve({ data: [], error: null }),
+          supabase
+            .from('alerts')
+            .select('id, severity, message, title, created_at, acknowledged_at')
+            .eq('organization_id', organizationId)
+            .order('created_at', { ascending: false })
+            .limit(5),
+          supabase
+            .from('action_items')
+            .select('id', { count: 'exact', head: true })
+            .eq('organization_id', organizationId)
+            .in('status', ['pending', 'in_progress']),
+          supabase
+            .from('forecasts')
+            .select('id', { count: 'exact', head: true })
+            .eq('organization_id', organizationId)
+            .eq('status', 'completed'),
+          supabase
+            .from('audit_logs')
+            .select('id', { count: 'exact', head: true })
+            .eq('organization_id', organizationId),
+        ]);
+
+        if (metricDataResponse.error) throw metricDataResponse.error;
+        if (alertsResponse.error) throw alertsResponse.error;
+
+        const metricPoints = (metricDataResponse.data || [])
+          .map((point: any) => ({
+            value: Number(point.value),
+            timestamp: point.timestamp as string,
+          }))
+          .filter((point) => Number.isFinite(point.value));
+
+        const selectedMetric = metrics.find((metric) => metric.id === fallbackMetricId) || null;
+        const values = metricPoints.map((point) => point.value);
+        const currentValue = values[values.length - 1] ?? Number(selectedMetric?.current_value || 0);
+        const baselineValue = values[0] ?? currentValue;
+        const targetValue = Number(selectedMetric?.target_value || 0);
+        const centerLine = values.length > 0
+          ? values.reduce((sum, value) => sum + value, 0) / values.length
+          : currentValue;
+        const sigma = calculateStdDev(values);
+        const ucl = centerLine + sigma * 3;
+        const lcl = Math.max(0, centerLine - sigma * 3);
+        const outOfControlCount = metricPoints.filter((point) => point.value > ucl || point.value < lcl).length;
+        const improvementPct = baselineValue !== 0
+          ? ((baselineValue - currentValue) / Math.abs(baselineValue)) * 100
+          : 0;
+        const sustainabilityPct = baselineValue !== targetValue
+          ? Math.max(0, Math.min(100, ((baselineValue - currentValue) / (baselineValue - targetValue || 1)) * 100))
+          : 0;
+        const driftSigma = sigma > 0 ? Math.abs(currentValue - centerLine) / sigma : 0;
+        const driftRisk = Math.max(0, Math.min(10, driftSigma * 2.5));
+        const recentTrendWindow = values.slice(-7);
+        const forecastSlope = recentTrendWindow.length > 1
+          ? (recentTrendWindow[recentTrendWindow.length - 1] - recentTrendWindow[0]) / (recentTrendWindow.length - 1)
+          : 0;
+        const forecast7 = currentValue + forecastSlope * 7;
+        const forecast14 = currentValue + forecastSlope * 14;
+        const forecast21 = currentValue + forecastSlope * 21;
+        const latestTimestamp = metricPoints[metricPoints.length - 1]?.timestamp ?? null;
+
+        setSpcData(
+          metricPoints.slice(-30).map((point, idx) => ({
+            x: idx + 1,
+            value: Number(point.value.toFixed(2)),
+            ucl,
+            lcl,
+            centerLine,
+            isOutOfControl: point.value > ucl || point.value < lcl,
+            timestamp: point.timestamp,
+          }))
+        );
+
+        setActiveAlerts(
+          (alertsResponse.data || []).map((alert: any) => ({
+            id: alert.id,
+            severity: alert.severity === 'high' ? 'critical' : alert.severity === 'medium' ? 'moderate' : (alert.severity || 'low'),
+            message: alert.title || alert.message || 'Alert triggered',
+            timestamp: formatRelativeTime(alert.created_at),
+            acknowledged: Boolean(alert.acknowledged_at),
+            owner: 'Operations Team',
+          }))
+        );
+
+        const stabilityStatus: KPICard['status'] =
+          outOfControlCount === 0 ? 'stable' : outOfControlCount <= 2 ? 'warning' : 'critical';
+        const driftStatus: KPICard['status'] =
+          driftRisk < 3 ? 'stable' : driftRisk < 6 ? 'warning' : 'critical';
+        const targetDelta = targetValue > 0 ? ((currentValue - targetValue) / targetValue) * 100 : 0;
+
+        setKpiCards([
+          {
+            label: 'Current CTQ Value',
+            value: formatMetricValue(currentValue, selectedMetric?.unit || ''),
+            target: formatMetricValue(targetValue, selectedMetric?.unit || ''),
+            baseline: formatMetricValue(baselineValue, selectedMetric?.unit || ''),
+            improvement: `${improvementPct >= 0 ? '+' : ''}${improvementPct.toFixed(1)}%`,
+            status: driftStatus,
+            lastUpdate: formatRelativeTime(latestTimestamp),
+            source: selectedMetric?.name || 'Metric Data',
+          },
+          {
+            label: 'Target Value',
+            value: formatMetricValue(targetValue, selectedMetric?.unit || ''),
+            target: formatMetricValue(targetValue, selectedMetric?.unit || ''),
+            baseline: formatMetricValue(baselineValue, selectedMetric?.unit || ''),
+            improvement: `${targetDelta >= 0 ? '+' : ''}${targetDelta.toFixed(1)}% vs target`,
+            status: targetDelta <= 0 ? 'stable' : 'warning',
+            lastUpdate: 'Configured',
+            source: 'Metrics',
+          },
+          {
+            label: 'Baseline Value',
+            value: formatMetricValue(baselineValue, selectedMetric?.unit || ''),
+            target: formatMetricValue(targetValue, selectedMetric?.unit || ''),
+            baseline: formatMetricValue(baselineValue, selectedMetric?.unit || ''),
+            improvement: 'Historical reference',
+            status: 'stable',
+            lastUpdate: metricPoints[0]?.timestamp ? formatRelativeTime(metricPoints[0].timestamp) : 'Historical',
+            source: 'Metric Data',
+          },
+          {
+            label: 'Improvement Sustained',
+            value: `${sustainabilityPct.toFixed(0)}%`,
+            target: '100%',
+            baseline: '0%',
+            improvement: `${improvementPct >= 0 ? '+' : ''}${improvementPct.toFixed(1)}%`,
+            status: sustainabilityPct >= 80 ? 'stable' : sustainabilityPct >= 50 ? 'warning' : 'critical',
+            lastUpdate: 'Live',
+            source: 'Control Engine',
+          },
+          {
+            label: 'Process Stability',
+            value: outOfControlCount === 0 ? 'Stable' : outOfControlCount <= 2 ? 'Watch' : 'Unstable',
+            target: 'Stable',
+            baseline: sigma > 0 ? `${sigma.toFixed(2)}σ spread` : 'No spread',
+            improvement: `${outOfControlCount} rule breach${outOfControlCount === 1 ? '' : 'es'}`,
+            status: stabilityStatus,
+            lastUpdate: formatRelativeTime(latestTimestamp),
+            source: 'SPC Engine',
+          },
+          {
+            label: 'Drift Risk Score',
+            value: `${driftRisk.toFixed(1)}/10`,
+            target: '<3.0',
+            baseline: sigma > 0 ? `${driftSigma.toFixed(1)}σ shift` : '0σ shift',
+            improvement: forecastSlope <= 0 ? 'Trend improving' : 'Trend rising',
+            status: driftStatus,
+            lastUpdate: 'Live',
+            source: 'Forecast Engine',
+          },
+        ]);
+
+        setForecastState({
+          sustainabilityPct,
+          outOfControlCount,
+          driftRisk,
+          forecast7,
+          forecast14,
+          forecast21,
+          currentValue,
+          baselineValue,
+          targetValue,
+          sigma,
+          forecastSlope,
+          openActions: actionItemsResponse.count || 0,
+          completedForecasts: forecastsResponse.count || 0,
+          auditEvents: auditLogResponse.count || 0,
+          metricName: selectedMetric?.name || 'Selected Metric',
+          unit: selectedMetric?.unit || '',
+        });
+      } catch (loadError: any) {
+        console.error('Error loading control page data:', loadError);
+        setError(loadError?.message || 'Failed to load control data');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadControlData();
+  }, [organizationId, selectedMetricId]);
 
   const getSeverityColor = (severity: string) => {
     switch (severity) {
@@ -205,6 +402,62 @@ const ControlPage = () => {
     }
   };
 
+  const selectedMetric = availableMetrics.find((metric) => metric.id === selectedMetricId) || null;
+  const recentValues = spcData.slice(-20).map((point) => point.value);
+  const minRecentValue = recentValues.length > 0 ? Math.min(...recentValues) : 0;
+  const maxRecentValue = recentValues.length > 0 ? Math.max(...recentValues) : 0;
+  const sparklineHeights = recentValues.length > 0
+    ? recentValues.map((value) => {
+        if (maxRecentValue === minRecentValue) return 60;
+        return 20 + ((value - minRecentValue) / (maxRecentValue - minRecentValue)) * 80;
+      })
+    : Array.from({ length: 20 }, () => 20);
+  const daysToThreshold = forecastState.forecastSlope > 0 && forecastState.currentValue < forecastState.targetValue
+    ? Math.max(
+        1,
+        Math.round((forecastState.targetValue - forecastState.currentValue) / forecastState.forecastSlope)
+      )
+    : null;
+  const forecastRiskLabel = daysToThreshold && daysToThreshold <= 21
+    ? `${daysToThreshold} days`
+    : 'Stable trend';
+  const processStatusLabel =
+    forecastState.outOfControlCount === 0 ? 'Stable' :
+    forecastState.outOfControlCount <= 2 ? 'Watch' : 'Escalate';
+  const financialSavings = Math.max(0, (forecastState.baselineValue - forecastState.currentValue) * 365);
+  const roiAchieved = forecastState.targetValue > 0
+    ? Math.max(0, ((forecastState.baselineValue - forecastState.currentValue) / forecastState.targetValue) * 100)
+    : 0;
+
+  if (loading) {
+    return (
+      <DashboardLayout>
+        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-white to-blue-50/30">
+          <div className="flex flex-col items-center gap-3">
+            <div className="w-12 h-12 rounded-full border-4 border-teal-100 border-t-teal-600 animate-spin"></div>
+            <p className="text-sm font-medium text-slate-600">Loading live control metrics...</p>
+          </div>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  if (error) {
+    return (
+      <DashboardLayout>
+        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-white to-blue-50/30">
+          <div className="bg-white rounded-2xl border border-red-200 p-8 text-center max-w-md shadow-sm">
+            <div className="w-12 h-12 rounded-full bg-red-50 flex items-center justify-center mx-auto mb-4">
+              <i className="ri-error-warning-line text-red-500 text-2xl"></i>
+            </div>
+            <h2 className="text-lg font-bold text-slate-900 mb-2">Control data unavailable</h2>
+            <p className="text-sm text-slate-600">{error}</p>
+          </div>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
   return (
     <DashboardLayout>
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50/30">
@@ -220,7 +473,9 @@ const ControlPage = () => {
                   </div>
                   <div>
                     <h1 className="text-2xl font-bold text-slate-900">Control Phase</h1>
-                    <p className="text-sm text-slate-600">Continuous Performance Monitoring & Governance</p>
+                    <p className="text-sm text-slate-600">
+                      Continuous monitoring for {selectedMetric?.name || 'your monitored metric'}
+                    </p>
                   </div>
                 </div>
               </div>
@@ -241,6 +496,21 @@ const ControlPage = () => {
                   AI Insights
                 </button>
               </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-semibold text-slate-600">Metric</span>
+              <select
+                value={selectedMetricId}
+                onChange={(e) => setSelectedMetricId(e.target.value)}
+                className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-500 min-w-[240px]"
+              >
+                {availableMetrics.map((metric) => (
+                  <option key={metric.id} value={metric.id}>
+                    {metric.name}
+                  </option>
+                ))}
+              </select>
             </div>
 
             {/* DMAIC Stepper */}
@@ -320,11 +590,11 @@ const ControlPage = () => {
 
                   {/* Sparkline */}
                   <div className="mt-4 h-12 flex items-end gap-1">
-                    {Array.from({ length: 20 }).map((_, i) => (
+                    {sparklineHeights.map((height, i) => (
                       <div
                         key={i}
                         className="flex-1 bg-gradient-to-t from-teal-500/30 to-indigo-500/30 rounded-t"
-                        style={{ height: `${Math.random() * 100}%` }}
+                        style={{ height: `${height}%` }}
                       ></div>
                     ))}
                   </div>
@@ -336,19 +606,21 @@ const ControlPage = () => {
             <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-8 border border-slate-200/60">
               <div className="flex items-center justify-between mb-6">
                 <h3 className="text-lg font-bold text-slate-900">Improvement Sustainability Gauge</h3>
-                <span className="px-3 py-1 bg-emerald-50 text-emerald-700 rounded-lg text-sm font-semibold">78% Sustained</span>
+                <span className="px-3 py-1 bg-emerald-50 text-emerald-700 rounded-lg text-sm font-semibold">
+                  {forecastState.sustainabilityPct.toFixed(0)}% Sustained
+                </span>
               </div>
               
               <div className="relative h-4 bg-slate-100 rounded-full overflow-hidden">
                 <div 
                   className="absolute inset-y-0 left-0 bg-gradient-to-r from-teal-500 to-indigo-600 rounded-full transition-all duration-1000"
-                  style={{ width: '78%', animation: 'progressBar 2s ease-out' }}
+                  style={{ width: `${forecastState.sustainabilityPct}%`, animation: 'progressBar 2s ease-out' }}
                 ></div>
               </div>
               
               <div className="flex justify-between mt-2 text-sm text-slate-600">
                 <span>Baseline</span>
-                <span className="font-semibold text-slate-900">Current: 78%</span>
+                <span className="font-semibold text-slate-900">Current: {forecastState.sustainabilityPct.toFixed(0)}%</span>
                 <span>Target: 95%</span>
               </div>
             </div>
@@ -456,8 +728,14 @@ const ControlPage = () => {
                 <div className="flex items-start gap-2">
                   <i className="ri-alert-line text-amber-600 mt-0.5"></i>
                   <div>
-                    <div className="text-xs font-semibold text-amber-900 mb-1">Special Cause Detected</div>
-                    <div className="text-xs text-amber-700">3 consecutive points trending upward — potential early-stage drift</div>
+                    <div className="text-xs font-semibold text-amber-900 mb-1">
+                      {forecastState.outOfControlCount > 0 ? 'Special Cause Detected' : 'Process In Control'}
+                    </div>
+                    <div className="text-xs text-amber-700">
+                      {forecastState.outOfControlCount > 0
+                        ? `${forecastState.outOfControlCount} point(s) outside control limits`
+                        : 'No current control-limit breaches in the latest sample window'}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -495,27 +773,33 @@ const ControlPage = () => {
                 <div>
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-sm font-semibold text-slate-700">Statistical Drift Risk</span>
-                    <span className="text-2xl font-bold text-amber-600">6.8/10</span>
+                    <span className="text-2xl font-bold text-amber-600">{forecastState.driftRisk.toFixed(1)}/10</span>
                   </div>
                   <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
-                    <div className="h-full bg-gradient-to-r from-amber-400 to-red-500 rounded-full" style={{ width: '68%' }}></div>
+                    <div className="h-full bg-gradient-to-r from-amber-400 to-red-500 rounded-full" style={{ width: `${forecastState.driftRisk * 10}%` }}></div>
                   </div>
                 </div>
 
                 <div>
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-sm font-semibold text-slate-700">Mean Shift Detection</span>
-                    <span className="px-2 py-1 bg-amber-50 text-amber-700 rounded-lg text-xs font-semibold">+2.3σ</span>
+                    <span className="px-2 py-1 bg-amber-50 text-amber-700 rounded-lg text-xs font-semibold">
+                      {forecastState.sigma > 0 ? `${(Math.abs(forecastState.currentValue - (spcData[0]?.centerLine ?? forecastState.currentValue)) / forecastState.sigma).toFixed(1)}σ` : '0.0σ'}
+                    </span>
                   </div>
-                  <div className="text-xs text-slate-600">Rolling 7-day average shows upward trend</div>
+                  <div className="text-xs text-slate-600">
+                    {forecastState.forecastSlope > 0 ? 'Rolling average is moving upward' : 'Rolling average is stable or improving'}
+                  </div>
                 </div>
 
                 <div>
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-sm font-semibold text-slate-700">Variance Increase Alert</span>
-                    <span className="px-2 py-1 bg-red-50 text-red-700 rounded-lg text-xs font-semibold">+18%</span>
+                    <span className="px-2 py-1 bg-red-50 text-red-700 rounded-lg text-xs font-semibold">
+                      {forecastState.sigma > 0 ? `${forecastState.sigma.toFixed(2)}σ` : 'Low variance'}
+                    </span>
                   </div>
-                  <div className="text-xs text-slate-600">Process variability increased vs. baseline</div>
+                  <div className="text-xs text-slate-600">Current process spread based on the latest metric window</div>
                 </div>
 
                 <div className="pt-4 border-t border-slate-200">
@@ -523,7 +807,10 @@ const ControlPage = () => {
                     <i className="ri-alarm-warning-line text-xl text-amber-600 mt-0.5"></i>
                     <div>
                       <div className="text-sm font-bold text-slate-900 mb-1">Early Warning Forecast</div>
-                      <div className="text-sm text-slate-700">Based on current trend, CTQ expected to exceed threshold within <span className="font-bold text-red-600">21 days</span></div>
+                      <div className="text-sm text-slate-700">
+                        Based on current trend, {forecastState.metricName} is expected to
+                        {daysToThreshold ? <> cross the threshold within <span className="font-bold text-red-600">{daysToThreshold} days</span></> : ' remain within threshold'}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -564,18 +851,18 @@ const ControlPage = () => {
               <div className="grid grid-cols-3 gap-4 mt-6">
                 <div className="text-center">
                   <div className="text-xs text-slate-600 mb-1">7-Day Forecast</div>
-                  <div className="text-lg font-bold text-slate-900">44.2 min</div>
-                  <div className="text-xs text-emerald-600">Within limits</div>
+                  <div className="text-lg font-bold text-slate-900">{formatMetricValue(forecastState.forecast7, forecastState.unit)}</div>
+                  <div className="text-xs text-emerald-600">{forecastState.forecast7 <= forecastState.targetValue ? 'Within limits' : 'Watch closely'}</div>
                 </div>
                 <div className="text-center">
                   <div className="text-xs text-slate-600 mb-1">14-Day Forecast</div>
-                  <div className="text-lg font-bold text-slate-900">47.8 min</div>
-                  <div className="text-xs text-amber-600">Approaching</div>
+                  <div className="text-lg font-bold text-slate-900">{formatMetricValue(forecastState.forecast14, forecastState.unit)}</div>
+                  <div className="text-xs text-amber-600">{forecastState.forecast14 <= forecastState.targetValue ? 'Within limits' : 'Approaching'}</div>
                 </div>
                 <div className="text-center">
                   <div className="text-xs text-slate-600 mb-1">21-Day Forecast</div>
-                  <div className="text-lg font-bold text-red-600">52.1 min</div>
-                  <div className="text-xs text-red-600">Exceeds limit</div>
+                  <div className="text-lg font-bold text-red-600">{formatMetricValue(forecastState.forecast21, forecastState.unit)}</div>
+                  <div className="text-xs text-red-600">{forecastState.forecast21 <= forecastState.targetValue ? 'Within limits' : 'Exceeds limit'}</div>
                 </div>
               </div>
             </div>
@@ -675,7 +962,7 @@ const ControlPage = () => {
                     <div className="flex-1">
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-sm text-slate-600">Baseline (Before)</span>
-                        <span className="text-lg font-bold text-slate-900">68.5 min</span>
+                        <span className="text-lg font-bold text-slate-900">{formatMetricValue(forecastState.baselineValue, forecastState.unit)}</span>
                       </div>
                       <div className="h-3 bg-red-100 rounded-full overflow-hidden">
                         <div className="h-full bg-red-500 rounded-full" style={{ width: '100%' }}></div>
@@ -687,7 +974,7 @@ const ControlPage = () => {
                     <div className="flex-1">
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-sm text-slate-600">Current (After)</span>
-                        <span className="text-lg font-bold text-emerald-600">42.3 min</span>
+                        <span className="text-lg font-bold text-emerald-600">{formatMetricValue(forecastState.currentValue, forecastState.unit)}</span>
                       </div>
                       <div className="h-3 bg-emerald-100 rounded-full overflow-hidden">
                         <div className="h-full bg-emerald-500 rounded-full" style={{ width: '62%' }}></div>
@@ -699,7 +986,7 @@ const ControlPage = () => {
                     <div className="flex-1">
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-sm text-slate-600">Target</span>
-                        <span className="text-lg font-bold text-teal-600">35.0 min</span>
+                        <span className="text-lg font-bold text-teal-600">{formatMetricValue(forecastState.targetValue, forecastState.unit)}</span>
                       </div>
                       <div className="h-3 bg-teal-100 rounded-full overflow-hidden">
                         <div className="h-full bg-teal-500 rounded-full" style={{ width: '51%' }}></div>
@@ -711,7 +998,7 @@ const ControlPage = () => {
                 <div className="mt-6 p-4 bg-emerald-50 rounded-xl border border-emerald-200">
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-semibold text-emerald-900">Variance Reduction</span>
-                    <span className="text-2xl font-bold text-emerald-600">-38.2%</span>
+                    <span className="text-2xl font-bold text-emerald-600">{kpiCards[0]?.improvement || '0.0%'}</span>
                   </div>
                 </div>
               </div>
@@ -722,35 +1009,35 @@ const ControlPage = () => {
                 <div className="grid grid-cols-2 gap-4 mb-6">
                   <div className="p-4 bg-gradient-to-br from-emerald-50 to-teal-50 rounded-xl border border-emerald-200">
                     <div className="text-xs text-slate-600 mb-1">Cost Savings Realized</div>
-                    <div className="text-2xl font-bold text-emerald-600">$284K</div>
-                    <div className="text-xs text-emerald-700 mt-1">Annual projection</div>
+                    <div className="text-2xl font-bold text-emerald-600">${Math.round(financialSavings).toLocaleString()}</div>
+                    <div className="text-xs text-emerald-700 mt-1">Modeled annual impact</div>
                   </div>
 
                   <div className="p-4 bg-gradient-to-br from-indigo-50 to-blue-50 rounded-xl border border-indigo-200">
                     <div className="text-xs text-slate-600 mb-1">ROI Achieved</div>
-                    <div className="text-2xl font-bold text-indigo-600">342%</div>
-                    <div className="text-xs text-indigo-700 mt-1">vs 250% projected</div>
+                    <div className="text-2xl font-bold text-indigo-600">{roiAchieved.toFixed(0)}%</div>
+                    <div className="text-xs text-indigo-700 mt-1">Current modeled return</div>
                   </div>
                 </div>
 
                 <div className="p-6 bg-gradient-to-br from-slate-50 to-blue-50/30 rounded-xl border border-slate-200">
                   <div className="flex items-center justify-between mb-4">
                     <span className="text-sm font-bold text-slate-700">Stability Classification</span>
-                    <span className="px-3 py-1 bg-emerald-500 text-white rounded-lg text-sm font-bold">Level 2 - Moderate</span>
+                    <span className="px-3 py-1 bg-emerald-500 text-white rounded-lg text-sm font-bold">{processStatusLabel}</span>
                   </div>
                   
                   <div className="space-y-2 text-sm text-slate-700">
                     <div className="flex items-center gap-2">
                       <i className="ri-checkbox-circle-fill text-emerald-500"></i>
-                      <span>Process within statistical control</span>
+                      <span>{forecastState.outOfControlCount === 0 ? 'Process within statistical control' : 'Control limit exceptions detected'}</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <i className="ri-checkbox-circle-fill text-emerald-500"></i>
-                      <span>Improvement sustained &gt;30 days</span>
+                      <span>Improvement sustained against baseline</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <i className="ri-alert-fill text-amber-500"></i>
-                      <span>Minor drift detected - monitoring</span>
+                      <span>{forecastState.driftRisk >= 6 ? 'Elevated drift detected - monitoring' : 'Drift remains manageable'}</span>
                     </div>
                   </div>
                 </div>
@@ -759,7 +1046,7 @@ const ControlPage = () => {
                   <div className="flex items-center justify-between">
                     <div>
                       <div className="text-xs opacity-90 mb-1">Financial Impact Sustained</div>
-                      <div className="text-2xl font-bold">$221K</div>
+                      <div className="text-2xl font-bold">${Math.round(financialSavings * 0.78).toLocaleString()}</div>
                     </div>
                     <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center">
                       <i className="ri-money-dollar-circle-line text-2xl"></i>
@@ -781,7 +1068,7 @@ const ControlPage = () => {
               <div className="flex items-center gap-2">
                 <span className="px-3 py-1 bg-emerald-50 text-emerald-700 rounded-lg text-sm font-semibold">
                   <i className="ri-link mr-1"></i>
-                  All Phases Synced
+                  {forecastState.completedForecasts} forecasts synced
                 </span>
               </div>
             </div>
@@ -790,11 +1077,11 @@ const ControlPage = () => {
             <div className="relative p-8 bg-gradient-to-br from-slate-50 to-blue-50/30 rounded-xl border border-slate-200">
               <div className="flex items-center justify-between">
                 {[
-                  { phase: 'Define', value: '68.5 min', label: 'Baseline', icon: 'ri-flag-line', color: 'from-blue-500 to-indigo-600' },
-                  { phase: 'Measure', value: '±12.3 min', label: 'Variability', icon: 'ri-bar-chart-line', color: 'from-purple-500 to-pink-600' },
+                  { phase: 'Define', value: formatMetricValue(forecastState.baselineValue, forecastState.unit), label: 'Baseline', icon: 'ri-flag-line', color: 'from-blue-500 to-indigo-600' },
+                  { phase: 'Measure', value: `${forecastState.sigma.toFixed(2)}σ`, label: 'Variability', icon: 'ri-bar-chart-line', color: 'from-purple-500 to-pink-600' },
                   { phase: 'Analyze', value: 'R² = 0.84', label: 'Drivers', icon: 'ri-line-chart-line', color: 'from-amber-500 to-orange-600' },
-                  { phase: 'Improve', value: '35 min', label: 'Target', icon: 'ri-rocket-line', color: 'from-emerald-500 to-teal-600' },
-                  { phase: 'Control', value: '42.3 min', label: 'Current', icon: 'ri-shield-check-line', color: 'from-teal-500 to-indigo-600' }
+                  { phase: 'Improve', value: formatMetricValue(forecastState.targetValue, forecastState.unit), label: 'Target', icon: 'ri-rocket-line', color: 'from-emerald-500 to-teal-600' },
+                  { phase: 'Control', value: formatMetricValue(forecastState.currentValue, forecastState.unit), label: 'Current', icon: 'ri-shield-check-line', color: 'from-teal-500 to-indigo-600' }
                 ].map((item, idx) => (
                   <div key={idx} className="flex items-center">
                     <div className="text-center">
@@ -856,7 +1143,7 @@ const ControlPage = () => {
                   </div>
                   <div>
                     <div className="text-sm font-bold text-slate-900">Audit Trail</div>
-                    <div className="text-xs text-slate-600">284 events logged</div>
+                    <div className="text-xs text-slate-600">{forecastState.auditEvents} events logged</div>
                   </div>
                 </div>
                 <button className="w-full px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors">
@@ -949,26 +1236,26 @@ const ControlPage = () => {
             <div className="grid grid-cols-4 gap-4">
               <div className="p-4 bg-red-50 rounded-xl border border-red-200">
                 <div className="text-xs text-red-600 mb-1 font-semibold uppercase">Critical</div>
-                <div className="text-3xl font-bold text-red-600">1</div>
+                <div className="text-3xl font-bold text-red-600">{activeAlerts.filter((alert) => alert.severity === 'critical').length}</div>
                 <div className="text-xs text-red-700 mt-1">Requires immediate action</div>
               </div>
 
               <div className="p-4 bg-amber-50 rounded-xl border border-amber-200">
                 <div className="text-xs text-amber-600 mb-1 font-semibold uppercase">Moderate</div>
-                <div className="text-3xl font-bold text-amber-600">1</div>
+                <div className="text-3xl font-bold text-amber-600">{activeAlerts.filter((alert) => alert.severity === 'moderate').length}</div>
                 <div className="text-xs text-amber-700 mt-1">Monitor closely</div>
               </div>
 
               <div className="p-4 bg-blue-50 rounded-xl border border-blue-200">
                 <div className="text-xs text-blue-600 mb-1 font-semibold uppercase">Low</div>
-                <div className="text-3xl font-bold text-blue-600">1</div>
+                <div className="text-3xl font-bold text-blue-600">{activeAlerts.filter((alert) => alert.severity === 'low').length}</div>
                 <div className="text-xs text-blue-700 mt-1">Informational</div>
               </div>
 
               <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-200">
                 <div className="text-xs text-emerald-600 mb-1 font-semibold uppercase">Resolved (24h)</div>
-                <div className="text-3xl font-bold text-emerald-600">12</div>
-                <div className="text-xs text-emerald-700 mt-1">Avg resolution: 2.3h</div>
+                <div className="text-3xl font-bold text-emerald-600">{forecastState.completedForecasts}</div>
+                <div className="text-xs text-emerald-700 mt-1">{forecastState.openActions} open actions tracked</div>
               </div>
             </div>
           </div>
@@ -1055,10 +1342,11 @@ const ControlPage = () => {
               <div className="p-5 bg-gradient-to-br from-emerald-50 to-teal-50 rounded-xl border border-emerald-200">
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-sm font-bold text-slate-900">Stability Classification</span>
-                  <span className="px-3 py-1 bg-emerald-500 text-white rounded-lg text-sm font-bold">Level 2</span>
+                  <span className="px-3 py-1 bg-emerald-500 text-white rounded-lg text-sm font-bold">{processStatusLabel}</span>
                 </div>
                 <p className="text-sm text-slate-700 leading-relaxed">
-                  Process demonstrates <span className="font-bold">moderate stability</span> with sustained improvement over 45 days. Minor drift detected but within acceptable control limits.
+                  {forecastState.metricName} is showing <span className="font-bold">{processStatusLabel.toLowerCase()}</span> behavior with
+                  {' '}a current drift score of {forecastState.driftRisk.toFixed(1)}/10 and {forecastState.outOfControlCount} recent control-limit breach(es).
                 </p>
               </div>
 
@@ -1069,9 +1357,13 @@ const ControlPage = () => {
                   <div className="p-4 bg-red-50 rounded-xl border border-red-200">
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-sm font-semibold text-red-900">High Risk</span>
-                      <span className="text-xs text-red-700">21 days</span>
+                      <span className="text-xs text-red-700">{forecastRiskLabel}</span>
                     </div>
-                    <p className="text-xs text-red-800">CTQ expected to exceed upper control limit if current trend continues</p>
+                    <p className="text-xs text-red-800">
+                      {daysToThreshold
+                        ? `${forecastState.metricName} may exceed target if the current slope continues`
+                        : 'No immediate threshold breach predicted from the recent slope'}
+                    </p>
                   </div>
 
                   <div className="p-4 bg-amber-50 rounded-xl border border-amber-200">
@@ -1079,7 +1371,7 @@ const ControlPage = () => {
                       <span className="text-sm font-semibold text-amber-900">Moderate Risk</span>
                       <span className="text-xs text-amber-700">14 days</span>
                     </div>
-                    <p className="text-xs text-amber-800">Variance increase may impact secondary metrics</p>
+                    <p className="text-xs text-amber-800">Process spread is currently {forecastState.sigma.toFixed(2)}σ across the sampled window</p>
                   </div>
                 </div>
               </div>
@@ -1089,9 +1381,9 @@ const ControlPage = () => {
                 <h4 className="text-sm font-bold text-slate-900 mb-3 uppercase tracking-wide">Key Performance Drivers</h4>
                 <div className="space-y-3">
                   {[
-                    { rank: 1, driver: 'Staffing Levels', impact: 'High', value: '+2.3σ' },
-                    { rank: 2, driver: 'Patient Volume', impact: 'Moderate', value: '+1.8σ' },
-                    { rank: 3, driver: 'Equipment Availability', impact: 'Low', value: '+0.9σ' }
+                    { rank: 1, driver: 'Recent metric trend', impact: forecastState.forecastSlope > 0 ? 'High' : 'Low', value: `${forecastState.forecastSlope.toFixed(2)}/day` },
+                    { rank: 2, driver: 'Process variation', impact: forecastState.sigma > 2 ? 'Moderate' : 'Low', value: `${forecastState.sigma.toFixed(2)}σ` },
+                    { rank: 3, driver: 'Control-limit breaches', impact: forecastState.outOfControlCount > 0 ? 'High' : 'Low', value: `${forecastState.outOfControlCount}` }
                   ].map((item) => (
                     <div key={item.rank} className="p-4 bg-slate-50 rounded-xl border border-slate-200">
                       <div className="flex items-center gap-3 mb-2">
@@ -1116,7 +1408,7 @@ const ControlPage = () => {
                   <span className="text-sm font-bold text-slate-900">Escalation Recommendation</span>
                 </div>
                 <p className="text-sm text-slate-700 leading-relaxed mb-3">
-                  Immediate review recommended with Operations Team. Consider implementing additional monitoring for staffing levels during peak hours.
+                  Immediate review recommended with Operations Team. Focus on {forecastState.metricName.toLowerCase()} if the drift score rises above 6 or new control-limit breaches appear.
                 </p>
                 <button className="w-full px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg text-sm font-semibold hover:shadow-lg transition-all">
                   Create Action Item
@@ -1128,9 +1420,9 @@ const ControlPage = () => {
                 <h4 className="text-sm font-bold text-slate-900 mb-3 uppercase tracking-wide">KPI Health Rating</h4>
                 <div className="space-y-3">
                   {[
-                    { kpi: 'CTQ Performance', score: 7.2, status: 'good' },
-                    { kpi: 'Process Stability', score: 6.8, status: 'warning' },
-                    { kpi: 'Sustainability', score: 8.1, status: 'excellent' }
+                    { kpi: 'CTQ Performance', score: Math.max(0, Math.min(10, 10 - forecastState.driftRisk)), status: forecastState.driftRisk < 4 ? 'good' : 'warning' },
+                    { kpi: 'Process Stability', score: Math.max(0, Math.min(10, 10 - forecastState.outOfControlCount * 2)), status: forecastState.outOfControlCount === 0 ? 'excellent' : 'warning' },
+                    { kpi: 'Sustainability', score: Math.max(0, Math.min(10, forecastState.sustainabilityPct / 10)), status: forecastState.sustainabilityPct >= 80 ? 'excellent' : forecastState.sustainabilityPct >= 50 ? 'good' : 'warning' }
                   ].map((item, idx) => (
                     <div key={idx} className="p-4 bg-slate-50 rounded-xl border border-slate-200">
                       <div className="flex items-center justify-between mb-2">
@@ -1158,7 +1450,9 @@ const ControlPage = () => {
               <div className="p-5 bg-gradient-to-br from-slate-50 to-blue-50/30 rounded-xl border border-slate-200">
                 <h4 className="text-sm font-bold text-slate-900 mb-3 uppercase tracking-wide">Executive Summary</h4>
                 <p className="text-sm text-slate-700 leading-relaxed mb-4">
-                  The ER Wait Time Reduction project has achieved <span className="font-bold text-emerald-600">38.2% improvement</span> from baseline, with <span className="font-bold">$284K annual cost savings</span>. Process stability is classified as <span className="font-bold">Level 2 (Moderate)</span>, with early warning indicators suggesting potential drift within 21 days. Recommend increased monitoring frequency and staffing optimization during peak hours.
+                  {forecastState.metricName} has achieved <span className="font-bold text-emerald-600">{kpiCards[0]?.improvement || '0.0%'}</span> from baseline, with
+                  {' '}<span className="font-bold">${Math.round(financialSavings).toLocaleString()} annual modeled savings</span>. Process stability is currently classified as
+                  {' '}<span className="font-bold">{processStatusLabel}</span>, with drift monitoring indicating {daysToThreshold ? `a possible threshold breach in ${daysToThreshold} days` : 'no immediate threshold breach'}.
                 </p>
                 <button className="w-full px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors">
                   <i className="ri-download-line mr-2"></i>
@@ -1173,7 +1467,8 @@ const ControlPage = () => {
                   <span className="text-sm font-bold text-slate-900">Suggested Monitoring Adjustment</span>
                 </div>
                 <p className="text-sm text-slate-700 mb-3">
-                  Based on drift risk analysis, recommend increasing monitoring frequency from <span className="font-bold">hourly</span> to <span className="font-bold text-teal-600">every 30 minutes</span> for the next 14 days.
+                  Based on drift risk analysis, recommend increasing monitoring frequency from <span className="font-bold">hourly</span> to
+                  {' '}<span className="font-bold text-teal-600">{forecastState.driftRisk >= 6 ? 'every 30 minutes' : 'every 2 hours'}</span> for the next 14 days.
                 </p>
                 <button className="w-full px-4 py-2 bg-gradient-to-r from-teal-600 to-indigo-600 text-white rounded-lg text-sm font-semibold hover:shadow-lg transition-all">
                   Apply Recommendation
@@ -1184,8 +1479,8 @@ const ControlPage = () => {
               <div className="p-6 bg-gradient-to-r from-emerald-500 to-teal-600 rounded-xl text-white text-center">
                 <i className="ri-checkbox-circle-line text-4xl mb-3"></i>
                 <div className="text-lg font-bold mb-1">Project Status</div>
-                <div className="text-sm opacity-90">Improvement sustained for 45 days</div>
-                <div className="text-xs opacity-75 mt-2">Target: 90 days for full stabilization</div>
+                <div className="text-sm opacity-90">{forecastState.sustainabilityPct.toFixed(0)}% of target improvement sustained</div>
+                <div className="text-xs opacity-75 mt-2">Target: 95% sustained improvement</div>
               </div>
 
             </div>
