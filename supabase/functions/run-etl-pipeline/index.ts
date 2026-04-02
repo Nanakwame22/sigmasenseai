@@ -327,6 +327,7 @@ serve(async (req) => {
     const dataPoints: Array<{ metric_id: string; value: number; timestamp: string }> = [];
     let recordsSuccess = 0;
     let recordsFailed = 0;
+    const failureSamples: Array<Record<string, unknown>> = [];
 
     await logIngestionEvent(adminClient, {
       organization_id: organizationId,
@@ -342,13 +343,21 @@ serve(async (req) => {
       },
     });
 
-    for (const record of records) {
+    for (const [index, record] of records.entries()) {
       try {
         const rawValue = record[valueMapping.sourceField];
         const value = typeof rawValue === 'number' ? rawValue : parseFloat(String(rawValue ?? ''));
 
         if (Number.isNaN(value)) {
           recordsFailed++;
+          if (failureSamples.length < 5) {
+            failureSamples.push({
+              row_index: index,
+              reason: 'Mapped value is not numeric',
+              value_field: valueMapping.sourceField,
+              raw_value: rawValue ?? null,
+            });
+          }
           continue;
         }
 
@@ -358,6 +367,13 @@ serve(async (req) => {
           const metricName = String(record[metricNameMapping.sourceField] ?? '').trim();
           if (!metricName) {
             recordsFailed++;
+            if (failureSamples.length < 5) {
+              failureSamples.push({
+                row_index: index,
+                reason: 'Metric name is empty',
+                metric_name_field: metricNameMapping.sourceField,
+              });
+            }
             continue;
           }
 
@@ -387,6 +403,14 @@ serve(async (req) => {
 
         if (!metricId) {
           recordsFailed++;
+          if (failureSamples.length < 5) {
+            failureSamples.push({
+              row_index: index,
+              reason: 'No metric target could be resolved',
+              metric_name_field: metricNameMapping?.sourceField ?? null,
+              value_field: valueMapping.sourceField,
+            });
+          }
           continue;
         }
 
@@ -411,6 +435,14 @@ serve(async (req) => {
       } catch (error) {
         console.error('Error processing ETL record:', error);
         recordsFailed++;
+        if (failureSamples.length < 5) {
+          failureSamples.push({
+            row_index: index,
+            reason: error instanceof Error ? error.message : String(error),
+            value_field: valueMapping.sourceField,
+            metric_name_field: metricNameMapping?.sourceField ?? null,
+          });
+        }
       }
     }
 
@@ -427,6 +459,7 @@ serve(async (req) => {
           records_received: records.length,
           records_success: recordsSuccess,
           records_failed: recordsFailed,
+          sample_failures: failureSamples,
         },
       });
     }
