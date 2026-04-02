@@ -61,6 +61,11 @@ interface FieldMapping {
   targetMetricId?: string;
 }
 
+interface PipelineValidationResult {
+  valid: boolean;
+  issues: string[];
+}
+
 export default function ETLPipelinesPage() {
   const { user } = useAuth();
   const { showToast } = useToast();
@@ -406,9 +411,60 @@ export default function ETLPipelinesPage() {
     return [current];
   };
 
+  const validatePipelineConfiguration = (pipeline: Pipeline): PipelineValidationResult => {
+    const issues: string[] = [];
+    const source = dataSources.find((item) => item.id === pipeline.source_id);
+    const mappings = Array.isArray(pipeline.transformation_rules?.field_mappings)
+      ? pipeline.transformation_rules.field_mappings as FieldMapping[]
+      : [];
+
+    if (!pipeline.source_id) {
+      issues.push('No data source is selected.');
+    }
+
+    if (pipeline.source_id && !source) {
+      issues.push('The selected data source is no longer available.');
+    }
+
+    if (source?.type === 'api' && !source.connection_config?.base_url) {
+      issues.push('The API source is missing its base URL.');
+    }
+
+    if (source?.type !== 'api' && (!Array.isArray(source?.file_data) || source.file_data.length === 0)) {
+      issues.push('The source does not contain any uploaded data yet.');
+    }
+
+    if (mappings.length === 0) {
+      issues.push('No field mappings have been configured.');
+    }
+
+    if (!mappings.some((mapping) => mapping.destinationType === 'value' && mapping.sourceField)) {
+      issues.push('A value mapping is required before this pipeline can run.');
+    }
+
+    const incompleteMappings = mappings.filter((mapping) => !mapping.sourceField);
+    if (incompleteMappings.length > 0) {
+      issues.push('One or more field mappings are incomplete.');
+    }
+
+    return {
+      valid: issues.length === 0,
+      issues,
+    };
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
+
+    const hasValueMapping = fieldMappings.some(
+      (mapping) => mapping.destinationType === 'value' && mapping.sourceField
+    );
+
+    if (!hasValueMapping) {
+      showToast('Add at least one valid value mapping before saving this pipeline.', 'error');
+      return;
+    }
 
     try {
       const { data: userOrgs } = await supabase
@@ -465,6 +521,12 @@ export default function ETLPipelinesPage() {
     const pipeline = pipelines.find(p => p.id === pipelineId);
     if (!pipeline || !pipeline.source_id) {
       showToast('Pipeline has no data source configured', 'error');
+      return;
+    }
+
+    const validation = validatePipelineConfiguration(pipeline);
+    if (!validation.valid) {
+      showToast(validation.issues[0], 'error', 5000);
       return;
     }
 
@@ -852,6 +914,27 @@ export default function ETLPipelinesPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {filteredPipelines.map((pipeline) => (
           <div key={pipeline.id} className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            {(() => {
+              const validation = validatePipelineConfiguration(pipeline);
+              const source = dataSources.find((item) => item.id === pipeline.source_id);
+
+              return (
+                <>
+                  {!validation.valid && (
+                    <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                      <p className="text-xs font-semibold text-amber-800">Needs configuration</p>
+                      <p className="text-xs text-amber-700 mt-1">{validation.issues[0]}</p>
+                    </div>
+                  )}
+                  {source && (
+                    <div className="mb-3 text-xs text-gray-500">
+                      Source: <span className="font-medium text-gray-700">{source.name}</span>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
+
             {latestRuns[pipeline.id] && (
               <div className="flex items-center justify-between mb-3">
                 <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${getRunStatusBadge(latestRuns[pipeline.id].status)}`}>
@@ -1370,6 +1453,10 @@ export default function ETLPipelinesPage() {
                     onClick={() => {
                       if (currentStep === 1 && !formData.source_id) {
                         showToast('Please select a data source', 'error');
+                        return;
+                      }
+                      if (currentStep === 2 && !fieldMappings.some((mapping) => mapping.destinationType === 'value' && mapping.sourceField)) {
+                        showToast('Add at least one value mapping before continuing.', 'error');
                         return;
                       }
                       setCurrentStep(currentStep + 1);
