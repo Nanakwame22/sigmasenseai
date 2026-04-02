@@ -533,7 +533,7 @@ serve(async (req) => {
       .eq('organization_id', organizationId);
 
     const metricsByName = new Map((metricsData || []).map((metric) => [metric.name, metric.id]));
-    const dataPoints: Array<{ metric_id: string; value: number; timestamp: string }> = [];
+    const dataPoints: Array<{ metric_id: string; value: number; timestamp: string; organization_id: string }> = [];
     let recordsSuccess = 0;
     let recordsFailed = 0;
     const failureSamples: Array<Record<string, unknown>> = [];
@@ -634,7 +634,12 @@ serve(async (req) => {
           }
         }
 
-        dataPoints.push({ metric_id: metricId, value, timestamp });
+        dataPoints.push({
+          metric_id: metricId,
+          value,
+          timestamp,
+          organization_id: organizationId,
+        });
 
         await adminClient
           .from('metrics')
