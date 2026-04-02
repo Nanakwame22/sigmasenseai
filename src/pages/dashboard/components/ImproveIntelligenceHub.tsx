@@ -23,6 +23,7 @@ interface Solution {
   pilotResults?: string;
   owner?: string;
   category?: string;
+  linkedActionId?: string | null;
 }
 
 interface PilotMetric {
@@ -41,6 +42,85 @@ interface RoadmapPhase {
   milestones: string[];
   owner: string;
 }
+
+interface RootCauseFinding {
+  id?: string;
+  evidence_type?: string;
+  impact_score?: number;
+  confidence_level?: number;
+  hypothesis?: string;
+  notes?: string;
+}
+
+interface RootCauseAnalysisRecord {
+  id: string;
+  results?: {
+    problem_context?: {
+      kpi?: string;
+      current?: string | number;
+      target?: string | number;
+    };
+    root_causes?: RootCauseFinding[];
+  };
+}
+
+interface ActionItemRecord {
+  id: string;
+  title: string;
+  description?: string;
+  status: 'open' | 'in_progress' | 'completed' | 'blocked' | 'cancelled';
+  priority: 'low' | 'medium' | 'high' | 'critical';
+  assigned_to?: string | null;
+  due_date?: string | null;
+  progress?: number | null;
+  estimated_hours?: number | null;
+  actual_hours?: number | null;
+  tags?: string[] | null;
+}
+
+interface MetricPoint {
+  timestamp: string;
+  value: number;
+}
+
+const average = (values: number[]) => values.length > 0
+  ? values.reduce((sum, value) => sum + value, 0) / values.length
+  : 0;
+
+const formatVariableLabel = (value?: string) =>
+  (value || 'Root Cause')
+    .replace(/[_-]/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+
+const statusToActionStatus = (status: Solution['status']): ActionItemRecord['status'] => {
+  switch (status) {
+    case 'implemented':
+      return 'completed';
+    case 'in_pilot':
+      return 'in_progress';
+    case 'rejected':
+      return 'cancelled';
+    case 'approved':
+      return 'in_progress';
+    default:
+      return 'open';
+  }
+};
+
+const actionStatusToSolutionStatus = (status?: ActionItemRecord['status']): Solution['status'] => {
+  switch (status) {
+    case 'completed':
+      return 'implemented';
+    case 'in_progress':
+      return 'in_pilot';
+    case 'cancelled':
+      return 'rejected';
+    case 'blocked':
+      return 'approved';
+    default:
+      return 'proposed';
+  }
+};
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
@@ -74,7 +154,7 @@ const PriorityBadge: React.FC<{ score: number }> = ({ score }) => {
 
 // ─── Main Component ──────────────────────────────────────────────────────────
 export const ImproveIntelligenceHub: React.FC<{ projectId?: string; onSave?: () => void }> = ({ projectId, onSave }) => {
-  const { organization } = useAuth();
+  const { organization, user } = useAuth();
   const [activePanel, setActivePanel] = useState<
     'command' | 'solutions' | 'prioritization' | 'simulation' | 'pilot' | 'roadmap' | 'roi'
   >('command');
@@ -86,30 +166,16 @@ export const ImproveIntelligenceHub: React.FC<{ projectId?: string; onSave?: () 
   const [scenarioMode, setScenarioMode] = useState<'current' | 'optimistic' | 'conservative'>('current');
   const [investmentSlider, setInvestmentSlider] = useState(150000);
   const [timeHorizon, setTimeHorizon] = useState(12);
+  const [metricTrend, setMetricTrend] = useState<MetricPoint[]>([]);
+  const [focusMetricName, setFocusMetricName] = useState('Primary KPI');
+  const [focusMetricUnit, setFocusMetricUnit] = useState('units');
+  const [rootCauseContext, setRootCauseContext] = useState<{ current: number; target: number }>({ current: 0, target: 0 });
 
   const [newSolution, setNewSolution] = useState({
     title: '', description: '', targetRootCause: '', estimatedImpact: 50,
     implementationCost: 'medium' as 'low' | 'medium' | 'high',
     timeToImplement: '', feasibilityScore: 50, riskScore: 30, owner: '', category: 'process'
   });
-
-  const [pilotData] = useState<PilotMetric[]>([
-    { week: 1, baseline: 45.3, pilot: 44.1, target: 30 },
-    { week: 2, baseline: 45.3, pilot: 42.8, target: 30 },
-    { week: 3, baseline: 45.3, pilot: 40.5, target: 30 },
-    { week: 4, baseline: 45.3, pilot: 38.2, target: 30 },
-    { week: 5, baseline: 45.3, pilot: 36.9, target: 30 },
-    { week: 6, baseline: 45.3, pilot: 35.1, target: 30 },
-    { week: 7, baseline: 45.3, pilot: 33.8, target: 30 },
-    { week: 8, baseline: 45.3, pilot: 32.4, target: 30 },
-  ]);
-
-  const [roadmapPhases] = useState<RoadmapPhase[]>([
-    { id: '1', name: 'Quick Wins', startWeek: 1, endWeek: 4, status: 'complete', milestones: ['Shift schedule optimization', 'Queue management pilot'], owner: 'Operations Lead' },
-    { id: '2', name: 'Core Implementation', startWeek: 3, endWeek: 10, status: 'active', milestones: ['Dynamic staffing model', 'Workflow redesign', 'Technology deployment'], owner: 'Project Manager' },
-    { id: '3', name: 'Scale & Optimize', startWeek: 8, endWeek: 14, status: 'pending', milestones: ['Full rollout', 'Performance tuning', 'Staff training'], owner: 'Change Manager' },
-    { id: '4', name: 'Sustain & Transfer', startWeek: 12, endWeek: 16, status: 'pending', milestones: ['Control handoff', 'SOP finalization', 'Monitoring activation'], owner: 'Process Owner' },
-  ]);
 
   // ── Derived data ───────────────────────────────────────────────────────────
   const prioritizedSolutions = useMemo(() => {
@@ -156,6 +222,70 @@ export const ImproveIntelligenceHub: React.FC<{ projectId?: string; onSave?: () 
       status: s.status,
     })), [solutions]);
 
+  const pilotData = useMemo<PilotMetric[]>(() => {
+    if (metricTrend.length === 0) return [];
+    const target = rootCauseContext.target || average(metricTrend.map((point) => point.value));
+    const baseline = rootCauseContext.current || metricTrend[0]?.value || 0;
+    const window = metricTrend.slice(-8);
+
+    return window.map((point, index) => ({
+      week: index + 1,
+      baseline,
+      pilot: point.value,
+      target,
+    }));
+  }, [metricTrend, rootCauseContext]);
+
+  const roadmapPhases = useMemo<RoadmapPhase[]>(() => {
+    const proposed = solutions.filter((solution) => solution.status === 'proposed');
+    const approved = solutions.filter((solution) => solution.status === 'approved');
+    const inPilot = solutions.filter((solution) => solution.status === 'in_pilot');
+    const implemented = solutions.filter((solution) => solution.status === 'implemented');
+
+    return [
+      {
+        id: '1',
+        name: 'Quick Wins',
+        startWeek: 1,
+        endWeek: 4,
+        status: implemented.length > 0 ? 'complete' : approved.length > 0 || inPilot.length > 0 ? 'active' : 'pending',
+        milestones: implemented.slice(0, 2).map((item) => item.title).concat(approved.slice(0, 2).map((item) => item.title)).slice(0, 3),
+        owner: implemented[0]?.owner || approved[0]?.owner || 'Operations Lead',
+      },
+      {
+        id: '2',
+        name: 'Core Implementation',
+        startWeek: 3,
+        endWeek: 10,
+        status: inPilot.length > 0 ? 'active' : implemented.length > 1 ? 'complete' : approved.length > 0 ? 'pending' : 'pending',
+        milestones: inPilot.concat(approved).slice(0, 3).map((item) => item.title),
+        owner: inPilot[0]?.owner || approved[0]?.owner || 'Project Manager',
+      },
+      {
+        id: '3',
+        name: 'Scale & Optimize',
+        startWeek: 8,
+        endWeek: 14,
+        status: implemented.length > 2 ? 'active' : implemented.length > 4 ? 'complete' : 'pending',
+        milestones: implemented.slice(0, 3).map((item) => item.title),
+        owner: implemented[1]?.owner || 'Change Manager',
+      },
+      {
+        id: '4',
+        name: 'Sustain & Transfer',
+        startWeek: 12,
+        endWeek: 16,
+        status: implemented.length >= Math.max(1, solutions.length) && solutions.length > 0 ? 'complete' : implemented.length > 0 ? 'active' : 'pending',
+        milestones: [
+          `${implemented.length}/${solutions.length || 0} solutions closed`,
+          `Metric monitoring for ${focusMetricName}`,
+          'Control handoff',
+        ],
+        owner: implemented[0]?.owner || 'Process Owner',
+      },
+    ];
+  }, [solutions, focusMetricName]);
+
   const roiProjection = useMemo(() => {
     const months = [];
     const multiplier = scenarioMode === 'optimistic' ? 1.3 : scenarioMode === 'conservative' ? 0.7 : 1;
@@ -173,57 +303,192 @@ export const ImproveIntelligenceHub: React.FC<{ projectId?: string; onSave?: () 
   }, [investmentSlider, timeHorizon, scenarioMode]);
 
   // ── Load data ──────────────────────────────────────────────────────────────
-  useEffect(() => { loadSolutions(); }, [organization?.id]);
+  useEffect(() => { loadSolutions(); }, [organization?.id, projectId]);
 
   const loadSolutions = async () => {
-    // Load from project data if available, otherwise use intelligent defaults
-    const mockSolutions: Solution[] = [
-      {
-        id: '1', title: 'Dynamic Staffing Model', description: 'AI-powered predictive staffing that adjusts levels based on real-time demand patterns, historical data, and seasonal trends.',
-        targetRootCause: 'Staff Count Correlation (r = -0.78)', estimatedImpact: 88, implementationCost: 'high',
-        timeToImplement: '3-6 months', feasibilityScore: 72, riskScore: 35, status: 'in_pilot', owner: 'Dr. Sarah Chen', category: 'technology'
-      },
-      {
-        id: '2', title: 'Peak Hour Scheduling Optimization', description: 'Redesign shift schedules to ensure maximum coverage during identified peak hours (2-4 PM) with staggered breaks.',
-        targetRootCause: 'Time of Day Pattern (F = 45.3)', estimatedImpact: 74, implementationCost: 'low',
-        timeToImplement: '1-2 months', feasibilityScore: 92, riskScore: 15, status: 'approved', owner: 'Mark Johnson', category: 'process'
-      },
-      {
-        id: '3', title: 'Department Workflow Redesign', description: 'Streamline emergency department processes with dedicated triage protocols, fast-track pathways, and parallel processing.',
-        targetRootCause: 'Department Type Variance (R² = 0.45)', estimatedImpact: 70, implementationCost: 'medium',
-        timeToImplement: '2-4 months', feasibilityScore: 78, riskScore: 28, status: 'approved', owner: 'Lisa Park', category: 'process'
-      },
-      {
-        id: '4', title: 'Real-Time Queue Management', description: 'Deploy digital queue management with patient notifications, wait time predictions, and automated routing.',
-        targetRootCause: 'Multiple Root Causes', estimatedImpact: 65, implementationCost: 'medium',
-        timeToImplement: '2-3 months', feasibilityScore: 85, riskScore: 22, status: 'proposed', owner: 'James Wu', category: 'technology'
-      },
-      {
-        id: '5', title: 'Pre-Visit Digital Check-In', description: 'Mobile app for pre-registration, insurance verification, and health questionnaire completion before arrival.',
-        targetRootCause: 'Check-in Process Bottleneck', estimatedImpact: 58, implementationCost: 'medium',
-        timeToImplement: '3-4 months', feasibilityScore: 80, riskScore: 20, status: 'proposed', owner: 'Amy Torres', category: 'technology'
-      },
-    ];
-    setSolutions(mockSolutions);
+    if (!organization?.id) return;
+
+    try {
+      const [{ data: analyses }, { data: actions }] = await Promise.all([
+        supabase
+          .from('root_cause_analyses')
+          .select('id, results, analysis_date')
+          .eq('organization_id', organization.id)
+          .order('analysis_date', { ascending: false })
+          .limit(5),
+        supabase
+          .from('action_items')
+          .select('id, title, description, status, priority, assigned_to, due_date, progress, estimated_hours, actual_hours, tags')
+          .eq('organization_id', organization.id)
+          .order('created_at', { ascending: false })
+      ]);
+
+      const latestAnalysis = (analyses as RootCauseAnalysisRecord[] | null)?.[0];
+      const rootCauses = latestAnalysis?.results?.root_causes || [];
+      const problemContext = latestAnalysis?.results?.problem_context;
+
+      if (problemContext?.kpi) {
+        setFocusMetricName(problemContext.kpi);
+      }
+
+      const current = Number(problemContext?.current ?? 0);
+      const target = Number(problemContext?.target ?? 0);
+      setRootCauseContext({
+        current: Number.isFinite(current) ? current : 0,
+        target: Number.isFinite(target) ? target : 0,
+      });
+
+      let metricName = problemContext?.kpi || focusMetricName;
+      let metricUnit = focusMetricUnit;
+      let trendRows: MetricPoint[] = [];
+
+      if (metricName) {
+        const { data: metrics } = await supabase
+          .from('metrics')
+          .select('id, name, unit')
+          .eq('organization_id', organization.id)
+          .ilike('name', metricName)
+          .limit(1);
+
+        if (metrics && metrics.length > 0) {
+          metricName = metrics[0].name;
+          metricUnit = metrics[0].unit || metricUnit;
+          const { data: metricData } = await supabase
+            .from('metric_data')
+            .select('timestamp, value')
+            .eq('metric_id', metrics[0].id)
+            .order('timestamp', { ascending: true })
+            .limit(24);
+
+          trendRows = (metricData || [])
+            .map((row: any) => ({
+              timestamp: row.timestamp,
+              value: parseFloat(String(row.value)),
+            }))
+            .filter((row) => Number.isFinite(row.value));
+        }
+      }
+
+      setFocusMetricName(metricName || 'Primary KPI');
+      setFocusMetricUnit(metricUnit || 'units');
+      setMetricTrend(trendRows);
+
+      const actionItems = (actions as ActionItemRecord[] | null) || [];
+      const normalizedActionLookup = new Map(
+        actionItems.map((item) => [item.title.trim().toLowerCase(), item])
+      );
+
+      const derivedSolutions: Solution[] = rootCauses.slice(0, 6).map((cause, index) => {
+        const label = formatVariableLabel(cause.evidence_type || cause.hypothesis || `Root Cause ${index + 1}`);
+        const title = `Address ${label}`;
+        const linkedAction = normalizedActionLookup.get(title.toLowerCase());
+        const confidence = cause.confidence_level ?? 75;
+        const impact = cause.impact_score ?? 60;
+        const implementationCost: Solution['implementationCost'] =
+          impact >= 80 ? 'high' : impact >= 60 ? 'medium' : 'low';
+
+        return {
+          id: linkedAction?.id || `${latestAnalysis?.id || 'analysis'}-${index}`,
+          title,
+          description: cause.notes || `Design a targeted improvement that reduces the effect of ${label.toLowerCase()} on ${metricName || 'the selected KPI'}.`,
+          targetRootCause: label,
+          estimatedImpact: Math.max(35, Math.min(95, Math.round(impact * 0.9))),
+          implementationCost,
+          timeToImplement: implementationCost === 'high' ? '3-6 months' : implementationCost === 'medium' ? '1-3 months' : '2-6 weeks',
+          feasibilityScore: Math.max(40, Math.min(95, Math.round(confidence * 0.75))),
+          riskScore: Math.max(5, Math.min(80, Math.round(100 - confidence))),
+          status: linkedAction ? actionStatusToSolutionStatus(linkedAction.status) : 'proposed',
+          owner: linkedAction?.assigned_to || undefined,
+          category: implementationCost === 'high' ? 'technology' : 'process',
+          linkedActionId: linkedAction?.id || null,
+        };
+      });
+
+      const additionalActionSolutions = actionItems
+        .filter((item) => !derivedSolutions.some((solution) => solution.linkedActionId === item.id))
+        .slice(0, 3)
+        .map((item) => ({
+          id: item.id,
+          title: item.title,
+          description: item.description || 'Improvement action created from live execution tracking.',
+          targetRootCause: (item.tags && item.tags[0]) || 'Operational improvement',
+          estimatedImpact: Math.max(25, Math.min(90, Math.round((item.progress || 0) * 0.8 + 20))),
+          implementationCost: item.priority === 'critical' || item.priority === 'high' ? 'high' : item.priority === 'medium' ? 'medium' : 'low',
+          timeToImplement: item.due_date ? `${Math.max(1, Math.ceil((new Date(item.due_date).getTime() - Date.now()) / 86400000 / 7))} weeks` : 'TBD',
+          feasibilityScore: Math.max(35, Math.min(90, 100 - ((item.priority === 'critical' ? 55 : item.priority === 'high' ? 40 : item.priority === 'medium' ? 25 : 15)))),
+          riskScore: item.priority === 'critical' ? 75 : item.priority === 'high' ? 60 : item.priority === 'medium' ? 35 : 20,
+          status: actionStatusToSolutionStatus(item.status),
+          owner: item.assigned_to || undefined,
+          category: 'process',
+          linkedActionId: item.id,
+        }));
+
+      setSolutions(derivedSolutions.concat(additionalActionSolutions));
+    } catch (error) {
+      console.error('Error loading improve solutions:', error);
+      setSolutions([]);
+    }
   };
 
   // ── Handlers ───────────────────────────────────────────────────────────────
   const handleAddSolution = () => {
-    if (!newSolution.title || !newSolution.description) return;
-    const solution: Solution = {
-      id: Date.now().toString(), ...newSolution, status: 'proposed',
+    if (!newSolution.title || !newSolution.description || !organization?.id || !user?.id) return;
+
+    const actionPayload = {
+      organization_id: organization.id,
+      created_by: user.id,
+      title: newSolution.title,
+      description: newSolution.description,
+      assigned_to: null,
+      status: 'open' as const,
+      priority: newSolution.implementationCost === 'high' ? 'high' as const : newSolution.implementationCost === 'medium' ? 'medium' as const : 'low' as const,
+      category: 'Improve Phase',
+      due_date: null,
+      progress: 0,
+      estimated_hours: newSolution.implementationCost === 'high' ? 80 : newSolution.implementationCost === 'medium' ? 40 : 16,
+      actual_hours: 0,
+      tags: [newSolution.targetRootCause || 'improve-phase'],
     };
-    setSolutions(prev => [...prev, solution]);
-    setShowSolutionModal(false);
-    setNewSolution({ title: '', description: '', targetRootCause: '', estimatedImpact: 50, implementationCost: 'medium', timeToImplement: '', feasibilityScore: 50, riskScore: 30, owner: '', category: 'process' });
+
+    supabase
+      .from('action_items')
+      .insert([actionPayload])
+      .select('id')
+      .single()
+      .then(({ data }) => {
+        const solution: Solution = {
+          id: data?.id || Date.now().toString(),
+          ...newSolution,
+          status: 'proposed',
+          linkedActionId: data?.id || null,
+        };
+        setSolutions(prev => [...prev, solution]);
+        setShowSolutionModal(false);
+        setNewSolution({ title: '', description: '', targetRootCause: '', estimatedImpact: 50, implementationCost: 'medium', timeToImplement: '', feasibilityScore: 50, riskScore: 30, owner: '', category: 'process' });
+      });
   };
 
   const handleUpdateStatus = (id: string, status: Solution['status']) => {
+    const target = solutions.find((solution) => solution.id === id);
     setSolutions(prev => prev.map(s => s.id === id ? { ...s, status } : s));
+
+    if (target?.linkedActionId) {
+      void supabase
+        .from('action_items')
+        .update({
+          status: statusToActionStatus(status),
+          progress: status === 'implemented' ? 100 : status === 'in_pilot' ? 65 : status === 'approved' ? 35 : status === 'rejected' ? 0 : 10,
+        })
+        .eq('id', target.linkedActionId);
+    }
   };
 
   const handleDeleteSolution = (id: string) => {
+    const target = solutions.find((solution) => solution.id === id);
     setSolutions(prev => prev.filter(s => s.id !== id));
+    if (target?.linkedActionId) {
+      void supabase.from('action_items').delete().eq('id', target.linkedActionId);
+    }
   };
 
   const getCostColor = (c: string) => c === 'low' ? 'bg-emerald-100 text-emerald-700' : c === 'medium' ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700';
@@ -318,24 +583,24 @@ export const ImproveIntelligenceHub: React.FC<{ projectId?: string; onSave?: () 
               <div className="grid grid-cols-3 gap-4 mb-4">
                 <div className="p-3 bg-white/80 rounded-lg border border-indigo-200">
                   <div className="text-xs text-indigo-600 font-semibold mb-1">STRATEGIC URGENCY</div>
-                  <div className="text-xl font-bold text-rose-600">HIGH</div>
-                  <div className="text-xs text-slate-600 mt-1">40.3% gap to target requires immediate action</div>
+                  <div className="text-xl font-bold text-rose-600">{headerMetrics.avgImpact >= 70 ? 'HIGH' : headerMetrics.avgImpact >= 45 ? 'MEDIUM' : 'LOW'}</div>
+                  <div className="text-xs text-slate-600 mt-1">{Math.abs(rootCauseContext.target) > 0 ? `${Math.abs(((rootCauseContext.current - rootCauseContext.target) / rootCauseContext.target) * 100).toFixed(1)}% gap to target requires attention` : 'Refresh root-cause context to size the current gap'}</div>
                 </div>
                 <div className="p-3 bg-white/80 rounded-lg border border-indigo-200">
                   <div className="text-xs text-indigo-600 font-semibold mb-1">TOP EXPOSURE AREA</div>
-                  <div className="text-xl font-bold text-slate-900">Staffing</div>
-                  <div className="text-xs text-slate-600 mt-1">$425K annual financial leakage from understaffing</div>
+                  <div className="text-xl font-bold text-slate-900">{prioritizedSolutions[0]?.targetRootCause || 'Awaiting root-cause analysis'}</div>
+                  <div className="text-xs text-slate-600 mt-1">{prioritizedSolutions[0] ? `${prioritizedSolutions[0].estimatedImpact}% impact estimate across approved work` : 'Generate or save root causes to surface the biggest exposure area'}</div>
                 </div>
                 <div className="p-3 bg-white/80 rounded-lg border border-indigo-200">
                   <div className="text-xs text-indigo-600 font-semibold mb-1">RECOMMENDED FOCUS</div>
-                  <div className="text-xl font-bold text-teal-600">Quick Wins</div>
-                  <div className="text-xs text-slate-600 mt-1">Peak hour scheduling yields fastest ROI</div>
+                  <div className="text-xl font-bold text-teal-600">{prioritizedSolutions[0]?.title || 'Build solution backlog'}</div>
+                  <div className="text-xs text-slate-600 mt-1">{prioritizedSolutions[0] ? `${prioritizedSolutions[0].timeToImplement} to first measurable result` : 'No live solution recommendations yet'}</div>
                 </div>
               </div>
               <p className="text-sm text-slate-700 leading-relaxed mb-4">
-                Based on Analyze phase root causes, the highest-impact intervention is <strong>dynamic staffing optimization</strong> (r = -0.78 with wait time). 
-                Combined with peak-hour scheduling (low cost, high feasibility), projected 28% reduction in wait times within 90 days. 
-                Financial model indicates $320K annual savings with 4.2-month payback. Recommend prioritizing solutions #1 and #2 for immediate pilot.
+                {prioritizedSolutions.length > 0
+                  ? <>Based on the latest Analyze-phase findings, the strongest next move is <strong>{prioritizedSolutions[0].title}</strong>. The current solution set averages <strong>{headerMetrics.avgImpact.toFixed(0)}%</strong> projected impact with <strong>{headerMetrics.avgFeasibility.toFixed(0)}%</strong> feasibility, and the ROI model currently points to <strong>${(headerMetrics.projectedSavings / 1000).toFixed(0)}K</strong> in projected savings over the selected horizon.</>
+                  : <>Save root-cause analyses or create live action items to populate the Improve workspace with recommendations grounded in your organization’s current bottlenecks.</>}
               </p>
               <div className="flex items-center gap-3">
                 <span className="px-3 py-1 bg-indigo-600 text-white rounded-full text-xs font-bold">AI Confidence: 91.8%</span>
@@ -396,9 +661,9 @@ export const ImproveIntelligenceHub: React.FC<{ projectId?: string; onSave?: () 
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="p-3 bg-white rounded-lg"><div className="text-xs text-slate-500 mb-1">Avg Wait Time</div><div className="text-2xl font-bold text-rose-600">45.3 min</div></div>
-                    <div className="p-3 bg-white rounded-lg"><div className="text-xs text-slate-500 mb-1">Sigma Level</div><div className="text-2xl font-bold text-rose-600">3.2σ</div></div>
-                    <div className="p-3 bg-white rounded-lg"><div className="text-xs text-slate-500 mb-1">DPMO</div><div className="text-2xl font-bold text-rose-600">12,500</div></div>
-                    <div className="p-3 bg-white rounded-lg"><div className="text-xs text-slate-500 mb-1">Annual Cost</div><div className="text-2xl font-bold text-rose-600">$850K</div></div>
+                    <div className="p-3 bg-white rounded-lg"><div className="text-xs text-slate-500 mb-1">{focusMetricName}</div><div className="text-2xl font-bold text-rose-600">{rootCauseContext.current.toFixed(1)} {focusMetricUnit}</div></div>
+                    <div className="p-3 bg-white rounded-lg"><div className="text-xs text-slate-500 mb-1">Open Work</div><div className="text-2xl font-bold text-rose-600">{solutions.filter(s => s.status !== 'implemented').length}</div></div>
+                    <div className="p-3 bg-white rounded-lg"><div className="text-xs text-slate-500 mb-1">Projected Savings</div><div className="text-2xl font-bold text-rose-600">${(investmentSlider / 1000).toFixed(0)}K</div></div>
                   </div>
                 </div>
 
@@ -413,10 +678,10 @@ export const ImproveIntelligenceHub: React.FC<{ projectId?: string; onSave?: () 
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
-                    <div className="p-3 bg-white rounded-lg"><div className="text-xs text-slate-500 mb-1">Avg Wait Time</div><div className="text-2xl font-bold text-emerald-600">32.4 min</div></div>
-                    <div className="p-3 bg-white rounded-lg"><div className="text-xs text-slate-500 mb-1">Sigma Level</div><div className="text-2xl font-bold text-emerald-600">3.8σ</div></div>
-                    <div className="p-3 bg-white rounded-lg"><div className="text-xs text-slate-500 mb-1">DPMO</div><div className="text-2xl font-bold text-emerald-600">6,200</div></div>
-                    <div className="p-3 bg-white rounded-lg"><div className="text-xs text-slate-500 mb-1">Annual Cost</div><div className="text-2xl font-bold text-emerald-600">$530K</div></div>
+                    <div className="p-3 bg-white rounded-lg"><div className="text-xs text-slate-500 mb-1">{focusMetricName}</div><div className="text-2xl font-bold text-emerald-600">{(rootCauseContext.current * Math.max(0.15, 1 - (headerMetrics.avgImpact / 100))).toFixed(1)} {focusMetricUnit}</div></div>
+                    <div className="p-3 bg-white rounded-lg"><div className="text-xs text-slate-500 mb-1">Implemented</div><div className="text-2xl font-bold text-emerald-600">{headerMetrics.implemented}</div></div>
+                    <div className="p-3 bg-white rounded-lg"><div className="text-xs text-slate-500 mb-1">Projected ROI</div><div className="text-2xl font-bold text-emerald-600">{headerMetrics.roi.toFixed(0)}%</div></div>
+                    <div className="p-3 bg-white rounded-lg"><div className="text-xs text-slate-500 mb-1">Annual Savings</div><div className="text-2xl font-bold text-emerald-600">${(headerMetrics.projectedSavings / 1000).toFixed(0)}K</div></div>
                   </div>
                 </div>
               </div>
@@ -425,20 +690,20 @@ export const ImproveIntelligenceHub: React.FC<{ projectId?: string; onSave?: () 
               <div className="bg-gradient-to-r from-teal-600 to-indigo-600 rounded-xl p-6 text-white">
                 <div className="grid grid-cols-4 gap-6 text-center">
                   <div>
-                    <div className="text-sm opacity-80 mb-1">Wait Time Reduction</div>
-                    <div className="text-4xl font-bold"><AnimatedCounter value={28.5} suffix="%" decimals={1} /></div>
+                    <div className="text-sm opacity-80 mb-1">{focusMetricName} Reduction</div>
+                    <div className="text-4xl font-bold"><AnimatedCounter value={Math.max(0, ((rootCauseContext.current - (rootCauseContext.current * Math.max(0.15, 1 - (headerMetrics.avgImpact / 100)))) / Math.max(rootCauseContext.current || 1, 1)) * 100)} suffix="%" decimals={1} /></div>
                   </div>
                   <div>
-                    <div className="text-sm opacity-80 mb-1">Sigma Improvement</div>
-                    <div className="text-4xl font-bold">+0.6σ</div>
+                    <div className="text-sm opacity-80 mb-1">Implementation Lift</div>
+                    <div className="text-4xl font-bold">+{headerMetrics.implemented + headerMetrics.inPilot}</div>
                   </div>
                   <div>
-                    <div className="text-sm opacity-80 mb-1">Defect Reduction</div>
-                    <div className="text-4xl font-bold"><AnimatedCounter value={50.4} suffix="%" decimals={1} /></div>
+                    <div className="text-sm opacity-80 mb-1">Approved Coverage</div>
+                    <div className="text-4xl font-bold"><AnimatedCounter value={solutions.length > 0 ? (headerMetrics.approved / solutions.length) * 100 : 0} suffix="%" decimals={1} /></div>
                   </div>
                   <div>
                     <div className="text-sm opacity-80 mb-1">Annual Savings</div>
-                    <div className="text-4xl font-bold"><AnimatedCounter value={320} prefix="$" suffix="K" decimals={0} /></div>
+                    <div className="text-4xl font-bold"><AnimatedCounter value={headerMetrics.projectedSavings / 1000} prefix="$" suffix="K" decimals={0} /></div>
                   </div>
                 </div>
               </div>
@@ -773,7 +1038,7 @@ export const ImproveIntelligenceHub: React.FC<{ projectId?: string; onSave?: () 
                       <LineChart data={pilotData}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                         <XAxis dataKey="week" stroke="#64748b" style={{ fontSize: '11px' }} label={{ value: 'Week', position: 'bottom', offset: 0 }} />
-                        <YAxis stroke="#64748b" style={{ fontSize: '11px' }} domain={[20, 50]} />
+                        <YAxis stroke="#64748b" style={{ fontSize: '11px' }} />
                         <Tooltip contentStyle={{ backgroundColor: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '12px' }} />
                         <Line type="monotone" dataKey="baseline" stroke="#ef4444" strokeWidth={2} strokeDasharray="5 5" dot={false} name="Baseline" />
                         <Line type="monotone" dataKey="target" stroke="#10b981" strokeWidth={2} strokeDasharray="5 5" dot={false} name="Target" />
@@ -802,11 +1067,11 @@ export const ImproveIntelligenceHub: React.FC<{ projectId?: string; onSave?: () 
                           <div className="grid grid-cols-4 gap-4 mb-4">
                             <div className="p-4 bg-slate-50 rounded-lg text-center">
                               <div className="text-xs text-slate-500 mb-1">Baseline</div>
-                              <div className="text-2xl font-bold text-rose-600">{latestPilot.baseline} min</div>
+                              <div className="text-2xl font-bold text-rose-600">{latestPilot.baseline.toFixed(1)} {focusMetricUnit}</div>
                             </div>
                             <div className="p-4 bg-indigo-50 rounded-lg text-center">
                               <div className="text-xs text-slate-500 mb-1">Current Pilot</div>
-                              <div className="text-2xl font-bold text-indigo-600">{latestPilot.pilot} min</div>
+                              <div className="text-2xl font-bold text-indigo-600">{latestPilot.pilot.toFixed(1)} {focusMetricUnit}</div>
                             </div>
                             <div className="p-4 bg-emerald-50 rounded-lg text-center">
                               <div className="text-xs text-slate-500 mb-1">Improvement</div>
@@ -950,23 +1215,23 @@ export const ImproveIntelligenceHub: React.FC<{ projectId?: string; onSave?: () 
                 <div className="grid grid-cols-5 gap-6 text-center">
                   <div>
                     <div className="text-sm opacity-80 mb-1">Total Investment</div>
-                    <div className="text-3xl font-bold">$150K</div>
+                    <div className="text-3xl font-bold">${(investmentSlider / 1000).toFixed(0)}K</div>
                   </div>
                   <div>
                     <div className="text-sm opacity-80 mb-1">Annual Savings</div>
-                    <div className="text-3xl font-bold">$320K</div>
+                    <div className="text-3xl font-bold">${(headerMetrics.projectedSavings / 1000).toFixed(0)}K</div>
                   </div>
                   <div>
                     <div className="text-sm opacity-80 mb-1">Net ROI</div>
-                    <div className="text-3xl font-bold">276%</div>
+                    <div className="text-3xl font-bold">{headerMetrics.roi.toFixed(0)}%</div>
                   </div>
                   <div>
                     <div className="text-sm opacity-80 mb-1">Payback Period</div>
-                    <div className="text-3xl font-bold">4.2 mo</div>
+                    <div className="text-3xl font-bold">{Math.max(1, Math.round(investmentSlider / Math.max(headerMetrics.projectedSavings / 12, 1) * 10) / 10)} mo</div>
                   </div>
                   <div>
                     <div className="text-sm opacity-80 mb-1">5-Year NPV</div>
-                    <div className="text-3xl font-bold">$1.2M</div>
+                    <div className="text-3xl font-bold">${(((headerMetrics.projectedSavings * 5) - investmentSlider) / 1000000).toFixed(1)}M</div>
                   </div>
                 </div>
               </div>
