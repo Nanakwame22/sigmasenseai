@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../../lib/supabase';
+import { useAuth } from '../../../contexts/AuthContext';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -39,6 +40,28 @@ interface WorkflowState {
 interface FeedStats {
   lastTriggered: string | null; // ISO timestamp of most recent feed alert
   unackedCount: number;
+}
+
+interface MetricRecord {
+  id: string;
+  name: string;
+  unit: string | null;
+  current_value: number | null;
+  target_value: number | null;
+}
+
+interface MetricPointRecord {
+  metric_id: string;
+  value: number;
+  timestamp: string;
+}
+
+interface WorkflowSignal {
+  severity: 'critical' | 'warning' | 'info';
+  title: string;
+  detail: string;
+  lastSeen: string | null;
+  suggestedAction: string;
 }
 
 // ── Static workflow definitions ───────────────────────────────────────────
@@ -234,9 +257,128 @@ function defaultState(): WorkflowState {
   return { enabled: false, runsToday: 0, lastRun: '—', loading: true, acting: false, result: null };
 }
 
+function normalizeName(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function formatMetricValue(value: number | null | undefined, unit: string | null | undefined) {
+  if (value === null || value === undefined || Number.isNaN(value)) return '—';
+  const normalizedUnit = (unit || '').toLowerCase();
+  if (normalizedUnit === 'minutes' || normalizedUnit === 'min') return `${value.toFixed(1)} minutes`;
+  if (normalizedUnit === 'hours' || normalizedUnit === 'hour' || normalizedUnit === 'h') return `${value.toFixed(1)} hours`;
+  if (normalizedUnit === 'beds' || normalizedUnit === 'count') return `${Math.round(value)}`;
+  if (normalizedUnit === 'ratio') return `${value.toFixed(1)}`;
+  if (normalizedUnit === 'probability') return `${Math.round(value * 100)}%`;
+  return `${value.toFixed(1)}`;
+}
+
+function buildWorkflowSignals(metrics: MetricRecord[], metricPoints: MetricPointRecord[]) {
+  const metricsByName = new Map(metrics.map((metric) => [normalizeName(metric.name), metric]));
+  const pointMap = new Map<string, MetricPointRecord[]>();
+  metricPoints.forEach((point) => {
+    const existing = pointMap.get(point.metric_id) || [];
+    existing.push(point);
+    pointMap.set(point.metric_id, existing);
+  });
+
+  const getMetricBundle = (name: string) => {
+    const metric = metricsByName.get(normalizeName(name));
+    if (!metric) return { metric: null as MetricRecord | null, current: null as number | null, previous: null as number | null, latestAt: null as string | null };
+    const points = [...(pointMap.get(metric.id) || [])].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    return {
+      metric,
+      current: points[0]?.value ?? metric.current_value ?? null,
+      previous: points[1]?.value ?? points[0]?.value ?? null,
+      latestAt: points[0]?.timestamp ?? null,
+    };
+  };
+
+  const wait = getMetricBundle('ED Wait Time');
+  const discharges = getMetricBundle('Discharges Pending');
+  const bedsAvailable = getMetricBundle('Available Beds');
+  const criticalLabs = getMetricBundle('Critical Labs Unacknowledged');
+  const patientsPerNurse = getMetricBundle('Patients Per Nurse');
+  const readmission = getMetricBundle('Readmission Risk');
+
+  const signalFor = (severity: WorkflowSignal['severity'], title: string, detail: string, lastSeen: string | null, suggestedAction: string): WorkflowSignal => ({
+    severity,
+    title,
+    detail,
+    lastSeen,
+    suggestedAction,
+  });
+
+  return {
+    'discharge-coord': signalFor(
+      (discharges.current || 0) > 6 ? 'warning' : 'info',
+      'Discharge readiness signal',
+      discharges.current !== null
+        ? `${Math.round(discharges.current)} patients are pending discharge completion${(discharges.current || 0) > 6 ? ', so coordination should be prioritized.' : '.'}`
+        : 'No live discharge backlog signal is currently available.',
+      discharges.latestAt,
+      'Prioritize pharmacy, transport, and discharge paperwork blockers first.'
+    ),
+    'bed-cleaning': signalFor(
+      (bedsAvailable.current || 0) < 8 ? 'warning' : 'info',
+      'Bed turnover readiness',
+      bedsAvailable.current !== null
+        ? `${formatMetricValue(bedsAvailable.current, bedsAvailable.metric?.unit)} are available. ${((bedsAvailable.current || 0) < 8) ? 'Faster room turnover may be needed to restore safe bed buffer.' : 'Current bed buffer is acceptable.'}`
+        : 'No live bed turnover signal is currently available.',
+      bedsAvailable.latestAt,
+      'Coordinate discharge completion and housekeeping handoff for the highest-demand units.'
+    ),
+    'patient-transfer': signalFor(
+      (bedsAvailable.current || 0) < 8 || (discharges.current || 0) > 6 ? 'warning' : 'info',
+      'Transfer flow check',
+      bedsAvailable.current !== null && discharges.current !== null
+        ? `Available beds: ${formatMetricValue(bedsAvailable.current, bedsAvailable.metric?.unit)}. Pending discharges: ${Math.round(discharges.current)}. Transfer velocity will matter if pressure keeps rising.`
+        : 'No live transfer pressure signal is currently available.',
+      bedsAvailable.latestAt ?? discharges.latestAt,
+      'Review receiving-unit readiness and move the clearest transfer candidates first.'
+    ),
+    'staffing-realloc': signalFor(
+      (patientsPerNurse.current || 0) > 5 ? 'warning' : 'info',
+      'Staffing load signal',
+      patientsPerNurse.current !== null
+        ? `Patients per nurse is ${formatMetricValue(patientsPerNurse.current, patientsPerNurse.metric?.unit)}${(patientsPerNurse.current || 0) > 5 ? ', which suggests reallocation pressure.' : ', which is within preferred range.'}`
+        : 'No live staffing load signal is currently available.',
+      patientsPerNurse.latestAt,
+      'Check float coverage and rebalance the highest-load unit first.'
+    ),
+    'readmission-nav': signalFor(
+      (readmission.current || 0) > 0.12 ? 'warning' : 'info',
+      'Readmission follow-up signal',
+      readmission.current !== null
+        ? `Readmission risk is ${formatMetricValue(readmission.current, readmission.metric?.unit)}${(readmission.current || 0) > 0.12 ? ', so follow-up intervention is recommended.' : ', which is within the current threshold.'}`
+        : 'No live readmission risk signal is currently available.',
+      readmission.latestAt,
+      'Prioritize the highest-risk discharges for navigator outreach.'
+    ),
+    'ed-surge': signalFor(
+      (wait.current || 0) > 45 ? 'critical' : (wait.current || 0) > 30 ? 'warning' : 'info',
+      'ED surge watch',
+      wait.current !== null
+        ? `ED wait time is ${formatMetricValue(wait.current, wait.metric?.unit)}${(wait.current || 0) > 45 ? ', which indicates acute congestion pressure.' : '.'}`
+        : 'No live ED surge signal is currently available.',
+      wait.latestAt,
+      'Review intake and throughput bottlenecks before diversion thresholds are crossed.'
+    ),
+    'lab-escalation': signalFor(
+      (criticalLabs.current || 0) > 0 ? 'critical' : 'info',
+      'Critical lab escalation watch',
+      criticalLabs.current !== null
+        ? `${Math.round(criticalLabs.current)} critical lab result${criticalLabs.current === 1 ? '' : 's'} remain unacknowledged${(criticalLabs.current || 0) > 0 ? ', which needs escalation.' : '.'}`
+        : 'No live lab escalation signal is currently available.',
+      criticalLabs.latestAt,
+      'Escalate to the covering clinician if acknowledgement does not clear quickly.'
+    ),
+  } as Record<string, WorkflowSignal>;
+}
+
 // ── Component ──────────────────────────────────────────────────────────────
 
 export default function CPIAutomationWorkflows() {
+  const { organizationId } = useAuth();
   const [expanded, setExpanded] = useState<string | null>(null);
 
   const [states, setStates] = useState<Record<string, WorkflowState>>(
@@ -245,6 +387,7 @@ export default function CPIAutomationWorkflows() {
 
   // Per feed-category stats: last alert timestamp + unacked count
   const [feedStats, setFeedStats] = useState<Record<string, FeedStats>>({});
+  const [workflowSignals, setWorkflowSignals] = useState<Record<string, WorkflowSignal>>({});
 
   // Flash indicator: workflow ids that recently received a new feed alert
   const [recentlyFired, setRecentlyFired] = useState<Record<string, boolean>>({});
@@ -280,6 +423,40 @@ export default function CPIAutomationWorkflows() {
     }
     setFeedStats(stats);
   }, []);
+
+  const loadWorkflowSignals = useCallback(async () => {
+    if (!organizationId) return;
+
+    const metricNames = [
+      'ED Wait Time',
+      'Available Beds',
+      'Discharges Pending',
+      'Critical Labs Unacknowledged',
+      'Patients Per Nurse',
+      'Readmission Risk',
+    ];
+
+    const { data: metricRows, error: metricsError } = await supabase
+      .from('metrics')
+      .select('id, name, unit, current_value, target_value')
+      .eq('organization_id', organizationId)
+      .in('name', metricNames);
+
+    if (metricsError || !metricRows || metricRows.length === 0) return;
+
+    const metricIds = metricRows.map((metric) => metric.id);
+    const { data: pointRows, error: pointsError } = await supabase
+      .from('metric_data')
+      .select('metric_id, value, timestamp')
+      .in('metric_id', metricIds)
+      .order('timestamp', { ascending: false })
+      .limit(300);
+
+    if (pointsError) return;
+
+    const nextSignals = buildWorkflowSignals(metricRows as MetricRecord[], (pointRows as MetricPointRecord[]) || []);
+    setWorkflowSignals(nextSignals);
+  }, [organizationId]);
 
   // ── Load ALL workflow states from Supabase on mount ────────────────────
   const loadAllSettings = useCallback(async () => {
@@ -319,6 +496,7 @@ export default function CPIAutomationWorkflows() {
   useEffect(() => {
     loadAllSettings();
     loadFeedStats();
+    loadWorkflowSignals();
 
     // Workflow settings changes
     const wfChannel = supabase
@@ -387,7 +565,7 @@ export default function CPIAutomationWorkflows() {
       supabase.removeChannel(wfChannel);
       supabase.removeChannel(feedChannel);
     };
-  }, [loadAllSettings, loadFeedStats, updateState]);
+  }, [loadAllSettings, loadFeedStats, loadWorkflowSignals, updateState]);
 
   // ── Toggle demo (non-live) workflow ────────────────────────────────────
   const toggleDemoWorkflow = useCallback(async (id: string, currentEnabled: boolean, e: React.MouseEvent) => {
@@ -482,6 +660,7 @@ export default function CPIAutomationWorkflows() {
           const cfg = statusCfg[currentStatus];
           const isOpen = expanded === wf.id;
 
+          const signal = workflowSignals[wf.id];
           // Feed-linked stats (only for live workflows with a feedCategory)
           const stats = wf.feedCategory ? feedStats[wf.feedCategory] : undefined;
           const unackedCount = stats?.unackedCount ?? 0;
@@ -651,6 +830,40 @@ export default function CPIAutomationWorkflows() {
                     <div className="flex items-start space-x-2 p-2.5 bg-teal-50 border border-teal-100 rounded-lg mb-3">
                       <i className="ri-cpu-line text-teal-500 text-xs mt-0.5 flex-shrink-0"></i>
                       <p className="text-xs text-teal-700">{wf.edgeFunctionDescription}</p>
+                    </div>
+                  )}
+
+                  {signal && (
+                    <div className={`flex items-start space-x-2 p-2.5 rounded-lg border mb-3 ${
+                      signal.severity === 'critical'
+                        ? 'bg-rose-50 border-rose-100'
+                        : signal.severity === 'warning'
+                        ? 'bg-amber-50 border-amber-100'
+                        : 'bg-emerald-50 border-emerald-100'
+                    }`}>
+                      <i className={`text-xs mt-0.5 flex-shrink-0 ${
+                        signal.severity === 'critical'
+                          ? 'ri-alarm-warning-line text-rose-500'
+                          : signal.severity === 'warning'
+                          ? 'ri-alert-line text-amber-500'
+                          : 'ri-checkbox-circle-line text-emerald-500'
+                      }`}></i>
+                      <div className="min-w-0">
+                        <p className={`text-xs font-semibold ${
+                          signal.severity === 'critical'
+                            ? 'text-rose-700'
+                            : signal.severity === 'warning'
+                            ? 'text-amber-700'
+                            : 'text-emerald-700'
+                        }`}>
+                          {signal.title}
+                        </p>
+                        <p className="text-xs text-slate-600 mt-0.5">{signal.detail}</p>
+                        <p className="text-xs text-slate-500 mt-1">
+                          Suggested action: {signal.suggestedAction}
+                          {signal.lastSeen ? ` · Updated ${formatLastRun(signal.lastSeen)}` : ''}
+                        </p>
+                      </div>
                     </div>
                   )}
 
