@@ -12,8 +12,6 @@ interface Workflow {
   trigger: string;
   actions: string[];
   defaultStatus: 'active' | 'paused';
-  staticRunsToday: number;
-  staticLastRun: string;
   timeSaved: string;
   isLive?: boolean;
   feedCategory?: string; // maps to cpi_feed.category
@@ -82,8 +80,6 @@ const workflows: Workflow[] = [
       'Flag bed for housekeeping once discharge confirmed',
     ],
     defaultStatus: 'active',
-    staticRunsToday: 41,
-    staticLastRun: '4 min ago',
     timeSaved: '~2.1h daily',
   },
   {
@@ -99,8 +95,6 @@ const workflows: Workflow[] = [
       'Re-evaluate hourly until census normalises',
     ],
     defaultStatus: 'active',
-    staticRunsToday: 12,
-    staticLastRun: '8 min ago',
     timeSaved: '~1.5h daily',
     isLive: true,
     feedCategory: 'ed',
@@ -121,8 +115,6 @@ const workflows: Workflow[] = [
       'Follow up again at 45-min mark if still unread',
     ],
     defaultStatus: 'active',
-    staticRunsToday: 7,
-    staticLastRun: '19 min ago',
     timeSaved: '~45m daily',
     isLive: true,
     feedCategory: 'lab',
@@ -143,8 +135,6 @@ const workflows: Workflow[] = [
       'Trigger cleaning confirmation request after 25 min',
     ],
     defaultStatus: 'active',
-    staticRunsToday: 38,
-    staticLastRun: '11 min ago',
     timeSaved: '~1.8h daily',
   },
   {
@@ -160,8 +150,6 @@ const workflows: Workflow[] = [
       'Alert physician if transfer delayed beyond 60 min',
     ],
     defaultStatus: 'active',
-    staticRunsToday: 22,
-    staticLastRun: '7 min ago',
     timeSaved: '~1.2h daily',
   },
   {
@@ -177,8 +165,6 @@ const workflows: Workflow[] = [
       'Escalate to house supervisor if unresolved in 20 min',
     ],
     defaultStatus: 'active',
-    staticRunsToday: 3,
-    staticLastRun: '1.2h ago',
     timeSaved: '~35m daily',
   },
   {
@@ -194,8 +180,6 @@ const workflows: Workflow[] = [
       'Flag for 7-day and 30-day outcome tracking',
     ],
     defaultStatus: 'paused',
-    staticRunsToday: 0,
-    staticLastRun: '2 days ago',
     timeSaved: '~20m/patient',
     isLive: true,
     feedCategory: 'readmission',
