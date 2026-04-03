@@ -4,6 +4,7 @@ import type { Recommendation } from '../../../services/recommendationsEngine';
 import { useAuth } from '../../../contexts/AuthContext';
 import { supabase } from '../../../lib/supabase';
 import { addToast } from '../../../hooks/useToast';
+import { AIMEmptyState, AIMMetricTiles, AIMPanel, AIMSectionIntro } from './AIMSectionSystem';
 
 // Track which recommendation IDs have already been pushed this session
 const pushedSet = new Set<string>();
@@ -262,42 +263,43 @@ export default function RecommendationsSection() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">AI Recommendations</h2>
-          <p className="text-sm text-gray-600 mt-1">Smart suggestions to improve your operations</p>
-        </div>
-        <button
-          onClick={handleGenerateRecommendations}
-          disabled={generating}
-          className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 whitespace-nowrap"
-        >
-          <i className={`${generating ? 'ri-loader-4-line animate-spin' : 'ri-magic-line'}`}></i>
-          {generating ? 'Analyzing...' : 'Generate New Recommendations'}
-        </button>
-      </div>
+      <AIMSectionIntro
+        eyebrow="Actionable Guidance"
+        title="AI Recommendations"
+        description="Prioritized improvement opportunities ranked by impact, effort, and execution confidence."
+        actions={
+          <button
+            onClick={handleGenerateRecommendations}
+            disabled={generating}
+            className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 whitespace-nowrap"
+          >
+            <i className={`${generating ? 'ri-loader-4-line animate-spin' : 'ri-magic-line'}`}></i>
+            {generating ? 'Analyzing...' : 'Generate Recommendations'}
+          </button>
+        }
+      />
 
       {/* Statistics Cards */}
       {statistics && (
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-          {[
+        <AIMMetricTiles
+          columns="grid-cols-1 md:grid-cols-2 xl:grid-cols-5"
+          items={[
             { label: 'Total', value: statistics.total, color: 'text-gray-900' },
             { label: 'Pending', value: statistics.pending, color: 'text-gray-600' },
             { label: 'In Progress', value: statistics.inProgress, color: 'text-teal-600' },
             { label: 'Completed', value: statistics.completed, color: 'text-green-600' },
             { label: 'Avg Impact', value: `${statistics.avgImpactScore}%`, color: 'text-teal-600' },
-          ].map((s) => (
-            <div key={s.label} className="bg-white rounded-lg p-4 border border-gray-200">
-              <div className="text-sm text-gray-600">{s.label}</div>
-              <div className={`text-2xl font-bold mt-1 ${s.color}`}>{s.value}</div>
-            </div>
-          ))}
-        </div>
+          ].map((s) => ({ label: s.label, value: s.value, accent: s.color }))}
+        />
       )}
 
       {/* Filters */}
-      <div className="bg-white rounded-lg p-4 border border-gray-200">
+      <AIMPanel
+        title="Recommendation Filters"
+        description="Focus the queue by status, category, and priority."
+        icon="ri-equalizer-2-line"
+        accentClass="from-slate-700 to-slate-900"
+      >
         <div className="flex flex-wrap gap-4">
           {[
             {
@@ -338,7 +340,7 @@ export default function RecommendationsSection() {
             </div>
           ))}
         </div>
-      </div>
+      </AIMPanel>
 
       {/* Recommendations List */}
       <div className="space-y-4">
@@ -348,11 +350,11 @@ export default function RecommendationsSection() {
             <p className="text-gray-600 mt-4">Loading recommendations...</p>
           </div>
         ) : recommendations.length === 0 ? (
-          <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
-            <i className="ri-lightbulb-line text-6xl text-gray-300"></i>
-            <p className="text-gray-600 mt-4 text-lg">No recommendations found</p>
-            <p className="text-gray-500 text-sm mt-2">Click "Generate New Recommendations" to analyze your data</p>
-          </div>
+          <AIMEmptyState
+            icon="ri-lightbulb-line"
+            title="No recommendations available"
+            description='Generate a fresh recommendation set to analyze your current operational data.'
+          />
         ) : (
           recommendations.map((rec) => {
             const isPushed = pushedIds.has(rec.id);

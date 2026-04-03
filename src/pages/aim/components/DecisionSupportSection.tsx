@@ -8,6 +8,13 @@ import {
   calculateConfidenceBreakdown,
 } from '../../../services/decisionSupportEngine';
 import type { DecisionScenario, RecommendationJustification, TradeOffAnalysis, ConfidenceFactor } from '../../../services/decisionSupportEngine';
+import { AIMEmptyState, AIMPanel, AIMSectionIntro } from './AIMSectionSystem';
+
+const RISK_THEME: Record<string, string> = {
+  Low: 'bg-emerald-100 text-emerald-700',
+  Medium: 'bg-amber-100 text-amber-700',
+  High: 'bg-red-100 text-red-700',
+};
 
 const DecisionSupportSection: React.FC = () => {
   const { user } = useAuth();
@@ -58,12 +65,6 @@ const DecisionSupportSection: React.FC = () => {
     );
   };
 
-  const getRiskColor = (risk: string) => {
-    if (risk === 'Low') return 'emerald';
-    if (risk === 'Medium') return 'amber';
-    return 'red';
-  };
-
   if (loading) {
     return (
       <div className="flex items-center justify-center h-96">
@@ -77,34 +78,29 @@ const DecisionSupportSection: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-900 mb-2">Decision Support</h1>
-          <p className="text-slate-600">Scenario comparison and recommendation justification</p>
-        </div>
-        <button 
-          onClick={loadDecisionSupportData}
-          className="px-4 py-2 bg-gradient-to-r from-teal-500 to-cyan-600 text-white text-sm font-semibold rounded-lg hover:shadow-lg transition-all whitespace-nowrap flex items-center gap-2"
-        >
-          <i className="ri-refresh-line"></i>
-          Refresh Analysis
-        </button>
-      </div>
+      <AIMSectionIntro
+        eyebrow="Decision Studio"
+        title="Decision Support"
+        description="Compare operating scenarios, review evidence, and understand the trade-offs behind AIM's recommendation path."
+        actions={
+          <button 
+            onClick={loadDecisionSupportData}
+            className="px-4 py-2 bg-gradient-to-r from-teal-500 to-cyan-600 text-white text-sm font-semibold rounded-lg hover:shadow-lg transition-all whitespace-nowrap flex items-center gap-2"
+          >
+            <i className="ri-refresh-line"></i>
+            Refresh Analysis
+          </button>
+        }
+      />
 
       {/* Scenario Comparison */}
       {scenarios.length > 0 && (
-        <div className="bg-white rounded-xl border border-slate-200 p-6">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center">
-              <i className="ri-scales-line text-xl text-white"></i>
-            </div>
-            <div>
-              <h2 className="text-xl font-bold text-slate-900">Scenario Comparison</h2>
-              <p className="text-sm text-slate-600">Compare different implementation approaches</p>
-            </div>
-          </div>
-
+        <AIMPanel
+          title="Scenario Comparison"
+          description="Compare investment posture, timeline, risk, and modeled upside side by side."
+          icon="ri-scales-line"
+          accentClass="from-blue-500 to-indigo-600"
+        >
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
@@ -141,7 +137,7 @@ const DecisionSupportSection: React.FC = () => {
                       </span>
                     </td>
                     <td className="py-4 px-4 text-center">
-                      <span className={`px-3 py-1 bg-${getRiskColor(scenario.risk)}-100 text-${getRiskColor(scenario.risk)}-700 text-sm font-semibold rounded-full`}>
+                      <span className={`px-3 py-1 text-sm font-semibold rounded-full ${RISK_THEME[scenario.risk] || RISK_THEME.High}`}>
                         {scenario.risk}
                       </span>
                     </td>
@@ -186,22 +182,17 @@ const DecisionSupportSection: React.FC = () => {
               </div>
             </div>
           )}
-        </div>
+        </AIMPanel>
       )}
 
       {/* Recommendation Justification */}
       {justifications.length > 0 && (
-        <div className="bg-white rounded-xl border border-slate-200 p-6">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-600 rounded-lg flex items-center justify-center">
-              <i className="ri-file-list-3-line text-xl text-white"></i>
-            </div>
-            <div>
-              <h2 className="text-xl font-bold text-slate-900">Recommendation Justification</h2>
-              <p className="text-sm text-slate-600">Data-backed reasoning for each recommendation</p>
-            </div>
-          </div>
-
+        <AIMPanel
+          title="Recommendation Justification"
+          description="Review the specific evidence, sources, and expected outcomes behind each recommendation."
+          icon="ri-file-list-3-line"
+          accentClass="from-purple-500 to-pink-600"
+        >
           <div className="space-y-4">
             {justifications.map((just) => (
               <div
@@ -272,22 +263,17 @@ const DecisionSupportSection: React.FC = () => {
               </div>
             ))}
           </div>
-        </div>
+        </AIMPanel>
       )}
 
       {/* Trade-Offs Analysis */}
       {tradeOffs && (
-        <div className="bg-white rounded-xl border border-slate-200 p-6">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="w-10 h-10 bg-gradient-to-br from-amber-500 to-orange-600 rounded-lg flex items-center justify-center">
-              <i className="ri-exchange-line text-xl text-white"></i>
-            </div>
-            <div>
-              <h2 className="text-xl font-bold text-slate-900">Anticipated Trade-Offs</h2>
-              <p className="text-sm text-slate-600">Benefits vs. considerations for implementation</p>
-            </div>
-          </div>
-
+        <AIMPanel
+          title="Anticipated Trade-Offs"
+          description="Balance implementation benefits against execution complexity and risk."
+          icon="ri-exchange-line"
+          accentClass="from-amber-500 to-orange-600"
+        >
           <div className="grid grid-cols-2 gap-6">
             {/* Benefits */}
             <div>
@@ -348,28 +334,25 @@ const DecisionSupportSection: React.FC = () => {
               </div>
             </div>
           </div>
-        </div>
+        </AIMPanel>
       )}
 
       {/* Confidence Score Breakdown */}
       {confidenceBreakdown && (
-        <div className="bg-white rounded-xl border border-slate-200 p-6">
-          <div className="flex items-center justify-between mb-6">
+        <AIMPanel
+          title="Confidence Score & Data Evidence"
+          description={`How AIM calculates its ${confidenceBreakdown.overallScore}% confidence rating`}
+          icon="ri-shield-check-line"
+          accentClass="from-teal-500 to-cyan-600"
+          actions={
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-gradient-to-br from-teal-500 to-cyan-600 rounded-lg flex items-center justify-center">
-                <i className="ri-shield-check-line text-xl text-white"></i>
-              </div>
-              <div>
-                <h2 className="text-xl font-bold text-slate-900">Confidence Score & Data Evidence</h2>
-                <p className="text-sm text-slate-600">How we calculate our {confidenceBreakdown.overallScore}% confidence rating</p>
+              <div className="text-right">
+                <div className="text-4xl font-bold text-teal-600">{confidenceBreakdown.overallScore}%</div>
+                <div className="text-sm text-slate-600">Overall Confidence</div>
               </div>
             </div>
-            <div className="text-right">
-              <div className="text-4xl font-bold text-teal-600">{confidenceBreakdown.overallScore}%</div>
-              <div className="text-sm text-slate-600">Overall Confidence</div>
-            </div>
-          </div>
-
+          }
+        >
           <div className="space-y-4">
             {confidenceBreakdown.factors.map((factor, idx) => (
               <div key={idx} className="p-4 border border-slate-200 rounded-lg hover:shadow-md transition-all">
@@ -401,24 +384,24 @@ const DecisionSupportSection: React.FC = () => {
               </div>
             </div>
           </div>
-        </div>
+        </AIMPanel>
       )}
 
       {/* No Data State */}
       {scenarios.length === 0 && justifications.length === 0 && (
-        <div className="bg-white rounded-xl border border-slate-200 p-12 text-center">
-          <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <i className="ri-scales-line text-3xl text-slate-400"></i>
-          </div>
-          <h3 className="text-xl font-bold text-slate-900 mb-2">No Decision Data Available</h3>
-          <p className="text-slate-600 mb-6">Create recommendations and projects to generate decision support analysis.</p>
-          <button
-            onClick={() => navigate('/dashboard/metrics')}
-            className="px-6 py-3 bg-gradient-to-r from-teal-500 to-cyan-600 text-white font-semibold rounded-lg hover:shadow-lg transition-all whitespace-nowrap"
-          >
-            Get Started
-          </button>
-        </div>
+        <AIMEmptyState
+          icon="ri-scales-line"
+          title="No decision analysis available yet"
+          description="Create recommendations and projects to populate scenario comparison, confidence, and trade-off analysis."
+          action={
+            <button
+              onClick={() => navigate('/dashboard/metrics')}
+              className="px-6 py-3 bg-gradient-to-r from-teal-500 to-cyan-600 text-white font-semibold rounded-lg hover:shadow-lg transition-all whitespace-nowrap"
+            >
+              Get Started
+            </button>
+          }
+        />
       )}
     </div>
   );

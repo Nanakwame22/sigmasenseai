@@ -4,6 +4,7 @@ import { useAuth } from '../../../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { exportToCSV } from '../../../utils/exportUtils';
 import { addToast } from '../../../hooks/useToast';
+import { AIMEmptyState, AIMMetricTiles, AIMPanel, AIMSectionIntro } from './AIMSectionSystem';
 
 interface Action {
   id: string;
@@ -21,6 +22,25 @@ interface Action {
   impactValue: number;
   createdFrom: string;
 }
+
+const STATUS_THEME: Record<string, { badge: string; bar: string }> = {
+  Completed: { badge: 'bg-emerald-100 text-emerald-700', bar: 'from-emerald-500 to-teal-600' },
+  'In Progress': { badge: 'bg-blue-100 text-blue-700', bar: 'from-blue-500 to-indigo-600' },
+  'On Hold': { badge: 'bg-amber-100 text-amber-700', bar: 'from-amber-500 to-orange-500' },
+  'Not Started': { badge: 'bg-slate-100 text-slate-700', bar: 'from-slate-400 to-slate-500' },
+};
+
+const PRIORITY_THEME: Record<string, string> = {
+  High: 'bg-red-100 text-red-700',
+  Medium: 'bg-amber-100 text-amber-700',
+  Low: 'bg-slate-100 text-slate-700',
+};
+
+const TYPE_THEME: Record<string, string> = {
+  Task: 'bg-blue-100 text-blue-700',
+  DMAIC: 'bg-violet-100 text-violet-700',
+  Kaizen: 'bg-emerald-100 text-emerald-700',
+};
 
 const ActionCenterSection: React.FC = () => {
   const { user } = useAuth();
@@ -302,32 +322,6 @@ const ActionCenterSection: React.FC = () => {
     exportToCSV(exportData, 'actions-export');
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'Completed': return 'emerald';
-      case 'In Progress': return 'blue';
-      case 'On Hold': return 'amber';
-      default: return 'slate';
-    }
-  };
-
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case 'High': return 'red';
-      case 'Medium': return 'amber';
-      default: return 'slate';
-    }
-  };
-
-  const getTypeColor = (type: string) => {
-    switch (type) {
-      case 'Task': return 'blue';
-      case 'DMAIC': return 'purple';
-      case 'Kaizen': return 'emerald';
-      default: return 'slate';
-    }
-  };
-
   const stats = {
     total: actions.length,
     inProgress: actions.filter(a => a.status === 'In Progress').length,
@@ -349,75 +343,53 @@ const ActionCenterSection: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-900 mb-2">Action Center</h1>
-          <p className="text-slate-600">Track and manage improvement initiatives</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => navigate('/dashboard/action-tracker')}
-            className="px-4 py-2 bg-gradient-to-r from-teal-500 to-cyan-600 text-white text-sm font-semibold rounded-lg hover:shadow-lg transition-all whitespace-nowrap flex items-center gap-2"
-          >
-            <i className="ri-add-line"></i>
-            Create New Action
-          </button>
-          <button 
-            onClick={handleExportActions}
-            className="px-4 py-2 bg-white border border-slate-200 text-slate-700 text-sm font-medium rounded-lg hover:bg-slate-50 transition-colors whitespace-nowrap flex items-center gap-2"
-          >
-            <i className="ri-download-line"></i>
-            Export Actions
-          </button>
-        </div>
-      </div>
+      <AIMSectionIntro
+        eyebrow="Execution Layer"
+        title="Action Center"
+        description="Track and manage the execution work AIM creates across action items, DMAIC projects, and Kaizen initiatives."
+        actions={
+          <>
+            <button
+              onClick={() => navigate('/dashboard/action-tracker')}
+              className="px-4 py-2 bg-gradient-to-r from-teal-500 to-cyan-600 text-white text-sm font-semibold rounded-lg hover:shadow-lg transition-all whitespace-nowrap flex items-center gap-2"
+            >
+              <i className="ri-add-line"></i>
+              Create New Action
+            </button>
+            <button 
+              onClick={handleExportActions}
+              className="px-4 py-2 bg-white border border-slate-200 text-slate-700 text-sm font-medium rounded-lg hover:bg-slate-50 transition-colors whitespace-nowrap flex items-center gap-2"
+            >
+              <i className="ri-download-line"></i>
+              Export Actions
+            </button>
+          </>
+        }
+      />
 
       {/* Stats Overview */}
-      <div className="grid grid-cols-5 gap-4">
-        <div className="bg-white rounded-xl border border-slate-200 p-5 hover:shadow-lg transition-all">
-          <div className="flex items-center justify-between mb-2">
-            <i className="ri-list-check text-2xl text-slate-600"></i>
-            <span className="text-3xl font-bold text-slate-900">{stats.total}</span>
-          </div>
-          <div className="text-sm text-slate-600">Total Actions</div>
-        </div>
-        <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl border border-blue-200 p-5 hover:shadow-lg transition-all">
-          <div className="flex items-center justify-between mb-2">
-            <i className="ri-time-line text-2xl text-blue-600"></i>
-            <span className="text-3xl font-bold text-blue-600">{stats.inProgress}</span>
-          </div>
-          <div className="text-sm text-slate-600">In Progress</div>
-        </div>
-        <div className="bg-gradient-to-br from-emerald-50 to-teal-50 rounded-xl border border-emerald-200 p-5 hover:shadow-lg transition-all">
-          <div className="flex items-center justify-between mb-2">
-            <i className="ri-checkbox-circle-line text-2xl text-emerald-600"></i>
-            <span className="text-3xl font-bold text-emerald-600">{stats.completed}</span>
-          </div>
-          <div className="text-sm text-slate-600">Completed</div>
-        </div>
-        <div className="bg-gradient-to-br from-slate-50 to-slate-100 rounded-xl border border-slate-200 p-5 hover:shadow-lg transition-all">
-          <div className="flex items-center justify-between mb-2">
-            <i className="ri-pause-circle-line text-2xl text-slate-600"></i>
-            <span className="text-3xl font-bold text-slate-900">{stats.notStarted}</span>
-          </div>
-          <div className="text-sm text-slate-600">Not Started</div>
-        </div>
-        <div className="bg-gradient-to-br from-teal-50 to-cyan-50 rounded-xl border border-teal-200 p-5 hover:shadow-lg transition-all">
-          <div className="flex items-center justify-between mb-2">
-            <i className="ri-money-dollar-circle-line text-2xl text-teal-600"></i>
-            <span className="text-3xl font-bold text-teal-600">
-              {stats.totalImpact >= 1000000 
-                ? `$${(stats.totalImpact / 1000000).toFixed(1)}M`
-                : `$${Math.round(stats.totalImpact / 1000)}K`}
-            </span>
-          </div>
-          <div className="text-sm text-slate-600">Total Impact</div>
-        </div>
-      </div>
+      <AIMMetricTiles
+        columns="grid-cols-1 md:grid-cols-2 xl:grid-cols-5"
+        items={[
+          { label: 'Total Actions', value: stats.total },
+          { label: 'In Progress', value: stats.inProgress, accent: 'text-blue-600' },
+          { label: 'Completed', value: stats.completed, accent: 'text-emerald-600' },
+          { label: 'Not Started', value: stats.notStarted, accent: 'text-slate-900' },
+          {
+            label: 'Total Impact',
+            value: stats.totalImpact >= 1000000 ? `$${(stats.totalImpact / 1000000).toFixed(1)}M` : `$${Math.round(stats.totalImpact / 1000)}K`,
+            accent: 'text-teal-600'
+          },
+        ]}
+      />
 
       {/* Filters */}
-      <div className="bg-white rounded-xl border border-slate-200 p-4">
+      <AIMPanel
+        title="Action Filters"
+        description="Slice the execution queue by work type, status, and urgency."
+        icon="ri-filter-3-line"
+        accentClass="from-slate-700 to-slate-900"
+      >
         <div className="flex items-center gap-4 flex-wrap">
           <div className="flex items-center gap-2">
             <span className="text-sm font-medium text-slate-700">Type:</span>
@@ -480,7 +452,7 @@ const ActionCenterSection: React.FC = () => {
             </div>
           </div>
         </div>
-      </div>
+      </AIMPanel>
 
       {/* Bulk Actions */}
       {selectedActions.length > 0 && (
@@ -509,14 +481,14 @@ const ActionCenterSection: React.FC = () => {
       )}
 
       {/* Actions List */}
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+      <div className="bg-white rounded-[28px] border border-slate-200 overflow-hidden shadow-[0_20px_60px_rgba(15,23,42,0.06)]">
         {filteredActions.length === 0 ? (
-          <div className="p-12 text-center">
-            <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <i className="ri-task-line text-3xl text-slate-400"></i>
-            </div>
-            <h3 className="text-lg font-bold text-slate-900 mb-2">No Actions Found</h3>
-            <p className="text-slate-600">Try adjusting your filters or create a new action.</p>
+          <div className="p-6">
+            <AIMEmptyState
+              icon="ri-task-line"
+              title="No actions found"
+              description="Adjust the current filters or create a new action to start tracking operational work."
+            />
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -570,17 +542,17 @@ const ActionCenterSection: React.FC = () => {
                       </div>
                     </td>
                     <td className="py-4 px-4 text-center">
-                      <span className={`px-3 py-1 bg-${getTypeColor(action.type)}-100 text-${getTypeColor(action.type)}-700 text-xs font-semibold rounded-full whitespace-nowrap`}>
+                      <span className={`px-3 py-1 text-xs font-semibold rounded-full whitespace-nowrap ${TYPE_THEME[action.type] || TYPE_THEME.Task}`}>
                         {action.type}
                       </span>
                     </td>
                     <td className="py-4 px-4 text-center">
-                      <span className={`px-3 py-1 bg-${getStatusColor(action.status)}-100 text-${getStatusColor(action.status)}-700 text-xs font-semibold rounded-full whitespace-nowrap`}>
+                      <span className={`px-3 py-1 text-xs font-semibold rounded-full whitespace-nowrap ${STATUS_THEME[action.status]?.badge || STATUS_THEME['Not Started'].badge}`}>
                         {action.status}
                       </span>
                     </td>
                     <td className="py-4 px-4 text-center">
-                      <span className={`px-3 py-1 bg-${getPriorityColor(action.priority)}-100 text-${getPriorityColor(action.priority)}-700 text-xs font-semibold rounded-full whitespace-nowrap`}>
+                      <span className={`px-3 py-1 text-xs font-semibold rounded-full whitespace-nowrap ${PRIORITY_THEME[action.priority] || PRIORITY_THEME.Low}`}>
                         {action.priority}
                       </span>
                     </td>
@@ -599,7 +571,7 @@ const ActionCenterSection: React.FC = () => {
                       <div className="flex items-center gap-2">
                         <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
                           <div
-                            className={`h-full bg-gradient-to-r from-${getStatusColor(action.status)}-500 to-${getStatusColor(action.status)}-600 rounded-full transition-all`}
+                            className={`h-full bg-gradient-to-r ${STATUS_THEME[action.status]?.bar || STATUS_THEME['Not Started'].bar} rounded-full transition-all`}
                             style={{ width: `${action.progress}%` }}
                           ></div>
                         </div>

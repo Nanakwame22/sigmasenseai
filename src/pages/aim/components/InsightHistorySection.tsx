@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../contexts/AuthContext';
+import { AIMMetricTiles, AIMSectionIntro } from './AIMSectionSystem';
 
 interface HistoricalInsight {
   id: string;
@@ -244,20 +245,29 @@ const InsightHistorySection: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-900 mb-1">Insight History</h1>
-          <p className="text-slate-600">Ask Sigma query results and AIM predictions over time</p>
-        </div>
-        <button
-          onClick={() => { loadHistoricalData(); loadQueryInsights(); }}
-          className="px-4 py-2 bg-white border border-slate-200 text-slate-700 text-sm font-medium rounded-lg hover:bg-slate-50 transition-colors whitespace-nowrap flex items-center gap-2 cursor-pointer"
-        >
-          <i className="ri-refresh-line"></i>
-          Refresh
-        </button>
-      </div>
+      <AIMSectionIntro
+        eyebrow="Intelligence Memory"
+        title="Insight History"
+        description="Track what AIM surfaced, how confidence evolved, and which insights led to real outcomes."
+        actions={
+          <button
+            onClick={() => { loadHistoricalData(); loadQueryInsights(); }}
+            className="px-4 py-2 bg-white border border-slate-200 text-slate-700 text-sm font-medium rounded-lg hover:bg-slate-50 transition-colors whitespace-nowrap flex items-center gap-2 cursor-pointer"
+          >
+            <i className="ri-refresh-line"></i>
+            Refresh
+          </button>
+        }
+      />
+
+      <AIMMetricTiles
+        items={[
+          { label: 'Predictions Tracked', value: stats.totalPredictions },
+          { label: 'Current Accuracy', value: `${stats.currentAccuracy}%`, accent: 'text-teal-600' },
+          { label: 'Accuracy Lift', value: `+${stats.accuracyImprovement}%`, accent: 'text-blue-600' },
+          { label: 'Value Delivered', value: `$${stats.valueDelivered.toLocaleString()}`, accent: 'text-emerald-600' },
+        ]}
+      />
 
       {/* ── Ask Sigma Query Feed ── */}
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
