@@ -172,26 +172,28 @@ export function useDashboardData() {
           if (priorityDiff !== 0) return priorityDiff;
           return a.name.localeCompare(b.name);
         });
-        const metricIds = prioritizedMetrics.map((metric: any) => metric.id);
-
-        const { data: allRecentMetricData } = await supabase
-          .from('metric_data')
-          .select('id, metric_id, value, timestamp, source')
-          .in('metric_id', metricIds)
-          .order('timestamp', { ascending: false })
-          .limit(400);
-
         const metricPointsById = new Map<string, Array<{ id: string; value: number; timestamp: string; source?: string }>>();
-        (allRecentMetricData || []).forEach((row: any) => {
-          const existing = metricPointsById.get(row.metric_id) || [];
-          existing.push({
-            id: row.id,
-            value: Number(row.value) || 0,
-            timestamp: row.timestamp,
-            source: row.source || undefined,
-          });
-          metricPointsById.set(row.metric_id, existing);
-        });
+
+        await Promise.all(
+          prioritizedMetrics.map(async (metric: any) => {
+            const { data: metricRows } = await supabase
+              .from('metric_data')
+              .select('id, metric_id, value, timestamp, source')
+              .eq('metric_id', metric.id)
+              .order('timestamp', { ascending: false })
+              .limit(180);
+
+            metricPointsById.set(
+              metric.id,
+              (metricRows || []).map((row: any) => ({
+                id: row.id,
+                value: Number(row.value) || 0,
+                timestamp: row.timestamp,
+                source: row.source || undefined,
+              }))
+            );
+          })
+        );
 
         const recentMetricEntries = prioritizedMetrics
           .flatMap((metric: any) =>
