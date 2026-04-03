@@ -46,142 +46,232 @@ function calculateSeriesStdDev(values: number[]): number {
   return Math.sqrt(variance);
 }
 
+interface OrganizationForecastContext {
+  orgId: string | null;
+  metrics: Array<{ name: string; current_value: number | null; target_value: number | null }>;
+  recommendations: Array<{ impact_score: number | null; status: string | null }>;
+  projects: Array<{ phase: string | null; status: string | null }>;
+  activeAlerts: Array<{ severity: string | null }>;
+  openActions: Array<{ status: string | null }>;
+}
+
+async function resolveOrganizationId(userId: string): Promise<string | null> {
+  const { data: membership } = await supabase
+    .from('user_organizations')
+    .select('organization_id')
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (membership?.organization_id) return membership.organization_id;
+
+  const { data: profile } = await supabase
+    .from('user_profiles')
+    .select('organization_id')
+    .eq('id', userId)
+    .maybeSingle();
+
+  return profile?.organization_id ?? null;
+}
+
+async function loadForecastContext(userId: string): Promise<OrganizationForecastContext> {
+  const orgId = await resolveOrganizationId(userId);
+
+  if (!orgId) {
+    return {
+      orgId: null,
+      metrics: [],
+      recommendations: [],
+      projects: [],
+      activeAlerts: [],
+      openActions: [],
+    };
+  }
+
+  const [metricsRes, recommendationsRes, projectsRes, alertsRes, actionsRes] = await Promise.all([
+    supabase
+      .from('metrics')
+      .select('name, current_value, target_value')
+      .eq('organization_id', orgId),
+    supabase
+      .from('recommendations')
+      .select('impact_score, status')
+      .eq('organization_id', orgId)
+      .in('status', ['pending', 'in_progress', 'approved']),
+    supabase
+      .from('dmaic_projects')
+      .select('phase, status')
+      .eq('organization_id', orgId)
+      .in('status', ['active', 'in_progress', 'measure', 'analyze', 'improve', 'control']),
+    supabase
+      .from('alerts')
+      .select('severity')
+      .eq('organization_id', orgId)
+      .in('status', ['new', 'acknowledged']),
+    supabase
+      .from('action_items')
+      .select('status')
+      .eq('organization_id', orgId)
+      .not('status', 'eq', 'completed'),
+  ]);
+
+  return {
+    orgId,
+    metrics: metricsRes.data ?? [],
+    recommendations: recommendationsRes.data ?? [],
+    projects: projectsRes.data ?? [],
+    activeAlerts: alertsRes.data ?? [],
+    openActions: actionsRes.data ?? [],
+  };
+}
+
+function computeCategoryBaselines(metrics: OrganizationForecastContext['metrics']) {
+  const buckets = {
+    processEfficiency: 0,
+    qualityImprovement: 0,
+    resourceOptimization: 0,
+    wasteReduction: 0,
+  };
+
+  metrics.forEach((metric) => {
+    const name = metric.name.toLowerCase();
+    const value = Number(metric.current_value ?? metric.target_value ?? 0);
+    if (!Number.isFinite(value) || value <= 0) return;
+
+    if (name.includes('wait') || name.includes('los') || name.includes('discharge') || name.includes('turnaround')) {
+      buckets.processEfficiency += value;
+    } else if (name.includes('readmission') || name.includes('lab') || name.includes('quality') || name.includes('infection')) {
+      buckets.qualityImprovement += value;
+    } else if (name.includes('bed') || name.includes('nurse') || name.includes('staff') || name.includes('capacity')) {
+      buckets.resourceOptimization += value;
+    } else {
+      buckets.wasteReduction += value;
+    }
+  });
+
+  const normalized = {
+    processEfficiency: Math.max(40, Math.round(buckets.processEfficiency || 65)),
+    qualityImprovement: Math.max(30, Math.round(buckets.qualityImprovement || 55)),
+    resourceOptimization: Math.max(30, Math.round(buckets.resourceOptimization || 50)),
+    wasteReduction: Math.max(20, Math.round(buckets.wasteReduction || 35)),
+  };
+
+  return normalized;
+}
+
+function buildScenarioDefinitions(context: OrganizationForecastContext) {
+  const recommendationImpact = context.recommendations.reduce((sum, rec) => sum + (Number(rec.impact_score ?? 0) * 1200), 0);
+  const phaseImpactMap: Record<string, number> = {
+    define: 12000,
+    measure: 26000,
+    analyze: 48000,
+    improve: 72000,
+    control: 96000,
+  };
+  const projectImpact = context.projects.reduce((sum, project) => sum + (phaseImpactMap[(project.phase ?? '').toLowerCase()] ?? 18000), 0);
+  const alertPressure = context.activeAlerts.reduce((sum, alert) => {
+    if (alert.severity === 'critical') return sum + 22000;
+    if (alert.severity === 'high') return sum + 12000;
+    return sum + 4000;
+  }, 0);
+  const actionLoadImpact = context.openActions.length * 5000;
+
+  const metricsWithTargets = context.metrics.filter(metric =>
+    Number.isFinite(Number(metric.current_value)) &&
+    Number.isFinite(Number(metric.target_value)) &&
+    Number(metric.target_value) > 0
+  );
+  const attainment =
+    metricsWithTargets.length > 0
+      ? metricsWithTargets.reduce((sum, metric) => sum + (Number(metric.current_value) / Number(metric.target_value)), 0) / metricsWithTargets.length
+      : 0.82;
+
+  const readinessPenalty = Math.max(0.75, Math.min(1.15, attainment));
+  const totalImpact = Math.max(160000, Math.round((recommendationImpact + projectImpact + alertPressure + actionLoadImpact) * readinessPenalty));
+  const totalInvestment = Math.max(70000, Math.round(totalImpact * 0.34));
+
+  return [
+    {
+      id: 'stabilize',
+      name: 'Stabilize & Triage',
+      description: 'Address the most urgent bottlenecks first and protect service levels before scaling improvement.',
+      multiplier: 0.28,
+      investmentMultiplier: 0.24,
+      probability: 92,
+      risk: 'Low' as const,
+      timelineMonths: 3,
+      mix: { processEfficiency: 0.37, qualityImprovement: 0.26, resourceOptimization: 0.22, wasteReduction: 0.15 },
+    },
+    {
+      id: 'balanced',
+      name: 'Balanced Improvement',
+      description: 'Pursue the strongest proven actions while keeping execution load realistic for the current team.',
+      multiplier: 0.68,
+      investmentMultiplier: 0.66,
+      probability: 83,
+      risk: 'Low' as const,
+      timelineMonths: 8,
+      mix: { processEfficiency: 0.34, qualityImprovement: 0.28, resourceOptimization: 0.24, wasteReduction: 0.14 },
+    },
+    {
+      id: 'capacity',
+      name: 'Capacity Recovery',
+      description: 'Lean into throughput, staffing, and bed/capacity improvements to absorb sustained operational pressure.',
+      multiplier: 0.95,
+      investmentMultiplier: 0.92,
+      probability: 72,
+      risk: 'Medium' as const,
+      timelineMonths: 12,
+      mix: { processEfficiency: 0.31, qualityImprovement: 0.24, resourceOptimization: 0.31, wasteReduction: 0.14 },
+    },
+    {
+      id: 'transformation',
+      name: 'Transformation Program',
+      description: 'Coordinate broad process and quality redesign across workflows, systems, and operating governance.',
+      multiplier: 1.24,
+      investmentMultiplier: 1.42,
+      probability: 58,
+      risk: 'High' as const,
+      timelineMonths: 18,
+      mix: { processEfficiency: 0.29, qualityImprovement: 0.31, resourceOptimization: 0.27, wasteReduction: 0.13 },
+    },
+  ].map(definition => ({
+    ...definition,
+    totalImpact,
+    totalInvestment,
+  }));
+}
+
 /**
  * Generate impact scenarios based on active recommendations and projects
  */
 export async function generateImpactScenarios(userId: string): Promise<ImpactScenario[]> {
   try {
-    // Fetch active recommendations (keyed by user_id)
-    const { data: recommendations } = await supabase
-      .from('recommendations')
-      .select('impact_score, status')
-      .eq('user_id', userId)
-      .in('status', ['pending', 'in_progress']);
+    const context = await loadForecastContext(userId);
+    const definitions = buildScenarioDefinitions(context);
 
-    // Get user's organization for project lookup
-    const { data: profileData } = await supabase
-      .from('user_profiles')
-      .select('organization_id')
-      .eq('id', userId)
-      .maybeSingle();
+    return definitions.map(definition => {
+      const annualImpact = Math.round(definition.totalImpact * definition.multiplier);
+      const investment = Math.round(definition.totalInvestment * definition.investmentMultiplier);
+      const roi = investment > 0 ? Math.round(((annualImpact - investment) / investment) * 100) : 0;
 
-    const orgId = profileData?.organization_id;
-
-    // Fetch active DMAIC projects using correct columns (no expected_savings column)
-    let projects: any[] = [];
-    if (orgId) {
-      const { data: projectData } = await supabase
-        .from('dmaic_projects')
-        .select('id, name, phase, status')
-        .eq('organization_id', orgId)
-        .not('status', 'eq', 'completed');
-      projects = projectData || [];
-    }
-
-    let totalImpact = 0;
-    let totalInvestment = 0;
-
-    if (recommendations) {
-      recommendations.forEach(rec => {
-        const impactValue = (rec.impact_score || 0) * 1000;
-        totalImpact += impactValue;
-        totalInvestment += impactValue * 0.35;
-      });
-    }
-
-    // Estimate project impact based on phase (no expected_savings column)
-    const phaseImpactMap: Record<string, number> = {
-      define: 10000,
-      measure: 25000,
-      analyze: 50000,
-      improve: 80000,
-      control: 100000
-    };
-
-    projects.forEach(proj => {
-      const phaseImpact = phaseImpactMap[proj.phase] || 20000;
-      totalImpact += phaseImpact;
-      totalInvestment += phaseImpact * 0.25;
+      return {
+        id: definition.id,
+        name: definition.name,
+        description: definition.description,
+        investment,
+        timeline: `${Math.max(2, definition.timelineMonths - 1)}-${definition.timelineMonths + 1} months`,
+        roi,
+        risk: definition.risk,
+        annualImpact,
+        probability: definition.probability,
+        breakdown: {
+          processEfficiency: Math.round(annualImpact * definition.mix.processEfficiency),
+          qualityImprovement: Math.round(annualImpact * definition.mix.qualityImprovement),
+          resourceOptimization: Math.round(annualImpact * definition.mix.resourceOptimization),
+          wasteReduction: Math.round(annualImpact * definition.mix.wasteReduction),
+        },
+      };
     });
-
-    // Ensure minimum values so UI is always meaningful
-    if (totalImpact === 0) {
-      totalImpact = 500000;
-      totalInvestment = 175000;
-    }
-
-    const scenarios: ImpactScenario[] = [
-      {
-        id: 'minimal',
-        name: 'Minimal Investment',
-        description: 'Implement only quick wins and low-hanging fruit',
-        investment: Math.round(totalInvestment * 0.25),
-        timeline: '2-3 months',
-        roi: 180,
-        risk: 'Low',
-        annualImpact: Math.round(totalImpact * 0.15),
-        probability: 95,
-        breakdown: {
-          processEfficiency: Math.round(totalImpact * 0.15 * 0.4),
-          qualityImprovement: Math.round(totalImpact * 0.15 * 0.25),
-          resourceOptimization: Math.round(totalImpact * 0.15 * 0.2),
-          wasteReduction: Math.round(totalImpact * 0.15 * 0.15)
-        }
-      },
-      {
-        id: 'balanced',
-        name: 'Balanced Approach',
-        description: 'Implement 70% of recommendations with proven ROI',
-        investment: Math.round(totalInvestment * 0.7),
-        timeline: '6-8 months',
-        roi: 286,
-        risk: 'Low',
-        annualImpact: Math.round(totalImpact * 0.7),
-        probability: 85,
-        breakdown: {
-          processEfficiency: Math.round(totalImpact * 0.7 * 0.38),
-          qualityImprovement: Math.round(totalImpact * 0.7 * 0.28),
-          resourceOptimization: Math.round(totalImpact * 0.7 * 0.22),
-          wasteReduction: Math.round(totalImpact * 0.7 * 0.12)
-        }
-      },
-      {
-        id: 'aggressive',
-        name: 'Aggressive Growth',
-        description: 'Full implementation with accelerated timeline',
-        investment: Math.round(totalInvestment * 1.2),
-        timeline: '10-12 months',
-        roi: 220,
-        risk: 'Medium',
-        annualImpact: Math.round(totalImpact * 1.1),
-        probability: 70,
-        breakdown: {
-          processEfficiency: Math.round(totalImpact * 1.1 * 0.36),
-          qualityImprovement: Math.round(totalImpact * 1.1 * 0.3),
-          resourceOptimization: Math.round(totalImpact * 1.1 * 0.24),
-          wasteReduction: Math.round(totalImpact * 1.1 * 0.1)
-        }
-      },
-      {
-        id: 'transformation',
-        name: 'Full Transformation',
-        description: 'Complete organizational transformation with new technologies',
-        investment: Math.round(totalInvestment * 2),
-        timeline: '14-18 months',
-        roi: 195,
-        risk: 'High',
-        annualImpact: Math.round(totalImpact * 1.5),
-        probability: 60,
-        breakdown: {
-          processEfficiency: Math.round(totalImpact * 1.5 * 0.35),
-          qualityImprovement: Math.round(totalImpact * 1.5 * 0.32),
-          resourceOptimization: Math.round(totalImpact * 1.5 * 0.25),
-          wasteReduction: Math.round(totalImpact * 1.5 * 0.08)
-        }
-      }
-    ];
-
-    return scenarios;
   } catch (error) {
     console.error('Error generating impact scenarios:', error);
     return [];
@@ -197,14 +287,7 @@ export async function generateKPIForecast(
   scenarioId: string = 'balanced'
 ): Promise<ForecastData[]> {
   try {
-    // Get user's organization for scoped metric_data query
-    const { data: profileData } = await supabase
-      .from('user_profiles')
-      .select('organization_id')
-      .eq('id', userId)
-      .maybeSingle();
-
-    const orgId = profileData?.organization_id;
+    const orgId = await resolveOrganizationId(userId);
 
     let baseline = 2400;
     let recentValues: number[] = [];
@@ -226,7 +309,8 @@ export async function generateKPIForecast(
     }
 
     const scenarios = await generateImpactScenarios(userId);
-    const selectedScenario = scenarios.find(s => s.id === scenarioId) || scenarios[1];
+    const selectedScenario = scenarios.find(s => s.id === scenarioId) || scenarios[1] || scenarios[0];
+    if (!selectedScenario) return [];
 
     const monthlyImpact = selectedScenario.annualImpact / 12;
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -271,35 +355,38 @@ export async function calculateImpactBreakdown(
   scenarioId: string = 'balanced'
 ): Promise<ImpactBreakdown[]> {
   try {
+    const context = await loadForecastContext(userId);
     const scenarios = await generateImpactScenarios(userId);
-    const scenario = scenarios.find(s => s.id === scenarioId) || scenarios[1];
+    const scenario = scenarios.find(s => s.id === scenarioId) || scenarios[1] || scenarios[0];
+    if (!scenario) return [];
+    const baselines = computeCategoryBaselines(context.metrics);
 
     const breakdown: ImpactBreakdown[] = [
       {
         category: 'Process Efficiency',
-        baseline: 180,
-        withActions: scenario.breakdown.processEfficiency / 1000,
+        baseline: baselines.processEfficiency,
+        withActions: baselines.processEfficiency + scenario.breakdown.processEfficiency / 1000,
         change: '',
         changePercent: 0
       },
       {
         category: 'Quality Improvement',
-        baseline: 120,
-        withActions: scenario.breakdown.qualityImprovement / 1000,
+        baseline: baselines.qualityImprovement,
+        withActions: baselines.qualityImprovement + scenario.breakdown.qualityImprovement / 1000,
         change: '',
         changePercent: 0
       },
       {
         category: 'Resource Optimization',
-        baseline: 95,
-        withActions: scenario.breakdown.resourceOptimization / 1000,
+        baseline: baselines.resourceOptimization,
+        withActions: baselines.resourceOptimization + scenario.breakdown.resourceOptimization / 1000,
         change: '',
         changePercent: 0
       },
       {
         category: 'Waste Reduction',
-        baseline: 68,
-        withActions: scenario.breakdown.wasteReduction / 1000,
+        baseline: baselines.wasteReduction,
+        withActions: baselines.wasteReduction + scenario.breakdown.wasteReduction / 1000,
         change: '',
         changePercent: 0
       }
@@ -335,14 +422,19 @@ export async function calculateROI(
   userId: string,
   scenarioId: string = 'balanced',
   implementationScope: number = 100,
-  successRate: number = 100
+  successRate: number = 100,
+  timelineMonths: number = 12
 ): Promise<ROIMetrics> {
   try {
     const scenarios = await generateImpactScenarios(userId);
-    const scenario = scenarios.find(s => s.id === scenarioId) || scenarios[1];
+    const scenario = scenarios.find(s => s.id === scenarioId) || scenarios[1] || scenarios[0];
+    if (!scenario) {
+      throw new Error('No forecast scenario available');
+    }
 
     const adjustedInvestment = scenario.investment * (implementationScope / 100);
-    const adjustedSavings = scenario.annualImpact * (implementationScope / 100) * (successRate / 100);
+    const timelineFactor = Math.max(0.7, Math.min(1.25, 12 / Math.max(timelineMonths, 6)));
+    const adjustedSavings = scenario.annualImpact * (implementationScope / 100) * (successRate / 100) * timelineFactor;
     const monthlySavings = adjustedSavings / 12;
 
     const roi = adjustedInvestment > 0 ? ((adjustedSavings - adjustedInvestment) / adjustedInvestment) * 100 : 0;
@@ -352,7 +444,8 @@ export async function calculateROI(
     const discountRate = 0.1;
     let npv = -adjustedInvestment;
     for (let year = 1; year <= 3; year++) {
-      npv += adjustedSavings / Math.pow(1 + discountRate, year);
+      const yearlyRamp = Math.min(1, (year * 12) / Math.max(timelineMonths, 6));
+      npv += (adjustedSavings * yearlyRamp) / Math.pow(1 + discountRate, year);
     }
 
     // Calculate break-even date

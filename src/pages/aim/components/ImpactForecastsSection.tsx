@@ -27,7 +27,7 @@ const SCENARIO_THEME: Record<string, {
   activeShell: string;
   accent: string;
 }> = {
-  minimal: {
+  stabilize: {
     shell: 'border-slate-200 bg-white hover:border-slate-300',
     icon: 'from-slate-500 to-slate-700',
     activeShell: 'border-slate-500 bg-gradient-to-br from-slate-50 to-slate-100 shadow-lg shadow-slate-200/70',
@@ -39,7 +39,7 @@ const SCENARIO_THEME: Record<string, {
     activeShell: 'border-teal-500 bg-gradient-to-br from-teal-50 to-cyan-50 shadow-lg shadow-teal-200/70',
     accent: 'text-teal-700',
   },
-  aggressive: {
+  capacity: {
     shell: 'border-blue-200 bg-white hover:border-blue-300',
     icon: 'from-blue-500 to-indigo-600',
     activeShell: 'border-blue-500 bg-gradient-to-br from-blue-50 to-indigo-50 shadow-lg shadow-blue-200/70',
@@ -80,12 +80,13 @@ const ImpactForecastsSection: React.FC = () => {
   useEffect(() => {
     if (user) {
       loadMetrics();
-      loadImpactData();
     }
   }, [user]);
 
   useEffect(() => {
     if (user) {
+      loadImpactData();
+      updateROIMetrics();
       generateForecasts();
     }
   }, [timeHorizon, selectedScenario, user]);
@@ -94,7 +95,21 @@ const ImpactForecastsSection: React.FC = () => {
     if (user) {
       updateROIMetrics();
     }
-  }, [implementationScope, successRate, selectedScenario, user]);
+  }, [implementationScope, successRate, timeline, selectedScenario, user]);
+
+  const formatMoney = (value: number) => {
+    const numeric = Number(value ?? 0);
+    if (!Number.isFinite(numeric)) return '$0';
+
+    const absolute = Math.abs(numeric);
+    if (absolute >= 1_000_000) {
+      return `$${(numeric / 1_000_000).toFixed(absolute >= 10_000_000 ? 0 : 1)}M`;
+    }
+    if (absolute >= 1_000) {
+      return `$${(numeric / 1_000).toFixed(absolute >= 100_000 ? 0 : 1)}K`;
+    }
+    return `$${numeric.toFixed(0)}`;
+  };
 
   async function loadMetrics() {
     if (!user) return;
@@ -146,7 +161,7 @@ const ImpactForecastsSection: React.FC = () => {
     if (!user) return;
 
     try {
-      const roi = await calculateROI(user.id, selectedScenario, implementationScope, successRate);
+      const roi = await calculateROI(user.id, selectedScenario, implementationScope, successRate, timeline);
       setROIMetrics(roi);
     } catch (error) {
       console.error('Error calculating ROI:', error);
@@ -231,13 +246,20 @@ const ImpactForecastsSection: React.FC = () => {
     id: scenario.id,
     label: scenario.name,
     description: scenario.description,
-    impact: `$${Math.round(scenario.annualImpact / 1000)}K`,
+    impact: formatMoney(scenario.annualImpact),
     probability: scenario.probability,
-    investment: `$${Math.round(scenario.investment / 1000)}K`,
+    investment: formatMoney(scenario.investment),
     roi: `${scenario.roi}% ROI`,
     timeline: scenario.timeline,
     risk: scenario.risk,
-    icon: scenario.id === 'minimal' ? 'ri-line-chart-line' : scenario.id === 'balanced' ? 'ri-arrow-up-line' : scenario.id === 'aggressive' ? 'ri-rocket-line' : 'ri-flashlight-line'
+    icon:
+      scenario.id === 'stabilize'
+        ? 'ri-shield-check-line'
+        : scenario.id === 'balanced'
+          ? 'ri-scales-3-line'
+          : scenario.id === 'capacity'
+            ? 'ri-hospital-line'
+            : 'ri-rocket-2-line'
   }));
 
   const calculateNetImpact = () => {
@@ -310,8 +332,8 @@ const ImpactForecastsSection: React.FC = () => {
         items={[
           {
             label: 'Selected Scenario',
-            value: scenarioCards.find(card => card.id === selectedScenario)?.label ?? 'Balanced Approach',
-            detail: scenarioCards.find(card => card.id === selectedScenario)?.timeline ?? '6-8 months',
+            value: scenarioCards.find(card => card.id === selectedScenario)?.label ?? 'Balanced Improvement',
+            detail: scenarioCards.find(card => card.id === selectedScenario)?.timeline ?? '8 months',
           },
           {
             label: 'Modeled Annual Upside',
@@ -326,7 +348,7 @@ const ImpactForecastsSection: React.FC = () => {
           },
           {
             label: 'Net Annual Benefit',
-            value: `$${Math.round(calculateNetImpact())}K`,
+            value: formatMoney(calculateNetImpact() * 1000),
             detail: 'Across current recommended actions',
             accent: calculateNetImpact() >= 0 ? 'text-teal-600' : 'text-red-600',
           },
@@ -650,7 +672,7 @@ const ImpactForecastsSection: React.FC = () => {
               <p className="text-sm text-slate-600">Total value from implementing all recommendations</p>
             </div>
             <div className="text-right">
-              <div className="text-4xl font-bold text-teal-600 mb-1">${Math.round(calculateNetImpact())}K</div>
+              <div className="text-4xl font-bold text-teal-600 mb-1">{formatMoney(calculateNetImpact() * 1000)}</div>
               <div className="text-sm text-slate-600">Annual Net Benefit</div>
             </div>
           </div>
@@ -662,14 +684,14 @@ const ImpactForecastsSection: React.FC = () => {
                   {item.category}
                 </div>
                 <div className="flex items-end justify-between mb-2">
-                  <div>
-                    <div className="text-sm text-slate-600">Baseline</div>
-                    <div className="text-lg font-bold text-slate-900">${Math.round(item.baseline)}K</div>
+                    <div>
+                      <div className="text-sm text-slate-600">Baseline</div>
+                    <div className="text-lg font-bold text-slate-900">{formatMoney(item.baseline * 1000)}</div>
                   </div>
                   <i className="ri-arrow-right-line text-slate-400"></i>
                   <div>
                     <div className="text-sm text-slate-600">With Actions</div>
-                    <div className="text-lg font-bold text-teal-600">${Math.round(item.withActions)}K</div>
+                    <div className="text-lg font-bold text-teal-600">{formatMoney(item.withActions * 1000)}</div>
                   </div>
                 </div>
                 <div className="px-2 py-1 bg-teal-100 text-teal-700 text-xs font-bold rounded-full text-center">
@@ -752,7 +774,7 @@ const ImpactForecastsSection: React.FC = () => {
                         style={{ height: `${(data.baseline / chartMax) * 100}%` }}
                       >
                         <div className="absolute -top-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-900 text-white text-xs px-2 py-1 rounded whitespace-nowrap">
-                          ${Math.round(data.baseline)}K
+                          {formatMoney(data.baseline)}
                         </div>
                       </div>
                     </div>
@@ -764,7 +786,7 @@ const ImpactForecastsSection: React.FC = () => {
                         style={{ height: `${(data.withActions / chartMax) * 100}%` }}
                       >
                         <div className="absolute -top-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-900 text-white text-xs px-2 py-1 rounded whitespace-nowrap">
-                          ${Math.round(data.withActions)}K
+                          {formatMoney(data.withActions)}
                         </div>
                       </div>
                     </div>
@@ -777,7 +799,7 @@ const ImpactForecastsSection: React.FC = () => {
                           style={{ height: `${(data.optimistic / chartMax) * 100}%` }}
                         >
                           <div className="absolute -top-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-900 text-white text-xs px-2 py-1 rounded whitespace-nowrap">
-                            ${Math.round(data.optimistic)}K
+                            {formatMoney(data.optimistic)}
                           </div>
                         </div>
                       </div>
@@ -795,7 +817,7 @@ const ImpactForecastsSection: React.FC = () => {
           <div className="p-4 bg-gradient-to-br from-teal-50 to-cyan-50 rounded-lg">
             <div className="text-sm text-slate-600 mb-1">Average Monthly Gain</div>
             <div className="text-2xl font-bold text-teal-600">
-              +${Math.round((forecastData.reduce((sum, d) => sum + (d.withActions - d.baseline), 0) / forecastData.length))}K
+              {formatMoney(forecastData.reduce((sum, d) => sum + (d.withActions - d.baseline), 0) / Math.max(forecastData.length, 1))}
             </div>
             <div className="text-xs text-slate-500 mt-1">vs. baseline trajectory</div>
           </div>
@@ -805,13 +827,13 @@ const ImpactForecastsSection: React.FC = () => {
               {forecastData.length > 0 ? forecastData[forecastData.length - 1].month : 'N/A'}
             </div>
             <div className="text-xs text-slate-500 mt-1">
-              ${forecastData.length > 0 ? Math.round(forecastData[forecastData.length - 1].withActions) : 0}K projected
+              {forecastData.length > 0 ? formatMoney(forecastData[forecastData.length - 1].withActions) : '$0'} projected
             </div>
           </div>
           <div className="p-4 bg-gradient-to-br from-emerald-50 to-teal-50 rounded-lg">
             <div className="text-sm text-slate-600 mb-1">Cumulative Impact</div>
             <div className="text-2xl font-bold text-emerald-600">
-              ${Math.round(forecastData.reduce((sum, d) => sum + (d.withActions - d.baseline), 0) / 1000)}M
+              {formatMoney(forecastData.reduce((sum, d) => sum + (d.withActions - d.baseline), 0))}
             </div>
             <div className="text-xs text-slate-500 mt-1">over {timeHorizon} months</div>
           </div>
@@ -820,17 +842,12 @@ const ImpactForecastsSection: React.FC = () => {
 
       {/* Cost/Savings Simulator */}
       {roiMetrics && (
-        <div className="bg-white rounded-xl border border-slate-200 p-6">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-600 rounded-lg flex items-center justify-center">
-              <i className="ri-calculator-line text-xl text-white"></i>
-            </div>
-            <div>
-              <h2 className="text-xl font-bold text-slate-900">Cost / Savings Simulator</h2>
-              <p className="text-sm text-slate-600">Adjust implementation scope to see impact on ROI</p>
-            </div>
-          </div>
-
+        <AIMPanel
+          title="Cost / Savings Simulator"
+          description="Stress-test scope, success rate, and timeline so the executive team can compare investment posture with expected savings."
+          icon="ri-calculator-line"
+          accentClass="from-purple-500 to-pink-600"
+        >
           <div className="grid grid-cols-2 gap-6">
             <div className="space-y-4">
               <div>
@@ -895,12 +912,12 @@ const ImpactForecastsSection: React.FC = () => {
             <div className="space-y-3">
               <div className="p-4 bg-gradient-to-br from-emerald-50 to-teal-50 rounded-lg">
                 <div className="text-sm text-slate-600 mb-1">Total Investment Required</div>
-                <div className="text-3xl font-bold text-slate-900">${roiMetrics.investment}K</div>
+                <div className="text-3xl font-bold text-slate-900">{formatMoney(roiMetrics.investment * 1000)}</div>
               </div>
               <div className="p-4 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg">
                 <div className="text-sm text-slate-600 mb-1">Expected Annual Savings</div>
                 <div className="text-3xl font-bold text-blue-600">
-                  ${roiMetrics.annualSavings}K
+                  {formatMoney(roiMetrics.annualSavings * 1000)}
                 </div>
               </div>
               <div className="p-4 bg-gradient-to-br from-purple-50 to-pink-50 rounded-lg">
@@ -913,7 +930,7 @@ const ImpactForecastsSection: React.FC = () => {
               </div>
             </div>
           </div>
-        </div>
+        </AIMPanel>
       )}
     </div>
   );
