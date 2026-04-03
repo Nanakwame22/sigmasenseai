@@ -8,12 +8,39 @@ import {
   calculateConfidenceBreakdown,
 } from '../../../services/decisionSupportEngine';
 import type { DecisionScenario, RecommendationJustification, TradeOffAnalysis, ConfidenceFactor } from '../../../services/decisionSupportEngine';
-import { AIMEmptyState, AIMPanel, AIMSectionIntro } from './AIMSectionSystem';
+import { AIMEmptyState, AIMMetricTiles, AIMPanel, AIMSectionIntro } from './AIMSectionSystem';
 
 const RISK_THEME: Record<string, string> = {
   Low: 'bg-emerald-100 text-emerald-700',
   Medium: 'bg-amber-100 text-amber-700',
   High: 'bg-red-100 text-red-700',
+};
+
+const SCENARIO_THEME: Record<string, { shell: string; activeShell: string; icon: string; accent: string }> = {
+  'scenario-1': {
+    shell: 'border-slate-200 bg-white hover:border-slate-300',
+    activeShell: 'border-slate-500 bg-gradient-to-br from-slate-50 to-slate-100 shadow-lg shadow-slate-200/70',
+    icon: 'from-slate-500 to-slate-700',
+    accent: 'text-slate-700',
+  },
+  'scenario-2': {
+    shell: 'border-teal-200 bg-white hover:border-teal-300',
+    activeShell: 'border-teal-500 bg-gradient-to-br from-teal-50 to-cyan-50 shadow-lg shadow-teal-200/70',
+    icon: 'from-teal-500 to-cyan-600',
+    accent: 'text-teal-700',
+  },
+  'scenario-3': {
+    shell: 'border-blue-200 bg-white hover:border-blue-300',
+    activeShell: 'border-blue-500 bg-gradient-to-br from-blue-50 to-indigo-50 shadow-lg shadow-blue-200/70',
+    icon: 'from-blue-500 to-indigo-600',
+    accent: 'text-blue-700',
+  },
+  'scenario-4': {
+    shell: 'border-fuchsia-200 bg-white hover:border-fuchsia-300',
+    activeShell: 'border-fuchsia-500 bg-gradient-to-br from-fuchsia-50 to-violet-50 shadow-lg shadow-fuchsia-200/70',
+    icon: 'from-fuchsia-500 to-violet-600',
+    accent: 'text-fuchsia-700',
+  },
 };
 
 const DecisionSupportSection: React.FC = () => {
@@ -65,6 +92,9 @@ const DecisionSupportSection: React.FC = () => {
     );
   };
 
+  const activeScenario = scenarios.find((scenario) => scenario.id === selectedScenarios[0]) || scenarios[0] || null;
+  const activeScenarioTheme = activeScenario ? (SCENARIO_THEME[activeScenario.id] || SCENARIO_THEME['scenario-2']) : SCENARIO_THEME['scenario-2'];
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-96">
@@ -93,95 +123,136 @@ const DecisionSupportSection: React.FC = () => {
         }
       />
 
+      {activeScenario && (
+        <AIMMetricTiles
+          items={[
+            {
+              label: 'Current Recommendation',
+              value: activeScenario.name,
+              detail: activeScenario.timeline,
+            },
+            {
+              label: 'Decision Score',
+              value: `${activeScenario.score}/100`,
+              detail: `${activeScenario.risk} execution risk`,
+              accent: activeScenario.score >= 80 ? 'text-teal-600' : activeScenario.score >= 65 ? 'text-amber-600' : 'text-red-600',
+            },
+            {
+              label: 'Modeled Annual Impact',
+              value: activeScenario.impact,
+              detail: `${activeScenario.roi}% ROI`,
+              accent: activeScenarioTheme.accent,
+            },
+            {
+              label: 'Confidence',
+              value: confidenceBreakdown ? `${confidenceBreakdown.overallScore}%` : 'Pending',
+              detail: 'Evidence-backed decision confidence',
+            },
+          ]}
+        />
+      )}
+
       {/* Scenario Comparison */}
       {scenarios.length > 0 && (
         <AIMPanel
-          title="Scenario Comparison"
-          description="Compare investment posture, timeline, risk, and modeled upside side by side."
-          icon="ri-scales-line"
+          title="Executive Decision Brief"
+          description="Select the operating posture AIM recommends, then compare the upside, cost, and execution risk in one briefing surface."
+          icon="ri-compass-3-line"
           accentClass="from-blue-500 to-indigo-600"
         >
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-slate-200">
-                  <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700">Scenario</th>
-                  <th className="text-center py-3 px-4 text-sm font-semibold text-slate-700">Investment</th>
-                  <th className="text-center py-3 px-4 text-sm font-semibold text-slate-700">Timeline</th>
-                  <th className="text-center py-3 px-4 text-sm font-semibold text-slate-700">ROI</th>
-                  <th className="text-center py-3 px-4 text-sm font-semibold text-slate-700">Risk Level</th>
-                  <th className="text-center py-3 px-4 text-sm font-semibold text-slate-700">Annual Impact</th>
-                  <th className="text-center py-3 px-4 text-sm font-semibold text-slate-700">Select</th>
-                </tr>
-              </thead>
-              <tbody>
-                {scenarios.map((scenario) => (
-                  <tr
+          <div className="grid gap-6 xl:grid-cols-[1.1fr,0.9fr]">
+            <div className="space-y-3">
+              {scenarios.map((scenario) => {
+                const theme = SCENARIO_THEME[scenario.id] || SCENARIO_THEME['scenario-2'];
+                const isActive = selectedScenarios.includes(scenario.id);
+                return (
+                  <button
                     key={scenario.id}
-                    className={`border-b border-slate-100 hover:bg-slate-50 transition-colors ${
-                      selectedScenarios.includes(scenario.id) ? 'bg-teal-50' : ''
+                    onClick={() => toggleScenario(scenario.id)}
+                    className={`w-full rounded-[24px] border p-5 text-left transition-all ${
+                      isActive ? theme.activeShell : `${theme.shell} hover:shadow-md`
                     }`}
                   >
-                    <td className="py-4 px-4">
-                      <div className="font-semibold text-slate-900">{scenario.name}</div>
-                    </td>
-                    <td className="py-4 px-4 text-center">
-                      <span className="text-slate-900 font-semibold">{scenario.cost}</span>
-                    </td>
-                    <td className="py-4 px-4 text-center">
-                      <span className="text-slate-700">{scenario.timeline}</span>
-                    </td>
-                    <td className="py-4 px-4 text-center">
-                      <span className="px-3 py-1 bg-gradient-to-r from-teal-500 to-cyan-600 text-white text-sm font-bold rounded-full">
-                        {scenario.roi}%
-                      </span>
-                    </td>
-                    <td className="py-4 px-4 text-center">
-                      <span className={`px-3 py-1 text-sm font-semibold rounded-full ${RISK_THEME[scenario.risk] || RISK_THEME.High}`}>
-                        {scenario.risk}
-                      </span>
-                    </td>
-                    <td className="py-4 px-4 text-center">
-                      <span className="text-emerald-600 font-bold text-lg">{scenario.impact}</span>
-                    </td>
-                    <td className="py-4 px-4 text-center">
-                      <button
-                        onClick={() => toggleScenario(scenario.id)}
-                        className={`w-8 h-8 rounded-lg border-2 flex items-center justify-center transition-all ${
-                          selectedScenarios.includes(scenario.id)
-                            ? 'bg-teal-500 border-teal-500'
-                            : 'border-slate-300 hover:border-teal-500'
-                        }`}
-                      >
-                        {selectedScenarios.includes(scenario.id) && (
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex items-start gap-4">
+                        <div className={`flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br ${theme.icon}`}>
+                          <i className="ri-scales-3-line text-2xl text-white"></i>
+                        </div>
+                        <div className="min-w-0">
+                          <h3 className="text-lg font-bold text-slate-900">{scenario.name}</h3>
+                          <div className="mt-2 flex flex-wrap items-center gap-2">
+                            <span className="rounded-full bg-white/75 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-slate-600">
+                              {scenario.timeline}
+                            </span>
+                            <span className={`rounded-full px-3 py-1 text-xs font-semibold ${RISK_THEME[scenario.risk] || RISK_THEME.High}`}>
+                              {scenario.risk} risk
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      {isActive && (
+                        <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-teal-500">
                           <i className="ri-check-line text-white"></i>
-                        )}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                        </span>
+                      )}
+                    </div>
 
-          {selectedScenarios.length > 0 && (
-            <div className="mt-6 p-4 bg-gradient-to-br from-teal-50 to-cyan-50 rounded-lg">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-sm text-slate-600 mb-1">Selected Scenario</div>
-                  <div className="text-xl font-bold text-slate-900">
-                    {scenarios.find(s => s.id === selectedScenarios[0])?.name}
+                    <div className="mt-5 grid gap-3 sm:grid-cols-4">
+                      <div className="rounded-2xl bg-white/75 px-4 py-3">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Investment</div>
+                        <div className="mt-1 text-lg font-bold text-slate-900">{scenario.cost}</div>
+                      </div>
+                      <div className="rounded-2xl bg-white/75 px-4 py-3">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">ROI</div>
+                        <div className={`mt-1 text-lg font-bold ${theme.accent}`}>{scenario.roi}%</div>
+                      </div>
+                      <div className="rounded-2xl bg-white/75 px-4 py-3">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Annual impact</div>
+                        <div className={`mt-1 text-lg font-bold ${theme.accent}`}>{scenario.impact}</div>
+                      </div>
+                      <div className="rounded-2xl bg-white/75 px-4 py-3">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Decision score</div>
+                        <div className={`mt-1 text-lg font-bold ${theme.accent}`}>{scenario.score}/100</div>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {activeScenario && (
+              <div className={`rounded-[28px] border p-6 ${activeScenarioTheme.activeShell}`}>
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Recommended posture</div>
+                <h3 className="mt-2 text-3xl font-bold text-slate-900">{activeScenario.name}</h3>
+                <p className="mt-2 text-sm leading-6 text-slate-600">
+                  AIM currently favors this posture because it balances operating pressure, visible upside, and execution capacity better than the alternatives.
+                </p>
+
+                <div className="mt-6 grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-2xl bg-white/80 px-4 py-4">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Modeled annual upside</div>
+                    <div className={`mt-2 text-3xl font-bold ${activeScenarioTheme.accent}`}>{activeScenario.impact}</div>
+                  </div>
+                  <div className="rounded-2xl bg-white/80 px-4 py-4">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Execution risk</div>
+                    <div className="mt-2 text-3xl font-bold text-slate-900">{activeScenario.risk}</div>
                   </div>
                 </div>
-                <div className="text-right">
-                  <div className="text-sm text-slate-600 mb-1">Decision Score</div>
-                  <div className="text-2xl font-bold text-teal-600">
-                    {scenarios.find(s => s.id === selectedScenarios[0])?.score}/100
+
+                <div className="mt-6 rounded-[22px] bg-white/80 p-5">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Why AIM prefers it</div>
+                  <div className="mt-4 space-y-3">
+                    {activeScenario.pros.slice(0, 3).map((pro, idx) => (
+                      <div key={idx} className="flex items-start gap-3 text-sm text-slate-700">
+                        <i className="ri-checkbox-circle-fill mt-0.5 text-teal-600"></i>
+                        <span>{pro}</span>
+                      </div>
+                    ))}
                   </div>
                 </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </AIMPanel>
       )}
 
@@ -274,7 +345,7 @@ const DecisionSupportSection: React.FC = () => {
           icon="ri-exchange-line"
           accentClass="from-amber-500 to-orange-600"
         >
-          <div className="grid grid-cols-2 gap-6">
+          <div className="grid gap-6 lg:grid-cols-2">
             {/* Benefits */}
             <div>
               <h3 className="text-lg font-bold text-emerald-600 mb-4 flex items-center gap-2">
@@ -322,7 +393,7 @@ const DecisionSupportSection: React.FC = () => {
             </div>
           </div>
 
-          <div className="mt-6 p-4 bg-gradient-to-br from-teal-50 to-cyan-50 rounded-lg border border-teal-200">
+          <div className="mt-6 rounded-[22px] border border-teal-200 bg-gradient-to-br from-teal-50 to-cyan-50 p-5">
             <div className="flex items-center justify-between">
               <div>
                 <div className="text-sm text-slate-600 mb-1">Overall Assessment</div>
@@ -355,7 +426,7 @@ const DecisionSupportSection: React.FC = () => {
         >
           <div className="space-y-4">
             {confidenceBreakdown.factors.map((factor, idx) => (
-              <div key={idx} className="p-4 border border-slate-200 rounded-lg hover:shadow-md transition-all">
+              <div key={idx} className="rounded-[22px] border border-slate-200 p-5 transition-all hover:shadow-md">
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex-1">
                     <h3 className="text-sm font-bold text-slate-900 mb-1">{factor.factor}</h3>

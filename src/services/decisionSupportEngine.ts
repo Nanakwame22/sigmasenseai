@@ -174,15 +174,15 @@ function buildScenarioPros(name: string, risk: 'Low' | 'Medium' | 'High', impact
     `${risk} delivery risk based on current alert and action load`,
   ];
 
-  if (name === 'Minimal Investment') {
+  if (name === 'Stabilize & Triage') {
     return [...base, 'Smallest coordination burden across frontline teams', 'Useful for stabilizing the operation before wider rollout'];
   }
 
-  if (name === 'Balanced Approach') {
+  if (name === 'Balanced Improvement') {
     return [...base, 'Best balance between impact capture and execution pressure', 'Fits a phased rollout without stalling active work'];
   }
 
-  if (name === 'Aggressive Growth') {
+  if (name === 'Capacity Recovery') {
     return [...base, `Captures more upside while ${actionLoad} open actions are still manageable`, 'Good fit when leadership wants faster visible results'];
   }
 
@@ -195,15 +195,15 @@ function buildScenarioCons(name: string, risk: 'Low' | 'Medium' | 'High', alertP
     `${risk} chance of execution drag if staffing or ownership is unclear`,
   ];
 
-  if (name === 'Minimal Investment') {
+  if (name === 'Stabilize & Triage') {
     return [...base, 'May not clear the full backlog of recommended improvements', 'Can leave strategic upside on the table'];
   }
 
-  if (name === 'Balanced Approach') {
+  if (name === 'Balanced Improvement') {
     return [...base, 'Requires active program management and change discipline', 'Needs consistent sponsor support to hold pace'];
   }
 
-  if (name === 'Aggressive Growth') {
+  if (name === 'Capacity Recovery') {
     return [...base, 'Higher resource contention across teams and projects', 'More exposed to adoption fatigue if alerts rise further'];
   }
 
@@ -255,10 +255,10 @@ export async function generateDecisionScenarios(userId: string): Promise<Decisio
     );
 
     const scenarioConfigs = [
-      { id: 'scenario-1', name: 'Minimal Investment', costMultiplier: 0.4, impactCapture: 0.28, months: 3, accelerationPenalty: 4, executionBoost: 10 },
-      { id: 'scenario-2', name: 'Balanced Approach', costMultiplier: 0.85, impactCapture: 0.72, months: 7, accelerationPenalty: 8, executionBoost: 18 },
-      { id: 'scenario-3', name: 'Aggressive Growth', costMultiplier: 1.2, impactCapture: 0.98, months: 10, accelerationPenalty: 18, executionBoost: 10 },
-      { id: 'scenario-4', name: 'Full Transformation', costMultiplier: 1.55, impactCapture: 1.18, months: 15, accelerationPenalty: 28, executionBoost: 2 },
+      { id: 'scenario-1', name: 'Stabilize & Triage', costMultiplier: 0.4, impactCapture: 0.28, months: 3, accelerationPenalty: 4, executionBoost: 10 },
+      { id: 'scenario-2', name: 'Balanced Improvement', costMultiplier: 0.85, impactCapture: 0.72, months: 7, accelerationPenalty: 8, executionBoost: 18 },
+      { id: 'scenario-3', name: 'Capacity Recovery', costMultiplier: 1.2, impactCapture: 0.98, months: 10, accelerationPenalty: 18, executionBoost: 10 },
+      { id: 'scenario-4', name: 'Transformation Program', costMultiplier: 1.55, impactCapture: 1.18, months: 15, accelerationPenalty: 28, executionBoost: 2 },
     ];
 
     return scenarioConfigs.map((config) => {
