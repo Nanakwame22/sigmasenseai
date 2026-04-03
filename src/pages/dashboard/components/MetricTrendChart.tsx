@@ -207,7 +207,7 @@ export default function MetricTrendChart({ series }: MetricTrendChartProps) {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="mb-4 flex items-start justify-between gap-4">
+      <div className="mb-5 flex items-start justify-between gap-4">
         <div className="space-y-3">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Performance Trends</p>
@@ -215,7 +215,7 @@ export default function MetricTrendChart({ series }: MetricTrendChartProps) {
             <p className="mt-1 text-xs text-slate-500">Primary signal stays emphasized while supporting KPIs remain visible for context.</p>
           </div>
           {leadSeries ? (
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2.5">
               <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2">
                 <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Lead Metric</div>
                 <div className="mt-1 flex items-baseline gap-2">
@@ -253,7 +253,7 @@ export default function MetricTrendChart({ series }: MetricTrendChartProps) {
         </div>
       </div>
 
-      <div className="mb-4 flex flex-wrap gap-2">
+      <div className="mb-5 flex flex-wrap gap-2">
         {series.map((s) => {
           const isHidden = hiddenSeries.has(s.name);
           const isSelected = s.name === leadSeries?.name;
@@ -287,23 +287,19 @@ export default function MetricTrendChart({ series }: MetricTrendChartProps) {
                   className="h-2.5 w-2.5 rounded-full"
                   style={{ background: isHidden ? '#cbd5e1' : s.color }}
                 ></div>
-                <span className="text-xs font-semibold">{s.name}</span>
+                <span className="text-[11px] font-semibold">{s.name}</span>
               </div>
-              <div className={`mt-1 text-sm font-bold tabular-nums ${isSelected ? 'text-white' : 'text-slate-900'}`}>
+              <div className={`mt-1 text-xs font-bold tabular-nums ${isSelected ? 'text-white' : 'text-slate-900'}`}>
                 {formatMetricValue(latestValue, s.unit)}
               </div>
             </button>
           );
         })}
-        <div className="rounded-2xl border border-dashed border-amber-300 bg-amber-50 px-3 py-2 text-left">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-amber-600">Target Line</div>
-          <div className="mt-1 text-sm font-semibold text-amber-700">{avgTarget.toFixed(1)}</div>
-        </div>
       </div>
 
-      <div className="min-h-0 flex-1 rounded-[28px] border border-slate-200 bg-gradient-to-b from-slate-50 via-white to-white p-4 shadow-[0_18px_40px_-32px_rgba(15,23,42,0.45)]">
+      <div className="min-h-0 flex-1 rounded-[28px] border border-slate-200 bg-gradient-to-b from-slate-50 via-white to-white p-5 shadow-[0_18px_40px_-32px_rgba(15,23,42,0.45)]">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={chartData} margin={{ top: 10, right: 14, left: 0, bottom: 0 }}>
+          <LineChart data={chartData} margin={{ top: 14, right: 10, left: 2, bottom: 6 }}>
             <CartesianGrid stroke="#E2E8F0" strokeDasharray="3 6" vertical={false} />
             <XAxis
               dataKey="date"
@@ -338,7 +334,7 @@ export default function MetricTrendChart({ series }: MetricTrendChartProps) {
                   dataKey={s.name}
                   stroke={s.color}
                   strokeWidth={leadSeries?.name === s.name ? 3.25 : 1.9}
-                  strokeOpacity={leadSeries?.name === s.name ? 1 : 0.42}
+                  strokeOpacity={leadSeries?.name === s.name ? 1 : 0.26}
                   dot={false}
                   activeDot={{
                     r: leadSeries?.name === s.name ? 5 : 3,
