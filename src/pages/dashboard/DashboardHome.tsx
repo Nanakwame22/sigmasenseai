@@ -352,4 +352,23 @@ export default function DashboardHome() {
               { to: '/dashboard/advanced-forecasting', icon: 'ri-line-chart-line', label: 'Run Forecast', bg: 'from-violet-50 to-violet-100/60', iconBg: 'from-violet-500 to-violet-600', text: 'text-violet-700', border: 'border-violet-200/40' },
               { to: '/dashboard/anomaly-detection', icon: 'ri-radar-line', label: 'Anomaly Scan', bg: 'from-amber-50 to-amber-100/60', iconBg: 'from-amber-500 to-amber-600', text: 'text-amber-700', border: 'border-amber-200/40' },
               { to: '/dashboard/automation-rules', icon: 'ri-robot-line', label: 'Automation Rules', bg: 'from-emerald-50 to-emerald-100/60', iconBg: 'from-emerald-500 to-emerald-600', text: 'text-emerald-700', border: 'border-emerald-200/40' },
-              { to: '/dashboard/benchmarking', icon: 'ri-bar-chart-grouped-line', label: 'Benchmarking', bg: 'from-rose-50 to-rose-100/60', iconBg: 'fro
+              { to: '/dashboard/benchmarking', icon: 'ri-bar-chart-grouped-line', label: 'Benchmarking', bg: 'from-rose-50 to-rose-100/60', iconBg: 'from-rose-500 to-rose-600', text: 'text-rose-700', border: 'border-rose-200/40' },
+            ].map((action) => (
+              <Link
+                key={action.to}
+                to={action.to}
+                className={`flex items-center gap-3 p-3.5 bg-gradient-to-br ${action.bg} rounded-xl hover:shadow-sm transition-all duration-200 group border ${action.border} cursor-pointer`}
+              >
+                <div className={`w-9 h-9 bg-gradient-to-br ${action.iconBg} rounded-lg flex items-center justify-center group-hover:scale-105 transition-transform shadow-sm flex-shrink-0`}>
+                  <i className={`${action.icon} text-white text-base`}></i>
+                </div>
+                <span className={`text-sm font-semibold ${action.text} leading-tight`}>{action.label}</span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      </div>
+
+    </div>
+  );
+}
