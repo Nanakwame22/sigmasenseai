@@ -81,6 +81,20 @@ function isLegacyRiskMetric(name: string) {
   return normalized.includes('risk score') && !HEALTHCARE_PRIORITY.some((metric) => normalizeMetricName(metric) === normalized);
 }
 
+function isCompositeCpiRiskMetric(metric: { name?: string | null; category?: string | null }) {
+  const normalizedName = normalizeMetricName(metric.name);
+  const normalizedCategory = normalizeMetricName(metric.category);
+
+  return (
+    normalizedName.includes('risk score') ||
+    normalizedCategory.includes('clinical') ||
+    normalizedCategory.includes('readmission') ||
+    normalizedCategory.includes('laboratory') ||
+    normalizedCategory.includes('patient flow') ||
+    normalizedCategory.includes('staffing')
+  );
+}
+
 function getMetricHealthRatio(metricName: string, currentValue: number, targetValue: number) {
   if (!Number.isFinite(currentValue)) return 0;
   if (!Number.isFinite(targetValue) || targetValue <= 0) return 100;
@@ -255,9 +269,15 @@ export function useDashboardData() {
           (entry) => !entry.isLegacyRisk && entry.dedupedCount >= 2
         );
 
+        const usableNonCpiCompositeMetrics = rankedMetricsForDisplay.filter(
+          (entry) => !isCompositeCpiRiskMetric(entry.metric) && entry.dedupedCount >= 2
+        );
+
         const metricsForDashboard =
           usableOperationalMetrics.length > 0
             ? usableOperationalMetrics
+            : usableNonCpiCompositeMetrics.length > 0
+              ? usableNonCpiCompositeMetrics
             : usableNonLegacyMetrics.length > 0
               ? usableNonLegacyMetrics
               : rankedMetricsForDisplay.filter((entry) => entry.dedupedCount >= 2);
