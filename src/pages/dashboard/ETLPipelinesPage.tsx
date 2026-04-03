@@ -1823,4 +1823,78 @@ export default function ETLPipelinesPage() {
                                   {metrics.find(m => m.id === mapping.targetMetricId)?.name}
                                 </span>
                               </>
-                   
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="flex gap-3 pt-4">
+                {currentStep > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => setCurrentStep(currentStep - 1)}
+                    className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors whitespace-nowrap"
+                  >
+                    <i className="ri-arrow-left-line mr-1"></i>
+                    Back
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowModal(false);
+                    setEditingPipeline(null);
+                    resetForm();
+                  }}
+                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors whitespace-nowrap"
+                >
+                  Cancel
+                </button>
+                {currentStep < 3 ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (currentStep === 1 && !formData.source_id) {
+                        showToast('Please select a data source', 'error');
+                        return;
+                      }
+                      if (currentStep === 2 && !fieldMappings.some((mapping) => mapping.destinationType === 'value' && mapping.sourceField)) {
+                        showToast('Add at least one value mapping before continuing.', 'error');
+                        return;
+                      }
+                      setCurrentStep(currentStep + 1);
+                    }}
+                    className="flex-1 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors whitespace-nowrap"
+                  >
+                    Next
+                    <i className="ri-arrow-right-line ml-1"></i>
+                  </button>
+                ) : (
+                  <button
+                    type="submit"
+                    className="flex-1 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors whitespace-nowrap"
+                  >
+                    {editingPipeline ? 'Update Pipeline' : 'Create Pipeline'}
+                  </button>
+                )}
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm Dialog */}
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        onConfirm={confirmDialog.onConfirm}
+        onCancel={() => setConfirmDialog({ ...confirmDialog, isOpen: false })}
+      />
+    </div>
+  );
+}
