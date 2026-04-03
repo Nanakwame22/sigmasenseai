@@ -4,6 +4,7 @@ import { supabase } from '../../../lib/supabase';
 import { exportToCSV, exportToJSON } from '../../../utils/exportUtils';
 import { addToast } from '../../../hooks/useToast';
 import ConfirmDialog from '../../../components/common/ConfirmDialog';
+import { AIMMetricTiles, AIMPanel, AIMSectionIntro } from './AIMSectionSystem';
 
 interface Report {
   id: string;
@@ -29,6 +30,81 @@ interface Recipient {
   email: string;
 }
 
+type ReportTemplateId = 'monthly' | 'executive' | 'audit' | 'custom';
+
+const REPORT_TEMPLATES: Array<{
+  id: ReportTemplateId;
+  title: string;
+  description: string;
+  type: string;
+  icon: string;
+  shell: string;
+  includedSections: string[];
+  audience: string;
+}> = [
+  {
+    id: 'monthly',
+    title: 'Monthly Operating Review',
+    description: 'Comprehensive monthly report covering intelligence, decisions, actions, and alert posture.',
+    type: 'Monthly Summary',
+    icon: 'ri-file-text-line',
+    shell: 'from-teal-50 to-cyan-50 border-teal-200',
+    includedSections: [
+      'Executive Summary',
+      'Performance Narrative',
+      'Key Drivers Analysis',
+      'Recommendations',
+      'Impact Forecasts',
+      'Decision Support',
+      'Action Tracker',
+      'Predictive Alerts',
+    ],
+    audience: 'Operations and leadership',
+  },
+  {
+    id: 'executive',
+    title: 'Executive Brief',
+    description: 'Boardroom-ready snapshot focused on risk, opportunity, and recommended decisions.',
+    type: 'Executive Brief',
+    icon: 'ri-presentation-line',
+    shell: 'from-blue-50 to-indigo-50 border-blue-200',
+    includedSections: [
+      'Executive Summary',
+      'Performance Narrative',
+      'Recommendations',
+      'Impact Forecasts',
+      'Decision Support',
+    ],
+    audience: 'Executives and sponsors',
+  },
+  {
+    id: 'audit',
+    title: 'Audit & Compliance Pack',
+    description: 'Traceable documentation of methodology, sources, alerts, and action history.',
+    type: 'Audit Report',
+    icon: 'ri-shield-check-line',
+    shell: 'from-purple-50 to-pink-50 border-purple-200',
+    includedSections: [
+      'Executive Summary',
+      'Predictive Alerts',
+      'Action Tracker',
+      'Historical Accuracy',
+      'Technical Appendix',
+    ],
+    audience: 'Compliance and quality',
+  },
+  {
+    id: 'custom',
+    title: 'Custom Report',
+    description: 'Assemble a report pack tailored to the audience, review, or operating question at hand.',
+    type: 'Custom Report',
+    icon: 'ri-mail-send-line',
+    shell: 'from-emerald-50 to-teal-50 border-emerald-200',
+    includedSections: [],
+    audience: 'Custom distribution',
+  },
+];
+
 const ReportsSection: React.FC = () => {
   const { organization, organizationId, user } = useAuth();
 
@@ -42,6 +118,7 @@ const ReportsSection: React.FC = () => {
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [reportFrequency, setReportFrequency] = useState<string>('monthly');
   const [selectedRecipients, setSelectedRecipients] = useState<string[]>([]);
+  const [selectedTemplate, setSelectedTemplate] = useState<ReportTemplateId>('executive');
   const [reportSections, setReportSections] = useState<ReportSection[]>([
     {
       title: 'Executive Summary',
@@ -114,6 +191,23 @@ const ReportsSection: React.FC = () => {
   const [showExportFormatDialog, setShowExportFormatDialog] = useState(false);
   const [pendingExportReport, setPendingExportReport] = useState<Report | null>(null);
   const [pendingExportFormat, setPendingExportFormat] = useState<'pdf' | 'excel' | 'email' | 'presentation' | null>(null);
+
+  const syncSectionsToTemplate = (templateId: ReportTemplateId) => {
+    const template = REPORT_TEMPLATES.find((item) => item.id === templateId);
+    if (!template || template.id === 'custom') return;
+
+    setReportSections((prev) =>
+      prev.map((section) => ({
+        ...section,
+        included: template.includedSections.includes(section.title),
+      }))
+    );
+  };
+
+  const getActiveTemplate = () =>
+    REPORT_TEMPLATES.find((template) => template.id === selectedTemplate) || REPORT_TEMPLATES[0];
+
+  const getSelectedSections = () => reportSections.filter((section) => section.included);
 
   const getReportSnapshot = (report?: Report | null) => {
     const reportData = report?.data;
@@ -235,6 +329,10 @@ const ReportsSection: React.FC = () => {
     }
   }, [orgId]);
 
+  useEffect(() => {
+    syncSectionsToTemplate(selectedTemplate);
+  }, [selectedTemplate]);
+
   const loadReports = async () => {
     if (!orgId) return;
 
@@ -323,11 +421,16 @@ const ReportsSection: React.FC = () => {
     }
   };
 
-  const generateReport = async () => {
+  const generateReport = async (templateId: ReportTemplateId = selectedTemplate) => {
     if (!orgId) return;
 
     try {
       setGenerating(true);
+      const template = REPORT_TEMPLATES.find((item) => item.id === templateId) || getActiveTemplate();
+      const selectedSections =
+        template.id === 'custom'
+          ? getSelectedSections()
+          : reportSections.filter((section) => template.includedSections.includes(section.title));
 
       const [
         { count: recommendationsCount },
@@ -357,7 +460,7 @@ const ReportsSection: React.FC = () => {
       const reportData = {
         generated_at: new Date().toISOString(),
         organization_id: orgId,
-        sections: reportSections.filter(s => s.included).map(s => s.title),
+        sections: selectedSections.map(s => s.title),
         statistics: {
           recommendations: recommendationsCount || 0,
           alerts: alertsCount || 0,
@@ -377,9 +480,9 @@ const ReportsSection: React.FC = () => {
           resource_type: 'report',
           resource_id: `report-${Date.now()}`,
           metadata: {
-            report_title: `AIM Report - ${new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`,
-            report_type: 'Custom Report',
-            report_size: '2.3 MB',
+            report_title: `${template.title} - ${new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`,
+            report_type: template.type,
+            report_size: `${Math.max(1.4, (selectedSections.reduce((sum, section) => sum + section.pages, 0) / 6)).toFixed(1)} MB`,
             report_data: reportData
           }
         });
@@ -389,10 +492,10 @@ const ReportsSection: React.FC = () => {
       setShowExportFormatDialog(true);
       setPendingExportReport({
         id: `report-${Date.now()}`,
-        title: `AIM Report - ${new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`,
-        type: 'Custom Report',
+        title: `${template.title} - ${new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`,
+        type: template.type,
         date: new Date().toISOString().split('T')[0],
-        size: '2.3 MB',
+        size: `${Math.max(1.4, (selectedSections.reduce((sum, section) => sum + section.pages, 0) / 6)).toFixed(1)} MB`,
         status: 'Ready',
         data: reportData
       });
@@ -538,89 +641,103 @@ const ReportsSection: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-900 mb-2">Reports</h1>
-          <p className="text-slate-600">Generate and share AIM insights with leadership</p>
+      <AIMSectionIntro
+        eyebrow="Reports Studio"
+        title="Executive Reporting"
+        description="Package AIM intelligence into leadership-ready briefs, operating reviews, and compliance packs with a clearer distribution workflow."
+        actions={
+          <>
+            <button
+              onClick={() => setShowScheduleModal(true)}
+              className="px-4 py-2 bg-white border border-slate-200 text-slate-700 text-sm font-medium rounded-xl hover:bg-slate-50 transition-colors whitespace-nowrap flex items-center gap-2"
+            >
+              <i className="ri-calendar-line"></i>
+              Schedule Reports
+            </button>
+            <button
+              onClick={() => generateReport(selectedTemplate)}
+              disabled={generating}
+              className="px-4 py-2 bg-gradient-to-r from-teal-500 to-cyan-600 text-white text-sm font-semibold rounded-xl hover:shadow-lg transition-all whitespace-nowrap flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <i className={`ri-file-add-line ${generating ? 'animate-spin' : ''}`}></i>
+              {generating ? 'Generating...' : 'Generate Report'}
+            </button>
+          </>
+        }
+      />
+
+      <AIMMetricTiles
+        items={[
+          {
+            label: 'Report Archive',
+            value: auditStats.totalReports,
+            detail: 'Generated and logged reports',
+          },
+          {
+            label: 'Validated Sources',
+            value: auditStats.dataSourcesValidated,
+            detail: 'Live sources included in reporting',
+          },
+          {
+            label: 'Audit Coverage',
+            value: `${auditStats.auditTrailComplete}%`,
+            detail: 'Traceability across generated reports',
+            accent: 'text-emerald-600',
+          },
+          {
+            label: 'Current Template',
+            value: getActiveTemplate().title,
+            detail: getActiveTemplate().audience,
+          },
+        ]}
+      />
+
+      <AIMPanel
+        title="Report Templates"
+        description="Choose the reporting posture that best matches your audience before you generate or schedule delivery."
+        icon="ri-layout-grid-line"
+        accentClass="from-teal-500 to-cyan-600"
+      >
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          {REPORT_TEMPLATES.map((template) => {
+            const isActive = selectedTemplate === template.id;
+            return (
+              <button
+                key={template.id}
+                onClick={() => setSelectedTemplate(template.id)}
+                className={`rounded-[24px] border p-5 text-left transition-all ${
+                  isActive
+                    ? 'border-teal-500 bg-gradient-to-br from-teal-50 to-cyan-50 shadow-lg shadow-teal-100/70'
+                    : `border-slate-200 bg-gradient-to-br ${template.shell} hover:shadow-md`
+                }`}
+              >
+                <div className="mb-4 flex items-start justify-between gap-3">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/80 shadow-sm">
+                    <i className={`${template.icon} text-xl text-slate-700`}></i>
+                  </div>
+                  {isActive ? (
+                    <span className="rounded-full bg-teal-500 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-white">
+                      Selected
+                    </span>
+                  ) : null}
+                </div>
+                <h3 className="text-lg font-bold text-slate-900">{template.title}</h3>
+                <p className="mt-2 text-sm leading-6 text-slate-600">{template.description}</p>
+                <div className="mt-4 text-xs font-medium uppercase tracking-[0.16em] text-slate-500">
+                  {template.audience}
+                </div>
+              </button>
+            );
+          })}
         </div>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => setShowScheduleModal(true)}
-            className="px-4 py-2 bg-white border border-slate-200 text-slate-700 text-sm font-medium rounded-lg hover:bg-slate-50 transition-colors whitespace-nowrap flex items-center gap-2"
-          >
-            <i className="ri-calendar-line"></i>
-            Schedule Reports
-          </button>
-          <button
-            onClick={generateReport}
-            disabled={generating}
-            className="px-4 py-2 bg-gradient-to-r from-teal-500 to-cyan-600 text-white text-sm font-semibold rounded-lg hover:shadow-lg transition-all whitespace-nowrap flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <i className={`ri-file-add-line ${generating ? 'animate-spin' : ''}`}></i>
-            {generating ? 'Generating...' : 'Generate New Report'}
-          </button>
-        </div>
-      </div>
+      </AIMPanel>
 
-      {/* Quick Actions */}
-      <div className="grid grid-cols-4 gap-4">
-        <button 
-          onClick={generateReport}
-          className="p-6 bg-gradient-to-br from-teal-50 to-cyan-50 border border-teal-200 rounded-xl hover:shadow-lg transition-all text-left"
-        >
-          <div className="w-12 h-12 bg-gradient-to-br from-teal-500 to-cyan-600 rounded-lg flex items-center justify-center mb-4">
-            <i className="ri-file-text-line text-2xl text-white"></i>
-          </div>
-          <h3 className="text-lg font-bold text-slate-900 mb-2">Monthly Report</h3>
-          <p className="text-sm text-slate-600">Comprehensive monthly summary with all insights</p>
-        </button>
-
-        <button 
-          onClick={generateReport}
-          className="p-6 bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-xl hover:shadow-lg transition-all text-left"
-        >
-          <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center mb-4">
-            <i className="ri-presentation-line text-2xl text-white"></i>
-          </div>
-          <h3 className="text-lg font-bold text-slate-900 mb-2">Executive Brief</h3>
-          <p className="text-sm text-slate-600">High-level summary for leadership meetings</p>
-        </button>
-
-        <button 
-          onClick={generateReport}
-          className="p-6 bg-gradient-to-br from-purple-50 to-pink-50 border border-purple-200 rounded-xl hover:shadow-lg transition-all text-left"
-        >
-          <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-pink-600 rounded-lg flex items-center justify-center mb-4">
-            <i className="ri-file-chart-line text-2xl text-white"></i>
-          </div>
-          <h3 className="text-lg font-bold text-slate-900 mb-2">Audit Report</h3>
-          <p className="text-sm text-slate-600">Detailed documentation for compliance</p>
-        </button>
-
-        <button 
-          onClick={generateReport}
-          className="p-6 bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-200 rounded-xl hover:shadow-lg transition-all text-left"
-        >
-          <div className="w-12 h-12 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-lg flex items-center justify-center mb-4">
-            <i className="ri-mail-send-line text-2xl text-white"></i>
-          </div>
-          <h3 className="text-lg font-bold text-slate-900 mb-2">Custom Report</h3>
-          <p className="text-sm text-slate-600">Build a report with selected sections</p>
-        </button>
-      </div>
-
-      {/* Report Archive */}
-      <div className="bg-white rounded-xl border border-slate-200 p-6">
-        <div className="flex items-center gap-3 mb-6">
-          <div className="w-10 h-10 bg-gradient-to-br from-teal-500 to-cyan-600 rounded-lg flex items-center justify-center">
-            <i className="ri-folder-line text-xl text-white"></i>
-          </div>
-          <div>
-            <h2 className="text-xl font-bold text-slate-900">Report Archive</h2>
-            <p className="text-sm text-slate-600">Previously generated reports</p>
-          </div>
-        </div>
+      <AIMPanel
+        title="Report Archive"
+        description="Review the latest generated report packs and export or share them in the format your audience expects."
+        icon="ri-folder-line"
+        accentClass="from-blue-500 to-indigo-600"
+      >
 
         {reports.length === 0 ? (
           <div className="text-center py-12">
@@ -630,7 +747,7 @@ const ReportsSection: React.FC = () => {
             <h3 className="text-lg font-bold text-slate-900 mb-2">No Reports Yet</h3>
             <p className="text-slate-600 mb-4">Generate your first AIM report to get started</p>
             <button
-              onClick={generateReport}
+              onClick={() => generateReport(selectedTemplate)}
               className="px-6 py-3 bg-gradient-to-r from-teal-500 to-cyan-600 text-white text-sm font-semibold rounded-lg hover:shadow-lg transition-all whitespace-nowrap"
             >
               Generate Report
@@ -725,21 +842,16 @@ const ReportsSection: React.FC = () => {
             ))}
           </div>
         )}
-      </div>
+      </AIMPanel>
 
-      {/* Report Builder */}
-      <div className="bg-white rounded-xl border border-slate-200 p-6">
-        <div className="flex items-center gap-3 mb-6">
-          <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-600 rounded-lg flex items-center justify-center">
-            <i className="ri-layout-line text-xl text-white"></i>
-          </div>
-          <div>
-            <h2 className="text-xl font-bold text-slate-900">Custom Report Builder</h2>
-            <p className="text-sm text-slate-600">Select sections to include in your report</p>
-          </div>
-        </div>
+      <AIMPanel
+        title="Custom Report Builder"
+        description="Control what goes into the generated package and see the estimated document size before you export or schedule it."
+        icon="ri-layout-line"
+        accentClass="from-purple-500 to-pink-600"
+      >
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid gap-4 md:grid-cols-2">
           {reportSections.map((section, index) => (
             <div
               key={index}
@@ -780,38 +892,33 @@ const ReportsSection: React.FC = () => {
         <div className="mt-6 pt-6 border-t border-slate-200 flex items-center justify-between">
           <div className="text-sm text-slate-600">
             <span className="font-semibold text-slate-900">
-              {reportSections.filter(s => s.included).length} sections selected
+              {getSelectedSections().length} sections selected
             </span>
             {' • '}
             <span>
-              Estimated {reportSections.filter(s => s.included).reduce((sum, s) => sum + s.pages, 0)} pages
+              Estimated {getSelectedSections().reduce((sum, s) => sum + s.pages, 0)} pages
             </span>
           </div>
           <button
-            onClick={generateReport}
+            onClick={() => generateReport(selectedTemplate)}
             disabled={generating}
             className="px-6 py-3 bg-gradient-to-r from-teal-500 to-cyan-600 text-white text-sm font-semibold rounded-lg hover:shadow-lg transition-all whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {generating ? 'Generating...' : 'Generate Custom Report'}
           </button>
         </div>
-      </div>
+      </AIMPanel>
 
-      {/* Export Options */}
-      <div className="bg-white rounded-xl border border-slate-200 p-6">
-        <div className="flex items-center gap-3 mb-6">
-          <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center">
-            <i className="ri-download-cloud-line text-xl text-white"></i>
-          </div>
-          <div>
-            <h2 className="text-xl font-bold text-slate-900">Export Options</h2>
-            <p className="text-sm text-slate-600">Choose your preferred format</p>
-          </div>
-        </div>
+      <AIMPanel
+        title="Distribution Options"
+        description="Export, email, or stage the report package in the format each audience expects."
+        icon="ri-download-cloud-line"
+        accentClass="from-blue-500 to-indigo-600"
+      >
 
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <button 
-            onClick={() => reports[0] ? exportReport(reports[0], 'pdf') : generateReport()}
+            onClick={() => reports[0] ? exportReport(reports[0], 'pdf') : generateReport(selectedTemplate)}
             className="p-6 border border-slate-200 rounded-xl hover:shadow-lg hover:border-teal-500 transition-all text-center group"
           >
             <div className="w-16 h-16 bg-gradient-to-br from-red-100 to-pink-100 rounded-lg flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
@@ -822,7 +929,7 @@ const ReportsSection: React.FC = () => {
           </button>
 
           <button 
-            onClick={generateReport}
+            onClick={() => reports[0] ? exportReport(reports[0], 'excel') : generateReport(selectedTemplate)}
             className="p-6 border border-slate-200 rounded-xl hover:shadow-lg hover:border-teal-500 transition-all text-center group"
           >
             <div className="w-16 h-16 bg-gradient-to-br from-emerald-100 to-teal-100 rounded-lg flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
@@ -833,7 +940,7 @@ const ReportsSection: React.FC = () => {
           </button>
 
           <button 
-            onClick={() => reports[0] ? exportReport(reports[0], 'email') : generateReport()}
+            onClick={() => reports[0] ? exportReport(reports[0], 'email') : generateReport(selectedTemplate)}
             className="p-6 border border-slate-200 rounded-xl hover:shadow-lg hover:border-teal-500 transition-all text-center group"
           >
             <div className="w-16 h-16 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-lg flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
@@ -844,7 +951,7 @@ const ReportsSection: React.FC = () => {
           </button>
 
           <button 
-            onClick={() => reports[0] ? exportReport(reports[0], 'presentation') : generateReport()}
+            onClick={() => reports[0] ? exportReport(reports[0], 'presentation') : generateReport(selectedTemplate)}
             className="p-6 border border-slate-200 rounded-xl hover:shadow-lg hover:border-teal-500 transition-all text-center group"
           >
             <div className="w-16 h-16 bg-gradient-to-br from-purple-100 to-pink-100 rounded-lg flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
@@ -854,21 +961,16 @@ const ReportsSection: React.FC = () => {
             <p className="text-xs text-slate-600">PowerPoint slides</p>
           </button>
         </div>
-      </div>
+      </AIMPanel>
 
-      {/* Audit & Documentation */}
-      <div className="bg-white rounded-xl border border-slate-200 p-6">
-        <div className="flex items-center gap-3 mb-6">
-          <div className="w-10 h-10 bg-gradient-to-br from-amber-500 to-orange-600 rounded-lg flex items-center justify-center">
-            <i className="ri-shield-check-line text-xl text-white"></i>
-          </div>
-          <div>
-            <h2 className="text-xl font-bold text-slate-900">Audit & Documentation</h2>
-            <p className="text-sm text-slate-600">Compliance and traceability information</p>
-          </div>
-        </div>
+      <AIMPanel
+        title="Audit & Documentation"
+        description="Track report traceability, validated source coverage, and compliance posture alongside every generated pack."
+        icon="ri-shield-check-line"
+        accentClass="from-amber-500 to-orange-600"
+      >
 
-        <div className="grid grid-cols-3 gap-6">
+        <div className="grid gap-6 md:grid-cols-3">
           <div className="p-5 bg-gradient-to-br from-slate-50 to-slate-100 rounded-xl">
             <div className="text-sm text-slate-600 mb-2">Total Reports Generated</div>
             <div className="text-3xl font-bold text-slate-900 mb-1">{auditStats.totalReports}</div>
@@ -900,7 +1002,7 @@ const ReportsSection: React.FC = () => {
             </div>
           </div>
         </div>
-      </div>
+      </AIMPanel>
 
       {/* Schedule Modal */}
       {showScheduleModal && (
