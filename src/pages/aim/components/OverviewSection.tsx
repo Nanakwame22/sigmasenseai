@@ -293,7 +293,7 @@ export default function OverviewSection() {
       <AIMSectionIntro
         eyebrow="Command Center"
         title="AIM Overview"
-        description="See the current operating picture, the strongest AI opportunities, and the newest Ask AIM questions in one place."
+        description="See the operating picture, the strongest AI opportunities, and the newest intelligence activity in one executive briefing."
       />
 
       <AIMMetricTiles
@@ -327,141 +327,171 @@ export default function OverviewSection() {
         ]}
       />
 
-      {/* AI Performance Narrative */}
-      <AIMPanel
-        title="AI Performance Summary"
-        description="A concise narrative of what AIM sees in your current operating state."
-        icon="ri-robot-line"
-        accentClass="from-teal-500 to-cyan-600"
-      >
-        <div className="flex items-start gap-4">
-          <div className="flex-1">
-            <p className="text-gray-700 leading-relaxed">
-              {stats.alertCount === 0 && stats.recommendationCount === 0
-                ? 'Your system is being monitored. AI will generate insights as data becomes available.'
-                : stats.alertCount > 0
-                  ? `The AI has identified ${stats.alertCount} active alert${stats.alertCount !== 1 ? 's' : ''} requiring attention and generated ${stats.recommendationCount} recommendation${stats.recommendationCount !== 1 ? 's' : ''} to optimize performance. ${stats.riskLevel === 'critical' || stats.riskLevel === 'high' ? 'Immediate action is recommended for high-priority items.' : 'Continue monitoring key metrics and implementing suggested improvements.'}`
-                  : `The AI has generated ${stats.recommendationCount} recommendation${stats.recommendationCount !== 1 ? 's' : ''} to help you achieve your performance targets. No critical alerts detected — your operations are running smoothly.`}
-            </p>
+      <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+        <AIMPanel
+          title="AI Performance Summary"
+          description="A concise interpretation of the current operating state, priority pressure, and opportunity volume."
+          icon="ri-robot-line"
+          accentClass="from-teal-500 to-cyan-600"
+        >
+          <div className="grid gap-5 lg:grid-cols-[1fr_220px]">
+            <div>
+              <p className="text-gray-700 leading-7 text-[15px]">
+                {stats.alertCount === 0 && stats.recommendationCount === 0
+                  ? 'Your system is being monitored. AI will generate insights as data becomes available.'
+                  : stats.alertCount > 0
+                    ? `The AI has identified ${stats.alertCount} active alert${stats.alertCount !== 1 ? 's' : ''} requiring attention and generated ${stats.recommendationCount} recommendation${stats.recommendationCount !== 1 ? 's' : ''} to optimize performance. ${stats.riskLevel === 'critical' || stats.riskLevel === 'high' ? 'Immediate action is recommended for high-priority items.' : 'Continue monitoring key metrics and implementing suggested improvements.'}`
+                    : `The AI has generated ${stats.recommendationCount} recommendation${stats.recommendationCount !== 1 ? 's' : ''} to help you achieve your performance targets. No critical alerts detected — your operations are running smoothly.`}
+              </p>
+            </div>
+            <div className={`rounded-[24px] border border-slate-200 ${RISK_THEME[stats.riskLevel]?.shell || 'bg-slate-50'} p-5`}>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Briefing Risk</div>
+              <div className={`mt-3 text-3xl font-bold ${RISK_THEME[stats.riskLevel]?.accent || 'text-slate-900'}`}>
+                {getRiskLabel(stats.riskLevel)}
+              </div>
+              <div className="mt-2 text-sm text-slate-600">
+                {stats.alertCount} active alert{stats.alertCount === 1 ? '' : 's'} under watch
+              </div>
+            </div>
           </div>
-        </div>
-      </AIMPanel>
+        </AIMPanel>
+
+        {keyDrivers.length > 0 ? (
+          <AIMPanel
+            title="Key Drivers of Change"
+            description="Top current drivers shaping risk, recommendations, and performance movement."
+            icon="ri-radar-line"
+            accentClass="from-violet-500 to-indigo-600"
+          >
+            <div className="space-y-4">
+              {keyDrivers.slice(0, 3).map((driver) => (
+                <div
+                  key={driver.id}
+                  className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-[0_10px_30px_rgba(15,23,42,0.04)]"
+                >
+                  <div className="flex items-start gap-4">
+                    <div className="w-11 h-11 bg-teal-50 rounded-2xl flex items-center justify-center flex-shrink-0">
+                      <i className={`${getCategoryIcon(driver.category)} text-xl text-teal-600`}></i>
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <h4 className="text-base font-semibold text-slate-900">{driver.title}</h4>
+                      <p className="mt-1 text-sm text-slate-600 line-clamp-2">{driver.description}</p>
+                      <div className="mt-3 flex items-center gap-3">
+                        <span className="text-xs font-medium text-slate-500">AI confidence</span>
+                        <div className="h-2 flex-1 rounded-full bg-slate-100">
+                          <div className="h-2 rounded-full bg-gradient-to-r from-teal-500 to-cyan-600" style={{ width: `${driver.confidence}%` }}></div>
+                        </div>
+                        <span className="text-xs font-semibold text-slate-700">{driver.confidence}%</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </AIMPanel>
+        ) : null}
+      </div>
 
       {/* ── Clinical Intelligence Panel ── */}
       <CPIClinicalPanel />
-
-      {/* ── Recent Ask Sigma Queries ── */}
-      <AIMPanel
-        title="Recent Ask Sigma Queries"
-        description="Latest natural-language questions surfaced in the insights feed."
-        icon="ri-chat-voice-line"
-        accentClass="from-teal-500 to-cyan-600"
-        actions={
-          <button
-            onClick={() => window.REACT_APP_NAVIGATE?.('/aim')}
-            className="text-xs text-teal-600 hover:text-teal-800 flex items-center gap-1 cursor-pointer whitespace-nowrap"
-          >
-            View all <i className="ri-arrow-right-s-line"></i>
-          </button>
-        }
-      >
-        {queriesLoading ? (
-          <div className="space-y-3">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="animate-pulse flex gap-3">
-                <div className="w-8 h-8 bg-gray-200 rounded-lg flex-shrink-0"></div>
-                <div className="flex-1 space-y-2">
-                  <div className="h-3 bg-gray-200 rounded w-3/4"></div>
-                  <div className="h-3 bg-gray-200 rounded w-1/2"></div>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : recentQueries.length === 0 ? (
-          <div className="px-2 py-6 text-center">
-            <div className="w-12 h-12 bg-teal-50 rounded-full flex items-center justify-center mx-auto mb-3">
-              <i className="ri-chat-3-line text-2xl text-teal-400"></i>
-            </div>
-            <p className="text-sm text-gray-600 mb-1 font-medium">No queries yet</p>
-            <p className="text-xs text-gray-400">Run a query in <strong>Ask AIM</strong> — it will appear here instantly</p>
-          </div>
-        ) : (
-          <div className="divide-y divide-gray-50">
-            {recentQueries.map((qi) => (
-              <div key={qi.id} className="px-6 py-4 hover:bg-gray-50 transition-colors">
-                <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 bg-teal-50 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <i className="ri-chat-1-line text-teal-600 text-sm"></i>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1 flex-wrap">
-                      <span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${CATEGORY_COLORS[qi.category] ?? CATEGORY_COLORS.general}`}>
-                        {qi.category}
-                      </span>
-                      <span className="text-xs text-gray-400">{qi.row_count} rows · {qi.visualization}</span>
-                    </div>
-                    <p className="text-sm text-gray-800 font-medium truncate italic">&ldquo;{qi.query_text}&rdquo;</p>
-                    <p className="text-xs text-gray-500 mt-0.5 line-clamp-1">{qi.summary}</p>
-                    <p className="text-xs text-gray-400 mt-1">
-                      <i className="ri-time-line mr-1"></i>
-                      {new Date(qi.created_at).toLocaleString()}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </AIMPanel>
-
-      {/* Key Drivers of Change */}
-      {keyDrivers.length > 0 && (
+      <div className="grid gap-6 xl:grid-cols-[1fr_0.95fr]">
         <AIMPanel
-          title="Key Drivers of Change"
-          description="Top current drivers shaping risk, recommendations, and performance movement."
-          icon="ri-radar-line"
-          accentClass="from-violet-500 to-indigo-600"
+          title="Recent Ask Sigma Queries"
+          description="Latest natural-language questions surfaced in the insights feed."
+          icon="ri-chat-voice-line"
+          accentClass="from-teal-500 to-cyan-600"
+          actions={
+            <button
+              onClick={() => window.REACT_APP_NAVIGATE?.('/aim')}
+              className="text-xs text-teal-600 hover:text-teal-800 flex items-center gap-1 cursor-pointer whitespace-nowrap"
+            >
+              View all <i className="ri-arrow-right-s-line"></i>
+            </button>
+          }
         >
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {keyDrivers.map((driver) => (
-              <div
-                key={driver.id}
-                className="bg-white rounded-xl p-6 border border-gray-200 hover:shadow-lg transition-shadow"
-              >
-                <div className="flex items-start gap-4 mb-4">
-                  <div className="w-12 h-12 bg-teal-50 rounded-lg flex items-center justify-center flex-shrink-0">
-                    <i className={`${getCategoryIcon(driver.category)} text-2xl text-teal-600`}></i>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h4 className="text-base font-semibold text-gray-900 mb-1 line-clamp-2">{driver.title}</h4>
-                    <p className="text-sm text-gray-600 line-clamp-2">{driver.description}</p>
+          {queriesLoading ? (
+            <div className="space-y-3">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="animate-pulse flex gap-3">
+                  <div className="w-8 h-8 bg-gray-200 rounded-lg flex-shrink-0"></div>
+                  <div className="flex-1 space-y-2">
+                    <div className="h-3 bg-gray-200 rounded w-3/4"></div>
+                    <div className="h-3 bg-gray-200 rounded w-1/2"></div>
                   </div>
                 </div>
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="text-xs font-medium text-gray-500">AI Confidence:</span>
-                  <div className="flex-1 bg-gray-100 rounded-full h-2">
-                    <div className="bg-teal-600 h-2 rounded-full" style={{ width: `${driver.confidence}%` }}></div>
-                  </div>
-                  <span className="text-xs font-semibold text-gray-700">{driver.confidence}%</span>
-                </div>
-                {driver.actions.length > 0 && (
-                  <div className="space-y-2">
-                    <span className="text-xs font-medium text-gray-500">Recommended Actions:</span>
-                    <ul className="space-y-1">
-                      {driver.actions.slice(0, 2).map((action, idx) => (
-                        <li key={idx} className="text-sm text-gray-700 flex items-start gap-2">
-                          <i className="ri-checkbox-circle-line text-teal-600 mt-0.5 flex-shrink-0"></i>
-                          <span className="line-clamp-1">{action}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
+              ))}
+            </div>
+          ) : recentQueries.length === 0 ? (
+            <div className="px-2 py-6 text-center">
+              <div className="w-12 h-12 bg-teal-50 rounded-full flex items-center justify-center mx-auto mb-3">
+                <i className="ri-chat-3-line text-2xl text-teal-400"></i>
               </div>
-            ))}
+              <p className="text-sm text-gray-600 mb-1 font-medium">No queries yet</p>
+              <p className="text-xs text-gray-400">Run a query in <strong>Ask AIM</strong> — it will appear here instantly</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {recentQueries.map((qi) => (
+                <div key={qi.id} className="rounded-[24px] border border-slate-200 bg-white p-5 transition-colors hover:bg-slate-50">
+                  <div className="flex items-start gap-3">
+                    <div className="w-9 h-9 bg-teal-50 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <i className="ri-chat-1-line text-teal-600 text-sm"></i>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
+                        <span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${CATEGORY_COLORS[qi.category] ?? CATEGORY_COLORS.general}`}>
+                          {qi.category}
+                        </span>
+                        <span className="text-xs text-gray-400">{qi.row_count} rows · {qi.visualization}</span>
+                      </div>
+                      <p className="text-sm text-gray-800 font-medium truncate italic">&ldquo;{qi.query_text}&rdquo;</p>
+                      <p className="text-xs text-gray-500 mt-0.5 line-clamp-1">{qi.summary}</p>
+                      <p className="text-xs text-gray-400 mt-1">
+                        <i className="ri-time-line mr-1"></i>
+                        {new Date(qi.created_at).toLocaleString()}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </AIMPanel>
+
+        <AIMPanel
+          title="Signal Summary"
+          description="A quick translation of what AIM sees most clearly right now."
+          icon="ri-sparkling-2-line"
+          accentClass="from-fuchsia-500 to-violet-600"
+        >
+          <div className="space-y-4">
+            <div className="rounded-[24px] border border-slate-200 bg-white p-5">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Primary watch item</div>
+              <div className="mt-2 text-lg font-semibold text-slate-900">
+                {stats.riskLevel === 'critical' || stats.riskLevel === 'high'
+                  ? 'Risk pressure is elevated and requires active response.'
+                  : 'No severe operating pressure is dominating the current signal set.'}
+              </div>
+            </div>
+            <div className="rounded-[24px] border border-slate-200 bg-white p-5">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Opportunity posture</div>
+              <div className="mt-2 text-lg font-semibold text-slate-900">
+                {stats.activeOpportunities > 0
+                  ? `${stats.activeOpportunities} action-ready opportunity${stats.activeOpportunities === 1 ? '' : 'ies'} are open.`
+                  : 'No high-confidence action opportunities are currently open.'}
+              </div>
+            </div>
+            <div className="rounded-[24px] border border-slate-200 bg-white p-5">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Modeled impact</div>
+              <div className="mt-2 text-lg font-semibold text-slate-900">
+                {stats.predictedImpact > 0
+                  ? `Current modeled upside is approximately $${(stats.predictedImpact / 1000).toFixed(0)}K annually.`
+                  : 'Modeled impact will strengthen as more recommendations and projects accumulate.'}
+              </div>
+            </div>
           </div>
         </AIMPanel>
-      )}
+      </div>
     </div>
   );
 }

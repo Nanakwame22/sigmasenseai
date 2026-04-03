@@ -1,7 +1,7 @@
 import React from 'react';
 
-export const AIM_SURFACE = 'rounded-[28px] border border-slate-200 bg-white shadow-[0_20px_60px_rgba(15,23,42,0.06)]';
-export const AIM_SUBSURFACE = 'rounded-[22px] border border-slate-200 bg-white/90 shadow-sm';
+export const AIM_SURFACE = 'rounded-[32px] border border-slate-200/80 bg-[linear-gradient(180deg,_rgba(255,255,255,0.98),_rgba(247,250,252,0.98))] shadow-[0_24px_80px_rgba(15,23,42,0.08)] backdrop-blur-sm';
+export const AIM_SUBSURFACE = 'rounded-[24px] border border-slate-200/80 bg-[linear-gradient(180deg,_rgba(255,255,255,0.96),_rgba(248,250,252,0.92))] shadow-[0_10px_30px_rgba(15,23,42,0.05)]';
 
 export function AIMSectionIntro({
   eyebrow,
@@ -16,7 +16,7 @@ export function AIMSectionIntro({
 }) {
   return (
     <div className={`${AIM_SURFACE} overflow-hidden`}>
-      <div className="bg-[radial-gradient(circle_at_top_left,_rgba(20,184,166,0.12),_transparent_34%),linear-gradient(135deg,_#ffffff,_#f8fafc)] px-6 py-6 md:px-8">
+      <div className="bg-[radial-gradient(circle_at_top_left,_rgba(20,184,166,0.14),_transparent_30%),radial-gradient(circle_at_top_right,_rgba(99,102,241,0.08),_transparent_22%),linear-gradient(135deg,_#ffffff,_#f8fafc)] px-6 py-7 md:px-8">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-3xl">
             {eyebrow && (
@@ -26,8 +26,8 @@ export function AIMSectionIntro({
                 </span>
               </div>
             )}
-            <h1 className="text-3xl font-bold tracking-tight text-slate-950">{title}</h1>
-            <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600">{description}</p>
+            <h1 className="text-[2rem] font-bold tracking-tight text-slate-950 md:text-[2.2rem]">{title}</h1>
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600 md:text-[15px]">{description}</p>
           </div>
           {actions ? <div className="flex flex-wrap items-center gap-3">{actions}</div> : null}
         </div>
@@ -51,9 +51,9 @@ export function AIMMetricTiles({
   return (
     <div className={`grid gap-4 ${columns}`}>
       {items.map((item) => (
-        <div key={item.label} className={`${AIM_SUBSURFACE} p-5`}>
+        <div key={item.label} className={`${AIM_SUBSURFACE} p-5 md:p-6`}>
           <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">{item.label}</div>
-          <div className={`mt-3 text-3xl font-bold ${item.accent || 'text-slate-950'}`}>{item.value}</div>
+          <div className={`mt-3 text-[2rem] font-bold tracking-tight ${item.accent || 'text-slate-950'}`}>{item.value}</div>
           {item.detail ? <div className="mt-2 text-sm text-slate-600">{item.detail}</div> : null}
         </div>
       ))}
@@ -77,8 +77,9 @@ export function AIMPanel({
   actions?: React.ReactNode;
 }) {
   return (
-    <div className={`${AIM_SURFACE} p-6 md:p-7`}>
-      <div className="mb-6 flex items-start justify-between gap-4">
+    <div className={`${AIM_SURFACE} overflow-hidden`}>
+      <div className="border-b border-slate-200/80 bg-[linear-gradient(180deg,_rgba(255,255,255,0.92),_rgba(248,250,252,0.9))] px-6 py-5 md:px-7">
+        <div className="flex items-start justify-between gap-4">
         <div className="flex items-center gap-3">
           {icon ? (
             <div className={`flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br ${accentClass}`}>
@@ -92,7 +93,10 @@ export function AIMPanel({
         </div>
         {actions ? <div className="flex items-center gap-2">{actions}</div> : null}
       </div>
+      </div>
+      <div className="px-6 py-6 md:px-7 md:py-7">
       {children}
+      </div>
     </div>
   );
 }
