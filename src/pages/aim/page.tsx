@@ -370,7 +370,7 @@ const AIMPage: React.FC = () => {
                               className="mt-5 inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-teal-500 to-cyan-600 px-5 py-3 text-sm font-semibold text-white shadow-[0_14px_30px_rgba(20,184,166,0.22)] transition hover:translate-y-[-1px]"
                             >
                               <i className="ri-chat-voice-line"></i>
-                              Open Quick Ask
+                              Launch Quick Ask
                             </button>
                           </div>
 

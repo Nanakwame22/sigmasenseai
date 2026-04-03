@@ -11,6 +11,14 @@ import {
 } from 'recharts';
 
 const COLORS = ['#14B8A6', '#8B5CF6', '#F59E0B', '#EF4444', '#3B82F6', '#10B981'];
+const AXIS_TICK = { fontSize: 11, fill: '#64748b' };
+const GRID_STROKE = '#e2e8f0';
+const TOOLTIP_STYLE = {
+  backgroundColor: 'rgba(255,255,255,0.98)',
+  border: '1px solid #dbe4ea',
+  borderRadius: '16px',
+  boxShadow: '0 18px 45px rgba(15,23,42,0.12)',
+};
 
 interface Props {
   compact?: boolean;
@@ -161,14 +169,14 @@ export default function EnhancedQueryEngine({ compact = false }: Props) {
       case 'line':
         return (
           <ResponsiveContainer width="100%" height={compact ? 220 : 400}>
-            <LineChart data={data}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey={Object.keys(data[0])[0]} tick={{ fontSize: 11 }} />
-              <YAxis tick={{ fontSize: 11 }} />
-              <Tooltip />
-              <Legend />
+            <LineChart data={data} margin={{ top: 12, right: 18, left: 4, bottom: 4 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} vertical={false} />
+              <XAxis dataKey={Object.keys(data[0])[0]} tick={AXIS_TICK} axisLine={false} tickLine={false} />
+              <YAxis tick={AXIS_TICK} axisLine={false} tickLine={false} />
+              <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ stroke: '#cbd5e1', strokeDasharray: '4 4' }} />
+              <Legend wrapperStyle={{ paddingTop: 8 }} />
               {Object.keys(data[0]).slice(1).map((key, index) => (
-                <Line key={key} type="monotone" dataKey={key} stroke={COLORS[index % COLORS.length]} strokeWidth={2} />
+                <Line key={key} type="monotone" dataKey={key} stroke={COLORS[index % COLORS.length]} strokeWidth={3} dot={false} activeDot={{ r: 5 }} />
               ))}
             </LineChart>
           </ResponsiveContainer>
@@ -176,12 +184,12 @@ export default function EnhancedQueryEngine({ compact = false }: Props) {
       case 'bar':
         return (
           <ResponsiveContainer width="100%" height={compact ? 220 : 400}>
-            <BarChart data={data}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey={Object.keys(data[0])[0]} tick={{ fontSize: 11 }} />
-              <YAxis tick={{ fontSize: 11 }} />
-              <Tooltip />
-              <Legend />
+            <BarChart data={data} margin={{ top: 12, right: 18, left: 4, bottom: 4 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} vertical={false} />
+              <XAxis dataKey={Object.keys(data[0])[0]} tick={AXIS_TICK} axisLine={false} tickLine={false} />
+              <YAxis tick={AXIS_TICK} axisLine={false} tickLine={false} />
+              <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: 'rgba(148,163,184,0.08)' }} />
+              <Legend wrapperStyle={{ paddingTop: 8 }} />
               {Object.keys(data[0]).slice(1).map((key, index) => (
                 <Bar key={key} dataKey={key} fill={COLORS[index % COLORS.length]} radius={[4, 4, 0, 0]} />
               ))}
@@ -205,7 +213,7 @@ export default function EnhancedQueryEngine({ compact = false }: Props) {
                   <Cell key={`cell-${index}`} fill={entry.fill} />
                 ))}
               </Pie>
-              <Tooltip />
+              <Tooltip contentStyle={TOOLTIP_STYLE} />
             </PieChart>
           </ResponsiveContainer>
         );
@@ -425,18 +433,30 @@ export default function EnhancedQueryEngine({ compact = false }: Props) {
               )}
 
               {result.summary && (
-                <div className="mb-6 p-4 bg-teal-50 rounded-lg">
+                <div className="mb-6 rounded-[22px] border border-teal-200 bg-gradient-to-br from-teal-50 to-cyan-50 p-5">
                   <div className="flex items-start gap-3">
                     <i className="ri-lightbulb-line text-teal-600 text-xl mt-0.5"></i>
                     <div>
-                      <h3 className="font-semibold text-gray-900 mb-1">Insight</h3>
+                      <h3 className="font-semibold text-gray-900 mb-1">AIM Summary</h3>
                       <p className="text-gray-700">{result.summary}</p>
                     </div>
                   </div>
                 </div>
               )}
 
-              <div className="mb-4">{renderVisualization()}</div>
+              <div className="mb-4 rounded-[24px] border border-slate-200 bg-[linear-gradient(180deg,_rgba(255,255,255,0.98),_rgba(248,250,252,0.94))] p-4 md:p-5">
+                <div className="mb-4 flex flex-wrap items-center gap-2">
+                  <span className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-600">
+                    {result.visualization || 'table'} view
+                  </span>
+                  {result.data && (
+                    <span className="rounded-full bg-teal-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-teal-700">
+                      {result.data.length} row{result.data.length === 1 ? '' : 's'}
+                    </span>
+                  )}
+                </div>
+                {renderVisualization()}
+              </div>
 
               {result.sql && (
                 <div className="border-t border-gray-200 pt-4">

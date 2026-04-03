@@ -280,43 +280,51 @@ export default function PredictiveAlertsPanel() {
         icon="ri-radar-line"
         accentClass="from-red-500 to-orange-600"
       >
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={() => setFilter('all')}
-            className={`px-4 py-2 rounded-full text-sm font-medium transition-colors whitespace-nowrap ${filterTheme('all', 'bg-slate-900 text-white')}`}
-          >
-            All ({stats.total})
-          </button>
-          <button
-            onClick={() => setFilter('new')}
-            className={`px-4 py-2 rounded-full text-sm font-medium transition-colors whitespace-nowrap ${filterTheme('new', 'bg-blue-600 text-white')}`}
-          >
-            New ({stats.new})
-          </button>
-          <button
-            onClick={() => setFilter('acknowledged')}
-            className={`px-4 py-2 rounded-full text-sm font-medium transition-colors whitespace-nowrap ${filterTheme('acknowledged', 'bg-amber-500 text-white')}`}
-          >
-            Acknowledged ({stats.acknowledged})
-          </button>
-          <button
-            onClick={() => setFilter('resolved')}
-            className={`px-4 py-2 rounded-full text-sm font-medium transition-colors whitespace-nowrap ${filterTheme('resolved', 'bg-emerald-600 text-white')}`}
-          >
-            Resolved ({stats.resolved})
-          </button>
-          <div className="ml-auto"></div>
-          <select
-            value={severityFilter}
-            onChange={(e) => setSeverityFilter(e.target.value as any)}
-            className="px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent text-sm"
-          >
-            <option value="all">All Severity</option>
-            <option value="critical">Critical</option>
-            <option value="high">High</option>
-            <option value="medium">Medium</option>
-            <option value="low">Low</option>
-          </select>
+        <div className="rounded-[24px] border border-slate-200 bg-slate-50/90 p-4">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => setFilter('all')}
+                className={`px-4 py-2 rounded-full text-sm font-medium transition-colors whitespace-nowrap ${filterTheme('all', 'bg-slate-900 text-white')}`}
+              >
+                All ({stats.total})
+              </button>
+              <button
+                onClick={() => setFilter('new')}
+                className={`px-4 py-2 rounded-full text-sm font-medium transition-colors whitespace-nowrap ${filterTheme('new', 'bg-blue-600 text-white')}`}
+              >
+                New ({stats.new})
+              </button>
+              <button
+                onClick={() => setFilter('acknowledged')}
+                className={`px-4 py-2 rounded-full text-sm font-medium transition-colors whitespace-nowrap ${filterTheme('acknowledged', 'bg-amber-500 text-white')}`}
+              >
+                Acknowledged ({stats.acknowledged})
+              </button>
+              <button
+                onClick={() => setFilter('resolved')}
+                className={`px-4 py-2 rounded-full text-sm font-medium transition-colors whitespace-nowrap ${filterTheme('resolved', 'bg-emerald-600 text-white')}`}
+              >
+                Resolved ({stats.resolved})
+              </button>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="rounded-full bg-white px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                {severityFilter === 'all' ? 'All severities' : `${severityFilter} only`}
+              </div>
+              <select
+                value={severityFilter}
+                onChange={(e) => setSeverityFilter(e.target.value as any)}
+                className="px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent text-sm"
+              >
+                <option value="all">All Severity</option>
+                <option value="critical">Critical</option>
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+              </select>
+            </div>
+          </div>
         </div>
 
         <div className="mt-6">
@@ -333,120 +341,126 @@ export default function PredictiveAlertsPanel() {
                   key={alert.id}
                   className={`bg-gradient-to-br ${getAlertBg(alert.alert_type)} rounded-[24px] border p-6 shadow-sm transition-all hover:shadow-md`}
                 >
-                  <div className="flex items-start justify-between gap-6">
-                    <div className="flex items-start space-x-4 flex-1">
-                  <div className={`w-12 h-12 flex items-center justify-center bg-gradient-to-br ${getAlertColor(alert.alert_type)} rounded-lg flex-shrink-0`}>
-                    <i className={`${
-                      alert.alert_type === 'critical' ? 'ri-error-warning-line' :
-                      alert.alert_type === 'warning' ? 'ri-alert-line' :
-                      'ri-information-line'
-                    } text-2xl text-white`}></i>
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center space-x-3 mb-2">
-                      <h3 className="text-lg font-bold text-slate-900">{alert.title}</h3>
-                      <span className={`px-3 py-1 text-xs font-semibold rounded-full ${severityTheme[alert.severity]}`}>
-                        {alert.severity.toUpperCase()}
-                      </span>
-                      {alert.category && (
-                        <span className="px-3 py-1 bg-white text-slate-700 text-xs font-semibold rounded-full border border-slate-300">
-                          {alert.category}
-                        </span>
-                      )}
-                      <span className={`px-3 py-1 text-xs font-semibold rounded-full ${statusTheme[alert.status]}`}>
-                        {alert.status.toUpperCase()}
-                      </span>
-                    </div>
-                    <p className="text-sm text-slate-700 mb-4 leading-relaxed">{alert.description}</p>
-                    
-                    {(alert.predicted_date || alert.days_until || alert.confidence) && (
-                      <div className="grid grid-cols-3 gap-4 mb-4">
-                        {alert.predicted_date && (
-                          <div className="bg-white rounded-2xl p-3 border border-slate-200">
-                            <div className="text-xs text-slate-600 mb-1">Predicted Date</div>
-                            <div className="text-sm font-bold text-slate-900">
-                              {new Date(alert.predicted_date).toLocaleDateString()}
-                            </div>
+                  <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr),220px]">
+                    <div className="min-w-0">
+                      <div className="flex items-start gap-4">
+                        <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br ${getAlertColor(alert.alert_type)}`}>
+                          <i className={`${
+                            alert.alert_type === 'critical' ? 'ri-error-warning-line' :
+                            alert.alert_type === 'warning' ? 'ri-alert-line' :
+                            'ri-information-line'
+                          } text-2xl text-white`}></i>
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="mb-2 flex flex-wrap items-center gap-2">
+                            <h3 className="text-lg font-bold text-slate-900">{alert.title}</h3>
+                            <span className={`px-3 py-1 text-xs font-semibold rounded-full ${severityTheme[alert.severity]}`}>
+                              {alert.severity.toUpperCase()}
+                            </span>
+                            {alert.category && (
+                              <span className="px-3 py-1 bg-white text-slate-700 text-xs font-semibold rounded-full border border-slate-300">
+                                {alert.category}
+                              </span>
+                            )}
+                            <span className={`px-3 py-1 text-xs font-semibold rounded-full ${statusTheme[alert.status]}`}>
+                              {alert.status.toUpperCase()}
+                            </span>
                           </div>
-                        )}
-                        {alert.days_until !== undefined && (
-                          <div className="bg-white rounded-2xl p-3 border border-slate-200">
-                            <div className="text-xs text-slate-600 mb-1">Days Until</div>
-                            <div className="text-sm font-bold text-red-600">{alert.days_until} days</div>
-                          </div>
-                        )}
-                        {alert.confidence && (
-                          <div className="bg-white rounded-2xl p-3 border border-slate-200">
-                            <div className="text-xs text-slate-600 mb-1">Confidence</div>
-                            <div className="flex items-center space-x-2">
-                              <div className="text-sm font-bold text-slate-900">{Math.round(alert.confidence)}%</div>
-                              <div className="flex-1 bg-slate-200 rounded-full h-2">
-                                <div
-                                  className="bg-gradient-to-r from-teal-500 to-cyan-500 h-2 rounded-full"
-                                  style={{ width: `${alert.confidence}%` }}
-                                ></div>
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {alert.actions && alert.actions.length > 0 && (
-                      <div className="bg-white rounded-2xl p-4 border border-slate-200">
-                        <div className="text-xs font-semibold text-slate-700 mb-2">Recommended Actions</div>
-                        <div className="space-y-2">
-                          {alert.actions.map((action, index) => (
-                            <div key={index} className="flex items-center space-x-2">
-                              <i className="ri-checkbox-circle-line text-green-600"></i>
-                              <span className="text-sm text-slate-700">{action}</span>
-                            </div>
-                          ))}
+                          <p className="text-sm leading-7 text-slate-700">{alert.description}</p>
                         </div>
                       </div>
-                    )}
 
-                    {alert.resolution_notes && (
-                      <div className="bg-green-50 border border-green-200 rounded-lg p-3 mt-4">
-                        <div className="text-xs font-semibold text-green-900 mb-1">Resolution Notes:</div>
-                        <div className="text-sm text-green-700">{alert.resolution_notes}</div>
+                      {(alert.predicted_date || alert.days_until !== undefined || alert.confidence) && (
+                        <div className="mt-4 grid gap-3 md:grid-cols-3">
+                          {alert.predicted_date && (
+                            <div className="rounded-2xl border border-slate-200 bg-white p-3">
+                              <div className="text-xs text-slate-600 mb-1">Predicted Date</div>
+                              <div className="text-sm font-bold text-slate-900">
+                                {new Date(alert.predicted_date).toLocaleDateString()}
+                              </div>
+                            </div>
+                          )}
+                          {alert.days_until !== undefined && (
+                            <div className="rounded-2xl border border-slate-200 bg-white p-3">
+                              <div className="text-xs text-slate-600 mb-1">Days Until</div>
+                              <div className="text-sm font-bold text-red-600">{alert.days_until} days</div>
+                            </div>
+                          )}
+                          {alert.confidence && (
+                            <div className="rounded-2xl border border-slate-200 bg-white p-3">
+                              <div className="text-xs text-slate-600 mb-1">Confidence</div>
+                              <div className="flex items-center gap-2">
+                                <div className="text-sm font-bold text-slate-900">{Math.round(alert.confidence)}%</div>
+                                <div className="flex-1 rounded-full bg-slate-200 h-2">
+                                  <div
+                                    className="h-2 rounded-full bg-gradient-to-r from-teal-500 to-cyan-500"
+                                    style={{ width: `${alert.confidence}%` }}
+                                  ></div>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {alert.actions && alert.actions.length > 0 && (
+                        <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
+                          <div className="mb-2 text-xs font-semibold text-slate-700 uppercase tracking-[0.16em]">Recommended Actions</div>
+                          <div className="space-y-2">
+                            {alert.actions.map((action, index) => (
+                              <div key={index} className="flex items-center space-x-2">
+                                <i className="ri-checkbox-circle-line text-green-600"></i>
+                                <span className="text-sm text-slate-700">{action}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {alert.resolution_notes && (
+                        <div className="mt-4 rounded-2xl border border-green-200 bg-green-50 p-3">
+                          <div className="text-xs font-semibold text-green-900 mb-1 uppercase tracking-[0.16em]">Resolution Notes</div>
+                          <div className="text-sm text-green-700">{alert.resolution_notes}</div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="rounded-[22px] border border-slate-200 bg-white p-4">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Response actions</div>
+                      <div className="mt-4 flex flex-col gap-2">
+                        {alert.status === 'new' && (
+                          <>
+                            <button 
+                              onClick={() => handleAcknowledge(alert.id)}
+                              className="px-4 py-2 bg-gradient-to-r from-teal-600 to-cyan-600 text-white rounded-xl hover:from-teal-700 hover:to-cyan-700 transition-all text-sm font-medium whitespace-nowrap"
+                            >
+                              Acknowledge
+                            </button>
+                            <button 
+                              onClick={() => handleSnooze(alert.id, 24)}
+                              className="px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-xl hover:bg-slate-50 transition-colors text-sm font-medium whitespace-nowrap"
+                            >
+                              Snooze 24h
+                            </button>
+                          </>
+                        )}
+                        {(alert.status === 'new' || alert.status === 'acknowledged') && (
+                          <button 
+                            onClick={() => setSelectedAlert(alert)}
+                            className="px-4 py-2 bg-green-600 text-white rounded-xl hover:bg-green-700 transition-colors text-sm font-medium whitespace-nowrap"
+                          >
+                            Resolve
+                          </button>
+                        )}
+                        <button 
+                          onClick={() => handleDismiss(alert.id)}
+                          className="px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-xl hover:bg-slate-50 transition-colors text-sm font-medium whitespace-nowrap"
+                        >
+                          Dismiss
+                        </button>
                       </div>
-                    )}
+                    </div>
                   </div>
-                </div>
-                <div className="flex flex-col space-y-2 ml-4">
-                  {alert.status === 'new' && (
-                    <>
-                      <button 
-                        onClick={() => handleAcknowledge(alert.id)}
-                        className="px-4 py-2 bg-gradient-to-r from-teal-600 to-cyan-600 text-white rounded-lg hover:from-teal-700 hover:to-cyan-700 transition-all text-sm font-medium whitespace-nowrap"
-                      >
-                        Acknowledge
-                      </button>
-                      <button 
-                        onClick={() => handleSnooze(alert.id, 24)}
-                        className="px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors text-sm font-medium whitespace-nowrap"
-                      >
-                        Snooze 24h
-                      </button>
-                    </>
-                  )}
-                  {(alert.status === 'new' || alert.status === 'acknowledged') && (
-                    <button 
-                      onClick={() => setSelectedAlert(alert)}
-                      className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium whitespace-nowrap"
-                    >
-                      Resolve
-                    </button>
-                  )}
-                  <button 
-                    onClick={() => handleDismiss(alert.id)}
-                    className="px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors text-sm font-medium whitespace-nowrap"
-                  >
-                    Dismiss
-                  </button>
-                </div>
-              </div>
                 </div>
               ))}
             </div>
