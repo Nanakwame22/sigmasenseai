@@ -247,8 +247,23 @@ export function useDashboardData() {
             return a.metric.name.localeCompare(b.metric.name);
           });
 
+        const usableOperationalMetrics = rankedMetricsForDisplay.filter(
+          (entry) => entry.isHealthcarePriority && entry.dedupedCount >= 2
+        );
+
+        const usableNonLegacyMetrics = rankedMetricsForDisplay.filter(
+          (entry) => !entry.isLegacyRisk && entry.dedupedCount >= 2
+        );
+
+        const metricsForDashboard =
+          usableOperationalMetrics.length > 0
+            ? usableOperationalMetrics
+            : usableNonLegacyMetrics.length > 0
+              ? usableNonLegacyMetrics
+              : rankedMetricsForDisplay.filter((entry) => entry.dedupedCount >= 2);
+
         await Promise.all(
-          rankedMetricsForDisplay.slice(0, 8).map(async ({ metric, points }, idx: number) => {
+          metricsForDashboard.slice(0, 8).map(async ({ metric, points }, idx: number) => {
 
             if (!points || points.length < 2) return;
 
@@ -372,25 +387,4 @@ export function useDashboardData() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'alerts', filter: `organization_id=eq.${organizationId}` }, () => fetchDashboardData())
       .subscribe();
 
-    const actionsChannel = supabase
-      .channel('actions_changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'action_items', filter: `organization_id=eq.${organizationId}` }, () => fetchDashboardData())
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(metricDataChannel);
-      supabase.removeChannel(alertsChannel);
-      supabase.removeChannel(actionsChannel);
-      setIsRealtimeConnected(false);
-    };
-  }, [organizationId]);
-
-  return {
-    stats,
-    loading,
-    error,
-    refetch: fetchDashboardData,
-    isRealtimeConnected,
-    lastUpdated,
-  };
-}
+    const 
