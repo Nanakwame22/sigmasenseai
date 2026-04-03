@@ -58,6 +58,7 @@ export const useAIMData = () => {
         { data: impactRecommendations },
         { data: projectSavings },
         { data: alertsData },
+        { data: forecastAccuracies },
       ] = await Promise.all([
         supabase
           .from('data_sources')
@@ -74,6 +75,7 @@ export const useAIMData = () => {
         supabase
           .from('recommendations')
           .select('*', { count: 'exact', head: true })
+          .eq('organization_id', orgId)
           .in('status', ['pending', 'in_progress']),
         supabase
           .from('action_items')
@@ -99,10 +101,12 @@ export const useAIMData = () => {
         supabase
           .from('recommendations')
           .select('confidence_score')
+          .eq('organization_id', orgId)
           .in('status', ['pending', 'in_progress', 'completed']),
         supabase
           .from('recommendations')
           .select('impact_score')
+          .eq('organization_id', orgId)
           .in('status', ['pending', 'in_progress']),
         supabase
           .from('dmaic_projects')
@@ -114,16 +118,31 @@ export const useAIMData = () => {
           .select('days_until')
           .eq('organization_id', orgId)
           .not('days_until', 'is', null),
+        supabase
+          .from('forecasts')
+          .select('accuracy')
+          .eq('organization_id', orgId)
+          .not('accuracy', 'is', null)
+          .order('created_at', { ascending: false })
+          .limit(12),
       ]);
 
       const totalActionCount =
         (actionItemsCount || 0) + (dmaicProjectsCount || 0) + (kaizenItemsCount || 0);
 
-      const avgConfidence =
+      const avgRecommendationConfidence =
         recommendationsData && recommendationsData.length > 0
           ? recommendationsData.reduce((sum, r) => sum + (r.confidence_score || 0), 0) /
             recommendationsData.length
           : 0;
+
+      const avgForecastConfidence =
+        forecastAccuracies && forecastAccuracies.length > 0
+          ? forecastAccuracies.reduce((sum, forecast) => sum + (forecast.accuracy || 0), 0) /
+            forecastAccuracies.length
+          : 0;
+
+      const avgConfidence = avgRecommendationConfidence || avgForecastConfidence || 0;
 
       const recommendationsImpact =
         impactRecommendations?.reduce((sum, r) => sum + (r.impact_score || 0), 0) || 0;

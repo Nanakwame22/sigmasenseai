@@ -20,6 +20,38 @@ interface Metric {
   target_value: number;
 }
 
+const SCENARIO_THEME: Record<string, {
+  shell: string;
+  icon: string;
+  activeShell: string;
+  accent: string;
+}> = {
+  minimal: {
+    shell: 'border-slate-200 bg-white hover:border-slate-300',
+    icon: 'from-slate-500 to-slate-700',
+    activeShell: 'border-slate-500 bg-gradient-to-br from-slate-50 to-slate-100 shadow-lg shadow-slate-200/70',
+    accent: 'text-slate-700',
+  },
+  balanced: {
+    shell: 'border-teal-200 bg-white hover:border-teal-300',
+    icon: 'from-teal-500 to-cyan-600',
+    activeShell: 'border-teal-500 bg-gradient-to-br from-teal-50 to-cyan-50 shadow-lg shadow-teal-200/70',
+    accent: 'text-teal-700',
+  },
+  aggressive: {
+    shell: 'border-blue-200 bg-white hover:border-blue-300',
+    icon: 'from-blue-500 to-indigo-600',
+    activeShell: 'border-blue-500 bg-gradient-to-br from-blue-50 to-indigo-50 shadow-lg shadow-blue-200/70',
+    accent: 'text-blue-700',
+  },
+  transformation: {
+    shell: 'border-fuchsia-200 bg-white hover:border-fuchsia-300',
+    icon: 'from-fuchsia-500 to-violet-600',
+    activeShell: 'border-fuchsia-500 bg-gradient-to-br from-fuchsia-50 to-violet-50 shadow-lg shadow-fuchsia-200/70',
+    accent: 'text-fuchsia-700',
+  },
+};
+
 const ImpactForecastsSection: React.FC = () => {
   const { user } = useAuth();
   const [selectedScenario, setSelectedScenario] = useState<string>('balanced');
@@ -200,7 +232,10 @@ const ImpactForecastsSection: React.FC = () => {
     description: scenario.description,
     impact: `$${Math.round(scenario.annualImpact / 1000)}K`,
     probability: scenario.probability,
-    color: scenario.id === 'minimal' ? 'slate' : scenario.id === 'balanced' ? 'teal' : scenario.id === 'aggressive' ? 'blue' : 'purple',
+    investment: `$${Math.round(scenario.investment / 1000)}K`,
+    roi: `${scenario.roi}% ROI`,
+    timeline: scenario.timeline,
+    risk: scenario.risk,
     icon: scenario.id === 'minimal' ? 'ri-line-chart-line' : scenario.id === 'balanced' ? 'ri-arrow-up-line' : scenario.id === 'aggressive' ? 'ri-rocket-line' : 'ri-flashlight-line'
   }));
 
@@ -529,23 +564,55 @@ const ImpactForecastsSection: React.FC = () => {
         </div>
       </div>
 
+      <div className="rounded-[28px] border border-slate-200 bg-[radial-gradient(circle_at_top_left,_rgba(20,184,166,0.12),_transparent_30%),linear-gradient(135deg,_#ffffff,_#f8fafc)] p-6 shadow-sm">
+        <div className="grid gap-6 lg:grid-cols-[1.3fr_0.7fr]">
+          <div>
+            <div className="mb-3 flex items-center gap-2">
+              <span className="rounded-full bg-teal-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-teal-700">Forecast Studio</span>
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">Scenario-calibrated</span>
+            </div>
+            <h2 className="text-2xl font-bold tracking-tight text-slate-900">Model strategic upside before you commit action</h2>
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600">
+              AIM blends live recommendation value, project momentum, and KPI history to estimate the operational lift, timing, and investment profile for each scenario.
+            </p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
+            <div className="rounded-2xl border border-slate-200 bg-white/90 p-4">
+              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Selected Scenario</div>
+              <div className="mt-2 text-xl font-bold text-slate-900">{scenarioCards.find(card => card.id === selectedScenario)?.label ?? 'Balanced Approach'}</div>
+              <div className="mt-1 text-sm text-slate-600">{scenarioCards.find(card => card.id === selectedScenario)?.timeline ?? '6-8 months'}</div>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-white/90 p-4">
+              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Modeled Annual Upside</div>
+              <div className="mt-2 text-xl font-bold text-emerald-600">{scenarioCards.find(card => card.id === selectedScenario)?.impact ?? '$0K'}</div>
+              <div className="mt-1 text-sm text-slate-600">{scenarioCards.find(card => card.id === selectedScenario)?.roi ?? '0% ROI'}</div>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-white/90 p-4">
+              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Execution Posture</div>
+              <div className="mt-2 text-xl font-bold text-slate-900">{scenarioCards.find(card => card.id === selectedScenario)?.risk ?? 'Low'} risk</div>
+              <div className="mt-1 text-sm text-slate-600">Investment {scenarioCards.find(card => card.id === selectedScenario)?.investment ?? '$0K'}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Scenario Selector */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {scenarioCards.map((scenario) => (
+          (() => {
+            const theme = SCENARIO_THEME[scenario.id] || SCENARIO_THEME.balanced;
+            const isActive = selectedScenario === scenario.id;
+            return (
           <div
             key={scenario.id}
             onClick={() => setSelectedScenario(scenario.id)}
-            className={`p-6 rounded-xl border-2 cursor-pointer transition-all ${
-              selectedScenario === scenario.id
-                ? `border-${scenario.color}-500 bg-gradient-to-br from-${scenario.color}-50 to-${scenario.color}-100 shadow-lg`
-                : 'border-slate-200 bg-white hover:border-slate-300 hover:shadow-md'
-            }`}
+            className={`cursor-pointer rounded-[24px] border-2 p-6 transition-all duration-200 ${isActive ? theme.activeShell : theme.shell}`}
           >
             <div className="flex items-start justify-between mb-4">
-              <div className={`w-12 h-12 bg-gradient-to-br from-${scenario.color}-500 to-${scenario.color}-600 rounded-lg flex items-center justify-center`}>
+              <div className={`flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br ${theme.icon}`}>
                 <i className={`${scenario.icon} text-2xl text-white`}></i>
               </div>
-              {selectedScenario === scenario.id && (
+              {isActive && (
                 <div className="w-6 h-6 bg-teal-500 rounded-full flex items-center justify-center">
                   <i className="ri-check-line text-white text-sm"></i>
                 </div>
@@ -553,17 +620,23 @@ const ImpactForecastsSection: React.FC = () => {
             </div>
             <h3 className="text-lg font-bold text-slate-900 mb-2">{scenario.label}</h3>
             <p className="text-sm text-slate-600 mb-4">{scenario.description}</p>
-            <div className="flex items-center justify-between">
+            <div className="grid grid-cols-2 gap-3 border-t border-slate-200/70 pt-4">
               <div>
-                <div className="text-2xl font-bold text-slate-900">{scenario.impact}</div>
-                <div className="text-xs text-slate-500">Annual Revenue</div>
+                <div className="text-xs uppercase tracking-[0.16em] text-slate-500">Annual Impact</div>
+                <div className={`mt-1 text-2xl font-bold ${theme.accent}`}>{scenario.impact}</div>
               </div>
               <div className="text-right">
-                <div className="text-lg font-bold text-teal-600">{scenario.probability}%</div>
-                <div className="text-xs text-slate-500">Probability</div>
+                <div className="text-xs uppercase tracking-[0.16em] text-slate-500">Confidence</div>
+                <div className={`mt-1 text-lg font-bold ${theme.accent}`}>{scenario.probability}%</div>
               </div>
             </div>
+            <div className="mt-4 flex items-center justify-between text-xs font-medium text-slate-500">
+              <span>{scenario.timeline}</span>
+              <span>{scenario.roi}</span>
+            </div>
           </div>
+            );
+          })()
         ))}
       </div>
 

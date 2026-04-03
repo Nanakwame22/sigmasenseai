@@ -40,6 +40,22 @@ const AIMPage: React.FC = () => {
     return `$${value}`;
   };
 
+  const confidenceState =
+    aimStats.aiConfidence >= 85 ? 'Decision-ready'
+    : aimStats.aiConfidence >= 70 ? 'Operationally usable'
+    : aimStats.aiConfidence > 0 ? 'Calibrating'
+    : 'Awaiting stronger evidence';
+
+  const impactState =
+    aimStats.predictedImpact > 0
+      ? 'Modeled from live recommendations and project value'
+      : 'Generate recommendations or forecasts to surface modeled impact';
+
+  const leadTimeState =
+    aimStats.alertLeadTime > 0
+      ? 'Average lead time across predictive alerts'
+      : 'Lead time appears once active alerts include future breach windows';
+
   const renderSection = () => {
     switch (activeSection) {
       case 'overview':
@@ -208,6 +224,42 @@ const AIMPage: React.FC = () => {
       {/* Main Content Area */}
       <div className="flex-1 overflow-y-auto bg-zone-primary">
         <div className="p-8">
+          <div className="mb-8 rounded-[28px] border border-ai-200/40 bg-[radial-gradient(circle_at_top_left,_rgba(45,212,191,0.14),_transparent_35%),linear-gradient(135deg,_rgba(15,23,42,0.98),_rgba(17,24,39,0.9))] px-8 py-7 text-white shadow-elevation-5">
+            <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+              <div className="max-w-3xl">
+                <div className="mb-3 flex items-center gap-3">
+                  <span className="rounded-full border border-ai-300/30 bg-ai-400/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-ai-200">
+                    AIM Workspace
+                  </span>
+                  <span className="inline-flex items-center gap-2 rounded-full bg-emerald-400/10 px-3 py-1 text-xs font-semibold text-emerald-300">
+                    <span className="h-2 w-2 rounded-full bg-emerald-300 animate-pulse"></span>
+                    Live intelligence loop
+                  </span>
+                </div>
+                <h1 className="text-4xl font-bold tracking-tight text-white">Actionable Intelligence Model</h1>
+                <p className="mt-3 max-w-2xl text-sm leading-6 text-brand-100">
+                  SigmaSense&apos;s decision studio for monitoring risk, modeling outcomes, and converting AI guidance into tracked operational work.
+                </p>
+              </div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 lg:w-[520px]">
+                <div className="rounded-[22px] border border-white/10 bg-white/5 p-4 backdrop-blur-sm">
+                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-200">Recommendations</div>
+                  <div className="mt-2 text-3xl font-bold">{aimStats.recommendationsCount}</div>
+                  <div className="mt-1 text-xs text-brand-200">Open intelligence opportunities</div>
+                </div>
+                <div className="rounded-[22px] border border-white/10 bg-white/5 p-4 backdrop-blur-sm">
+                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-200">Tracked Actions</div>
+                  <div className="mt-2 text-3xl font-bold">{aimStats.actionCenterCount}</div>
+                  <div className="mt-1 text-xs text-brand-200">Execution items flowing through AIM</div>
+                </div>
+                <div className="rounded-[22px] border border-white/10 bg-white/5 p-4 backdrop-blur-sm">
+                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-200">Predictive Alerts</div>
+                  <div className="mt-2 text-3xl font-bold">{aimStats.predictiveAlertsCount}</div>
+                  <div className="mt-1 text-xs text-brand-200">Signals awaiting review or action</div>
+                </div>
+              </div>
+            </div>
+          </div>
           {renderSection()}
         </div>
       </div>
@@ -261,22 +313,38 @@ const AIMPage: React.FC = () => {
                   ) : (
                     <div className="space-y-3">
                       <div className="p-4 bg-gradient-to-br from-ai-50 to-ai-100/50 rounded-premium border border-ai-200/30 elevation-low">
-                        <div className="text-kpi-medium text-ai-600 mb-1">
-                          {aimStats.aiConfidence > 0 ? `${aimStats.aiConfidence}%` : 'N/A'}
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="text-kpi-medium text-ai-600 mb-1">
+                              {aimStats.aiConfidence > 0 ? `${aimStats.aiConfidence}%` : 'Calibrating'}
+                            </div>
+                            <div className="text-xs text-brand-600 font-medium">AI Confidence Score</div>
+                          </div>
+                          <span className="rounded-full bg-ai-600/10 px-2.5 py-1 text-[11px] font-semibold text-ai-700">
+                            {confidenceState}
+                          </span>
                         </div>
-                        <div className="text-xs text-brand-600 font-medium">AI Confidence Score</div>
+                        <p className="mt-3 text-xs leading-5 text-brand-600">
+                          Confidence blends recommendation evidence, model accuracy, and live signal quality.
+                        </p>
                       </div>
                       <div className="p-4 bg-gradient-to-br from-sapphire-50 to-sapphire-100/50 rounded-premium border border-sapphire-200/30 elevation-low">
                         <div className="text-kpi-medium text-sapphire-600 mb-1">
-                          {aimStats.predictedImpact > 0 ? formatCurrency(aimStats.predictedImpact) : '$0'}
+                          {aimStats.predictedImpact > 0 ? formatCurrency(aimStats.predictedImpact) : 'Building'}
                         </div>
                         <div className="text-xs text-brand-600 font-medium">Predicted Impact</div>
+                        <p className="mt-3 text-xs leading-5 text-brand-600">
+                          {impactState}
+                        </p>
                       </div>
                       <div className="p-4 bg-gradient-to-br from-emerald-50 to-emerald-100/50 rounded-premium border border-emerald-200/30 elevation-low">
                         <div className="text-kpi-medium text-emerald-600 mb-1">
-                          {aimStats.alertLeadTime > 0 ? `${aimStats.alertLeadTime} days` : 'N/A'}
+                          {aimStats.alertLeadTime > 0 ? `${aimStats.alertLeadTime} days` : 'Standby'}
                         </div>
                         <div className="text-xs text-brand-600 font-medium">Alert Lead Time</div>
+                        <p className="mt-3 text-xs leading-5 text-brand-600">
+                          {leadTimeState}
+                        </p>
                       </div>
                     </div>
                   )}
