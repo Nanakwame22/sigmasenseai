@@ -113,7 +113,119 @@ const ReportsSection: React.FC = () => {
   const [recipients, setRecipients] = useState<Recipient[]>([]);
   const [showExportFormatDialog, setShowExportFormatDialog] = useState(false);
   const [pendingExportReport, setPendingExportReport] = useState<Report | null>(null);
-  const [pendingExportFormat, setPendingExportFormat] = useState<'pdf' | 'excel' | 'email' | null>(null);
+  const [pendingExportFormat, setPendingExportFormat] = useState<'pdf' | 'excel' | 'email' | 'presentation' | null>(null);
+
+  const getReportSnapshot = (report?: Report | null) => {
+    const reportData = report?.data;
+    const statsBlock = reportData?.statistics || {};
+
+    return {
+      title: report?.title || `AIM Report - ${new Date().toLocaleDateString()}`,
+      generatedAt: reportData?.generated_at || report?.date || new Date().toISOString(),
+      sections: reportData?.sections || reportSections.filter(s => s.included).map(s => s.title),
+      statistics: {
+        recommendations: statsBlock.recommendations || 0,
+        alerts: statsBlock.alerts || 0,
+        projects: statsBlock.projects || 0,
+        kpis: statsBlock.kpis || 0,
+      },
+      kpis: reportData?.kpi_summary || [],
+    };
+  };
+
+  const buildReportSummaryText = (report?: Report | null) => {
+    const snapshot = getReportSnapshot(report);
+    return [
+      snapshot.title,
+      `Generated: ${new Date(snapshot.generatedAt).toLocaleString()}`,
+      '',
+      'Included Sections:',
+      ...snapshot.sections.map((section: string) => `- ${section}`),
+      '',
+      'Headline Metrics:',
+      `- Recommendations: ${snapshot.statistics.recommendations}`,
+      `- Alerts: ${snapshot.statistics.alerts}`,
+      `- Projects: ${snapshot.statistics.projects}`,
+      `- KPIs: ${snapshot.statistics.kpis}`,
+      '',
+      snapshot.kpis.length > 0 ? 'KPI Snapshot:' : '',
+      ...snapshot.kpis.slice(0, 10).map((kpi: any) => `- ${kpi.name}: ${kpi.current_value ?? 'N/A'} / target ${kpi.target_value ?? 'N/A'}`),
+    ]
+      .filter(Boolean)
+      .join('\n');
+  };
+
+  const openPrintableReport = (report?: Report | null) => {
+    const snapshot = getReportSnapshot(report);
+    const popup = window.open('', '_blank', 'noopener,noreferrer,width=960,height=720');
+    if (!popup) {
+      addToast('Popup blocked. Please allow popups to export the report as a printable document.', 'warning');
+      return;
+    }
+
+    const kpiRows = snapshot.kpis.length > 0
+      ? snapshot.kpis.slice(0, 12).map((kpi: any) => `
+          <tr>
+            <td style="padding:8px;border-bottom:1px solid #e5e7eb;">${kpi.name}</td>
+            <td style="padding:8px;border-bottom:1px solid #e5e7eb;">${kpi.current_value ?? 'N/A'}</td>
+            <td style="padding:8px;border-bottom:1px solid #e5e7eb;">${kpi.target_value ?? 'N/A'}</td>
+          </tr>
+        `).join('')
+      : '<tr><td colspan="3" style="padding:8px;">No KPI detail captured in this report.</td></tr>';
+
+    popup.document.write(`
+      <html>
+        <head>
+          <title>${snapshot.title}</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 32px; color: #0f172a; }
+            h1 { margin-bottom: 8px; }
+            h2 { margin-top: 28px; }
+            .meta { color: #475569; margin-bottom: 20px; }
+            .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 20px 0; }
+            .card { border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+          </style>
+        </head>
+        <body>
+          <h1>${snapshot.title}</h1>
+          <div class="meta">Generated ${new Date(snapshot.generatedAt).toLocaleString()}</div>
+          <div class="grid">
+            <div class="card"><strong>Recommendations</strong><div>${snapshot.statistics.recommendations}</div></div>
+            <div class="card"><strong>Alerts</strong><div>${snapshot.statistics.alerts}</div></div>
+            <div class="card"><strong>Projects</strong><div>${snapshot.statistics.projects}</div></div>
+            <div class="card"><strong>KPIs</strong><div>${snapshot.statistics.kpis}</div></div>
+          </div>
+          <h2>Included Sections</h2>
+          <ul>${snapshot.sections.map((section: string) => `<li>${section}</li>`).join('')}</ul>
+          <h2>KPI Snapshot</h2>
+          <table>
+            <thead>
+              <tr><th style="text-align:left;padding:8px;border-bottom:1px solid #cbd5e1;">Metric</th><th style="text-align:left;padding:8px;border-bottom:1px solid #cbd5e1;">Current</th><th style="text-align:left;padding:8px;border-bottom:1px solid #cbd5e1;">Target</th></tr>
+            </thead>
+            <tbody>${kpiRows}</tbody>
+          </table>
+        </body>
+      </html>
+    `);
+    popup.document.close();
+    popup.focus();
+    popup.print();
+  };
+
+  const shareReport = async (report?: Report | null) => {
+    const text = buildReportSummaryText(report);
+    const title = getReportSnapshot(report).title;
+
+    if (navigator.share) {
+      await navigator.share({ title, text });
+      addToast('Report summary shared successfully', 'success');
+      return;
+    }
+
+    await navigator.clipboard.writeText(text);
+    addToast('Report summary copied to clipboard for sharing', 'success');
+  };
 
   useEffect(() => {
     if (orgId) {
@@ -371,28 +483,42 @@ const ReportsSection: React.FC = () => {
     });
   };
 
-  const exportReport = async (report: Report, format: 'pdf' | 'excel' | 'email') => {
+  const exportReport = async (report: Report, format: 'pdf' | 'excel' | 'email' | 'presentation') => {
     setPendingExportReport(report);
     setPendingExportFormat(format);
   };
 
-  const handleExportConfirm = () => {
+  const handleExportConfirm = async () => {
     if (!pendingExportReport || !pendingExportFormat) return;
 
     const format = pendingExportFormat;
     const report = pendingExportReport;
 
     if (format === 'pdf') {
-      addToast('PDF export is coming soon. Use CSV/JSON export for now.', 'info');
+      openPrintableReport(report);
+      addToast('Printable report opened successfully', 'success');
     } else if (format === 'excel') {
-      if (report.data) {
-        exportToCSV([report.data], `${report.title.replace(/\s+/g, '-').toLowerCase()}`);
-        addToast('Report exported successfully', 'success');
-      } else {
-        addToast('No data available for this report', 'warning');
-      }
+      const snapshot = getReportSnapshot(report);
+      const csvData = [
+        { Section: 'Recommendations', Count: snapshot.statistics.recommendations },
+        { Section: 'Alerts', Count: snapshot.statistics.alerts },
+        { Section: 'Projects', Count: snapshot.statistics.projects },
+        { Section: 'KPIs', Count: snapshot.statistics.kpis },
+        ...snapshot.kpis.slice(0, 20).map((kpi: any) => ({
+          Section: `KPI - ${kpi.name}`,
+          Count: `${kpi.current_value ?? 'N/A'} / ${kpi.target_value ?? 'N/A'}`
+        }))
+      ];
+      exportToCSV(csvData, `${report.title.replace(/\s+/g, '-').toLowerCase()}`);
+      addToast('Report exported successfully', 'success');
     } else if (format === 'email') {
-      addToast('Email functionality is coming soon. Please download and share manually.', 'info');
+      const subject = encodeURIComponent(getReportSnapshot(report).title);
+      const body = encodeURIComponent(buildReportSummaryText(report));
+      window.location.href = `mailto:?subject=${subject}&body=${body}`;
+      addToast('Email draft opened successfully', 'success');
+    } else if (format === 'presentation') {
+      await navigator.clipboard.writeText(buildReportSummaryText(report));
+      addToast('Presentation-ready report summary copied to clipboard', 'success');
     }
 
     setPendingExportReport(null);
@@ -583,7 +709,14 @@ const ReportsSection: React.FC = () => {
                     >
                       <i className="ri-mail-line text-blue-600 text-xl"></i>
                     </button>
-                    <button className="w-10 h-10 flex items-center justify-center hover:bg-slate-100 rounded-lg transition-colors" title="Share">
+                    <button
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        await shareReport(report);
+                      }}
+                      className="w-10 h-10 flex items-center justify-center hover:bg-slate-100 rounded-lg transition-colors"
+                      title="Share"
+                    >
                       <i className="ri-share-line text-slate-600 text-xl"></i>
                     </button>
                   </div>
@@ -678,7 +811,7 @@ const ReportsSection: React.FC = () => {
 
         <div className="grid grid-cols-4 gap-4">
           <button 
-            onClick={() => addToast('PDF export coming soon. Use CSV/JSON for now.', 'info')}
+            onClick={() => reports[0] ? exportReport(reports[0], 'pdf') : generateReport()}
             className="p-6 border border-slate-200 rounded-xl hover:shadow-lg hover:border-teal-500 transition-all text-center group"
           >
             <div className="w-16 h-16 bg-gradient-to-br from-red-100 to-pink-100 rounded-lg flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
@@ -700,7 +833,7 @@ const ReportsSection: React.FC = () => {
           </button>
 
           <button 
-            onClick={() => addToast('Email functionality coming soon. Please download and share manually.', 'info')}
+            onClick={() => reports[0] ? exportReport(reports[0], 'email') : generateReport()}
             className="p-6 border border-slate-200 rounded-xl hover:shadow-lg hover:border-teal-500 transition-all text-center group"
           >
             <div className="w-16 h-16 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-lg flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
@@ -711,7 +844,7 @@ const ReportsSection: React.FC = () => {
           </button>
 
           <button 
-            onClick={() => addToast('Presentation export coming soon.', 'info')}
+            onClick={() => reports[0] ? exportReport(reports[0], 'presentation') : generateReport()}
             className="p-6 border border-slate-200 rounded-xl hover:shadow-lg hover:border-teal-500 transition-all text-center group"
           >
             <div className="w-16 h-16 bg-gradient-to-br from-purple-100 to-pink-100 rounded-lg flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">

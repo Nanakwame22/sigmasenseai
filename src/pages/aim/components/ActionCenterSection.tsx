@@ -3,6 +3,7 @@ import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { exportToCSV } from '../../../utils/exportUtils';
+import { addToast } from '../../../hooks/useToast';
 
 interface Action {
   id: string;
@@ -247,33 +248,41 @@ const ActionCenterSection: React.FC = () => {
 
   const assignOwner = async (memberId: string) => {
     try {
-      for (const actionId of selectedActions) {
+      const updates = selectedActions.map(async (actionId) => {
         const action = actions.find(a => a.id === actionId);
-        if (!action) continue;
+        if (!action) return;
 
         if (action.sourceType === 'action_item') {
-          await supabase
+          const { error } = await supabase
             .from('action_items')
             .update({ assigned_to: memberId })
             .eq('id', action.sourceId);
+          if (error) throw error;
         } else if (action.sourceType === 'dmaic_project') {
-          await supabase
+          const { error } = await supabase
             .from('dmaic_projects')
             .update({ owner_id: memberId })
             .eq('id', action.sourceId);
+          if (error) throw error;
         } else if (action.sourceType === 'kaizen_item') {
-          await supabase
+          const { error } = await supabase
             .from('kaizen_items')
             .update({ submitted_by: memberId })
             .eq('id', action.sourceId);
+          if (error) throw error;
         }
-      }
+      });
+
+      await Promise.all(updates);
 
       setShowAssignModal(false);
       setSelectedActions([]);
       await loadActions();
+      await loadTeamMembers();
+      addToast('Owner assignment updated successfully', 'success');
     } catch (error) {
       console.error('Error assigning owner:', error);
+      addToast('Failed to assign owner to one or more actions', 'error');
     }
   };
 

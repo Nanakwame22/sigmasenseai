@@ -38,6 +38,7 @@ export default function PredictiveAlertsPanel() {
     low: 0
   });
   const [showPreferences, setShowPreferences] = useState(false);
+  const [resolutionNotes, setResolutionNotes] = useState('');
   const [preferences, setPreferences] = useState<AlertPreferences>({
     organization_id: orgId || '',
     email_enabled: true,
@@ -137,6 +138,7 @@ export default function PredictiveAlertsPanel() {
     try {
       await resolveAlert(alertId, notes);
       setSelectedAlert(null);
+      setResolutionNotes('');
       await loadData();
     } catch (error) {
       console.error('Error resolving alert:', error);
@@ -156,6 +158,16 @@ export default function PredictiveAlertsPanel() {
 
   const handleSavePreferences = async () => {
     try {
+      if (!orgId) {
+        addToast('Organization not found for alert preferences', 'error');
+        return;
+      }
+
+      if (!preferences.email_enabled && !preferences.in_app_enabled && !preferences.sms_enabled && !preferences.slack_enabled) {
+        addToast('Enable at least one notification channel before saving preferences', 'warning');
+        return;
+      }
+
       await saveAlertPreferences(preferences);
       setShowPreferences(false);
       addToast('Preferences saved successfully!', 'success');
@@ -489,8 +501,9 @@ export default function PredictiveAlertsPanel() {
               <p className="text-sm text-gray-600 mb-2">{selectedAlert.title}</p>
               <label className="block text-sm font-medium text-gray-700 mb-2">Resolution Notes</label>
               <textarea
-                id="resolution-notes"
                 rows={4}
+                value={resolutionNotes}
+                onChange={(e) => setResolutionNotes(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent text-sm"
                 placeholder="Describe how this alert was resolved..."
               />
@@ -505,8 +518,7 @@ export default function PredictiveAlertsPanel() {
               </button>
               <button
                 onClick={() => {
-                  const notes = (document.getElementById('resolution-notes') as HTMLTextAreaElement)?.value;
-                  handleResolve(selectedAlert.id, notes);
+                  handleResolve(selectedAlert.id, resolutionNotes);
                 }}
                 className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors whitespace-nowrap"
               >

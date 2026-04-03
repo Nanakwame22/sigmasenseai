@@ -3,6 +3,7 @@ import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../contexts/AuthContext';
 import { nlQueryService } from '../../../services/nlQueryService';
 import type { QueryResult, QueryHistory } from '../../../services/nlQueryService';
+import { addToast } from '../../../hooks/useToast';
 import {
   LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
@@ -32,6 +33,10 @@ export default function EnhancedQueryEngine({ compact = false }: Props) {
   useEffect(() => {
     const key = nlQueryService.getApiKey();
     setHasApiKey(!!key);
+    const savedProvider = localStorage.getItem('nl_query_provider');
+    if (savedProvider === 'openai' || savedProvider === 'anthropic') {
+      setProvider(savedProvider);
+    }
     loadSuggestions();
     loadHistory();
   }, []);
@@ -50,17 +55,29 @@ export default function EnhancedQueryEngine({ compact = false }: Props) {
   };
 
   const handleSaveApiKey = () => {
-    if (apiKey.trim()) {
-      nlQueryService.setApiKey(apiKey.trim(), provider);
+    const normalizedKey = apiKey.trim();
+    if (normalizedKey) {
+      if (provider === 'openai' && !normalizedKey.startsWith('sk-')) {
+        addToast('OpenAI keys usually start with "sk-". Please double-check the key.', 'warning');
+        return;
+      }
+      if (provider === 'anthropic' && !normalizedKey.startsWith('sk-ant-')) {
+        addToast('Anthropic keys usually start with "sk-ant-". Please double-check the key.', 'warning');
+        return;
+      }
+
+      nlQueryService.setApiKey(normalizedKey, provider);
       setHasApiKey(true);
       setShowApiKeyModal(false);
       setApiKey('');
+      addToast(`${provider === 'openai' ? 'OpenAI' : 'Anthropic'} connected for richer AIM query output`, 'success');
     }
   };
 
   const handleRemoveApiKey = () => {
     nlQueryService.clearApiKey();
     setHasApiKey(false);
+    addToast('AI provider disconnected. Ask AIM will still work in direct query mode.', 'info');
   };
 
   const resolveOrgId = async (): Promise<string> => {
@@ -241,7 +258,7 @@ export default function EnhancedQueryEngine({ compact = false }: Props) {
               <>
                 <div className="flex items-center gap-2 px-4 py-2 bg-teal-50 text-teal-700 rounded-lg text-sm">
                   <i className="ri-check-line"></i>
-                  <span>AI Connected</span>
+                  <span>{provider === 'openai' ? 'OpenAI' : 'Anthropic'} connected</span>
                 </div>
                 <button onClick={handleRemoveApiKey} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 whitespace-nowrap cursor-pointer">
                   Change API Key
@@ -262,6 +279,11 @@ export default function EnhancedQueryEngine({ compact = false }: Props) {
 
       {/* Query Input */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+        {!hasApiKey && (
+          <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+            Ask AIM can still run using SigmaSense direct query mode. Add an API key if you want richer AI summaries and stronger language interpretation.
+          </div>
+        )}
         <div className="flex gap-3">
           <div className="flex-1">
             <textarea

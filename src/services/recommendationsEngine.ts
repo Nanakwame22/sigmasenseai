@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 export interface Recommendation {
   id: string;
   user_id: string;
+  organization_id?: string;
   title: string;
   description: string;
   category: 'performance' | 'quality' | 'efficiency' | 'cost' | 'risk';
@@ -55,19 +56,36 @@ export class RecommendationsEngine {
 
   async generateRecommendations(): Promise<Recommendation[]> {
     const patterns = await this.analyzeDataPatterns();
+    const orgId = await this.getOrganizationId();
+    if (!orgId) return [];
     const recommendations: Recommendation[] = [];
 
     for (const pattern of patterns) {
-      const recommendation = this.createRecommendation(pattern);
+      const recommendation = this.createRecommendation(pattern, orgId);
       if (recommendation) {
         recommendations.push(recommendation);
       }
     }
 
     if (recommendations.length > 0) {
+      const titles = recommendations.map((rec) => rec.title);
+      const { data: existing } = await supabase
+        .from('recommendations')
+        .select('title')
+        .eq('organization_id', orgId)
+        .in('status', ['pending', 'in_progress'])
+        .in('title', titles);
+
+      const existingTitles = new Set((existing || []).map((rec) => rec.title));
+      const uniqueRecommendations = recommendations.filter((rec) => !existingTitles.has(rec.title));
+
+      if (uniqueRecommendations.length === 0) {
+        return [];
+      }
+
       const { data, error } = await supabase
         .from('recommendations')
-        .insert(recommendations)
+        .insert(uniqueRecommendations)
         .select();
 
       if (error) {
@@ -264,9 +282,10 @@ export class RecommendationsEngine {
     return patterns;
   }
 
-  private createRecommendation(pattern: DataPattern): Recommendation | null {
+  private createRecommendation(pattern: DataPattern, organizationId: string): Recommendation | null {
     const baseRecommendation = {
       user_id: this.userId,
+      organization_id: organizationId,
       status: 'pending' as const,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
@@ -410,10 +429,13 @@ export class RecommendationsEngine {
     category?: string;
     priority?: string;
   }): Promise<Recommendation[]> {
+    const orgId = await this.getOrganizationId();
+    if (!orgId) return [];
+
     let query = supabase
       .from('recommendations')
       .select('*')
-      .eq('user_id', this.userId);
+      .eq('organization_id', orgId);
 
     if (filters?.status) query = query.eq('status', filters.status);
     if (filters?.category) query = query.eq('category', filters.category);
@@ -430,6 +452,9 @@ export class RecommendationsEngine {
   }
 
   async startRecommendation(id: string, assignedTo?: string): Promise<boolean> {
+    const orgId = await this.getOrganizationId();
+    if (!orgId) return false;
+
     const updates: any = {
       status: 'in_progress',
       updated_at: new Date().toISOString()
@@ -440,12 +465,15 @@ export class RecommendationsEngine {
       .from('recommendations')
       .update(updates)
       .eq('id', id)
-      .eq('user_id', this.userId);
+      .eq('organization_id', orgId);
 
     return !error;
   }
 
   async completeRecommendation(id: string, actualImpact?: string, notes?: string): Promise<boolean> {
+    const orgId = await this.getOrganizationId();
+    if (!orgId) return false;
+
     const updates: any = {
       status: 'completed',
       completed_at: new Date().toISOString(),
@@ -458,12 +486,15 @@ export class RecommendationsEngine {
       .from('recommendations')
       .update(updates)
       .eq('id', id)
-      .eq('user_id', this.userId);
+      .eq('organization_id', orgId);
 
     return !error;
   }
 
   async dismissRecommendation(id: string, reason?: string): Promise<boolean> {
+    const orgId = await this.getOrganizationId();
+    if (!orgId) return false;
+
     const { error } = await supabase
       .from('recommendations')
       .update({
@@ -473,7 +504,7 @@ export class RecommendationsEngine {
         updated_at: new Date().toISOString()
       })
       .eq('id', id)
-      .eq('user_id', this.userId);
+      .eq('organization_id', orgId);
 
     return !error;
   }
@@ -489,10 +520,18 @@ export class RecommendationsEngine {
     avgImpactScore: number;
     avgEffortScore: number;
   }> {
+    const orgId = await this.getOrganizationId();
+    if (!orgId) {
+      return {
+        total: 0, pending: 0, inProgress: 0, completed: 0, dismissed: 0,
+        byCategory: {}, byPriority: {}, avgImpactScore: 0, avgEffortScore: 0
+      };
+    }
+
     const { data: recommendations } = await supabase
       .from('recommendations')
       .select('*')
-      .eq('user_id', this.userId);
+      .eq('organization_id', orgId);
 
     if (!recommendations || recommendations.length === 0) {
       return {
