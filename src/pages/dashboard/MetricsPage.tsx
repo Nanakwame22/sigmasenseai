@@ -1839,4 +1839,130 @@ export default function MetricsPage() {
                         onChange={(e) => setColumnMapping(prev => ({ ...prev, nameColumn: e.target.value }))}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                         required
-             
+                      >
+                        <option value="">Select column</option>
+                        {availableColumns.map(col => (
+                          <option key={col} value={col}>{col}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Value Column */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Value Column
+                      </label>
+                      <select
+                        value={columnMapping.valueColumn}
+                        onChange={(e) => setColumnMapping(prev => ({ ...prev, valueColumn: e.target.value }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      >
+                        <option value="">Select column (optional)</option>
+                        {availableColumns.map(col => (
+                          <option key={col} value={col}>{col}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Unit Column */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Unit Column
+                      </label>
+                      <select
+                        value={columnMapping.unitColumn}
+                        onChange={(e) => setColumnMapping(prev => ({ ...prev, unitColumn: e.target.value }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      >
+                        <option value="">Select column (optional)</option>
+                        {availableColumns.map(col => (
+                          <option key={col} value={col}>{col}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Preview */}
+                  {columnMapping.nameColumn && (
+                    <div className="mt-6">
+                      <h4 className="font-medium mb-3">Preview (first 5 rows)</h4>
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full border border-gray-300">
+                          <thead className="bg-gray-50">
+                            <tr>
+                              <th className="px-4 py-2 text-left text-sm font-medium text-gray-900 border-b">Metric Name</th>
+                              <th className="px-4 py-2 text-left text-sm font-medium text-gray-900 border-b">Value</th>
+                              <th className="px-4 py-2 text-left text-sm font-medium text-gray-900 border-b">Unit</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {importData.slice(0, 5).map((row, index) => (
+                              <tr key={index} className="border-b">
+                                <td className="px-4 py-2 text-sm text-gray-900">
+                                  {row[columnMapping.nameColumn] || '-'}
+                                </td>
+                                <td className="px-4 py-2 text-sm text-gray-900">
+                                  {columnMapping.valueColumn ? (row[columnMapping.valueColumn] || '0') : '0'}
+                                </td>
+                                <td className="px-4 py-2 text-sm text-gray-900">
+                                  {columnMapping.unitColumn ? (row[columnMapping.unitColumn] || '-') : '-'}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex justify-between">
+                  <button
+                    onClick={() => setImportStep('select')}
+                    className="px-4 py-2 text-gray-600 hover:text-gray-800 whitespace-nowrap"
+                  >
+                    <i className="ri-arrow-left-line mr-2"></i>
+                    Back
+                  </button>
+                  <button
+                    onClick={handleImportMetrics}
+                    disabled={!columnMapping.nameColumn}
+                    className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed whitespace-nowrap"
+                  >
+                    Import Metrics
+                    <i className="ri-download-line ml-2"></i>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      <ConfirmDialog
+        isOpen={deleteConfirmOpen}
+        title="Delete Metric?"
+        message="Are you sure you want to delete this metric? This action cannot be undone."
+        confirmText="Delete"
+        cancelText="Cancel"
+        confirmVariant="danger"
+        onConfirm={handleDeleteConfirm}
+        onCancel={() => {
+          setDeleteConfirmOpen(false);
+          setDeleteTargetId(null);
+        }}
+      />
+
+      <ConfirmDialog
+        isOpen={clearAllConfirmOpen}
+        title="Clear All Metrics?"
+        message="Are you absolutely sure you want to delete ALL metrics? This will permanently delete all metrics and their historical data. This action cannot be undone."
+        confirmText="Delete All"
+        cancelText="Cancel"
+        confirmVariant="danger"
+        onConfirm={handleClearAllConfirm}
+        onCancel={() => setClearAllConfirmOpen(false)}
+      />
+    </div>
+  );
+}
