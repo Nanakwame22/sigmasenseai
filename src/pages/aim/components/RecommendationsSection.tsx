@@ -549,4 +549,68 @@ export default function RecommendationsSection() {
                       )}
                       <button
                         onClick={() => setExpandedId(expandedId === rec.id ? null : rec.id)}
-                        className="px-4 py-2 bg-gray-50 text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors tex
+                        className="px-4 py-2 bg-gray-50 text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors text-sm whitespace-nowrap"
+                      >
+                        {expandedId === rec.id ? 'Less' : 'Details'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* Action Modal */}
+      {actionModal.show && actionModal.recommendation && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-md w-full p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">
+              {actionModal.type === 'start' && 'Start Recommendation'}
+              {actionModal.type === 'complete' && 'Complete Recommendation'}
+              {actionModal.type === 'dismiss' && 'Dismiss Recommendation'}
+            </h3>
+            <p className="text-sm text-gray-600 mb-4">{actionModal.recommendation.title}</p>
+            {(actionModal.type === 'complete' || actionModal.type === 'dismiss') && (
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  {actionModal.type === 'complete' ? 'Results & Notes' : 'Reason for Dismissal'}
+                </label>
+                <textarea
+                  value={actionNotes}
+                  onChange={(e) => setActionNotes(e.target.value)}
+                  rows={4}
+                  maxLength={500}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent text-sm"
+                  placeholder={
+                    actionModal.type === 'complete'
+                      ? 'Describe the results and impact...'
+                      : 'Why are you dismissing this recommendation?'
+                  }
+                />
+              </div>
+            )}
+            <div className="flex gap-3">
+              <button
+                onClick={executeAction}
+                className="flex-1 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors whitespace-nowrap"
+              >
+                Confirm
+              </button>
+              <button
+                onClick={() => {
+                  setActionModal({ show: false, type: null, recommendation: null });
+                  setActionNotes('');
+                }}
+                className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors whitespace-nowrap"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
