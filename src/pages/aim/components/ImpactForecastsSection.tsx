@@ -266,6 +266,9 @@ const ImpactForecastsSection: React.FC = () => {
     return impactBreakdown.reduce((sum, item) => sum + (item.withActions - item.baseline), 0);
   };
 
+  const activeScenario = scenarioCards.find((card) => card.id === selectedScenario) ?? scenarioCards[0];
+  const activeTheme = SCENARIO_THEME[activeScenario?.id] || SCENARIO_THEME.balanced;
+
   if (loading && forecastData.length === 0) {
     return (
       <div className="flex items-center justify-center h-96">
@@ -614,49 +617,111 @@ const ImpactForecastsSection: React.FC = () => {
         </div>
       )}
 
-      {/* Scenario Selector */}
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {scenarioCards.map((scenario) => (
-          (() => {
-            const theme = SCENARIO_THEME[scenario.id] || SCENARIO_THEME.balanced;
-            const isActive = selectedScenario === scenario.id;
-            return (
-          <div
-            key={scenario.id}
-            onClick={() => setSelectedScenario(scenario.id)}
-            className={`cursor-pointer rounded-[24px] border-2 p-6 transition-all duration-200 ${isActive ? theme.activeShell : theme.shell}`}
-          >
-            <div className="flex items-start justify-between mb-4">
-              <div className={`flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br ${theme.icon}`}>
-                <i className={`${scenario.icon} text-2xl text-white`}></i>
-              </div>
-              {isActive && (
-                <div className="w-6 h-6 bg-teal-500 rounded-full flex items-center justify-center">
-                  <i className="ri-check-line text-white text-sm"></i>
-                </div>
-              )}
-            </div>
-            <h3 className="text-lg font-bold text-slate-900 mb-2">{scenario.label}</h3>
-            <p className="text-sm text-slate-600 mb-4">{scenario.description}</p>
-            <div className="grid grid-cols-2 gap-3 border-t border-slate-200/70 pt-4">
-              <div>
-                <div className="text-xs uppercase tracking-[0.16em] text-slate-500">Annual Impact</div>
-                <div className={`mt-1 text-2xl font-bold ${theme.accent}`}>{scenario.impact}</div>
-              </div>
-              <div className="text-right">
-                <div className="text-xs uppercase tracking-[0.16em] text-slate-500">Confidence</div>
-                <div className={`mt-1 text-lg font-bold ${theme.accent}`}>{scenario.probability}%</div>
-              </div>
-            </div>
-            <div className="mt-4 flex items-center justify-between text-xs font-medium text-slate-500">
-              <span>{scenario.timeline}</span>
-              <span>{scenario.roi}</span>
-            </div>
+      <AIMPanel
+        title="Strategy Posture"
+        description="Choose the operating posture you want to model, then review the financial and operational trade-offs before committing."
+        icon="ri-compass-3-line"
+        accentClass="from-cyan-500 to-blue-600"
+      >
+        <div className="grid gap-6 xl:grid-cols-[1.35fr,0.95fr]">
+          <div className="space-y-3">
+            {scenarioCards.map((scenario) => {
+              const theme = SCENARIO_THEME[scenario.id] || SCENARIO_THEME.balanced;
+              const isActive = selectedScenario === scenario.id;
+              return (
+                <button
+                  key={scenario.id}
+                  onClick={() => setSelectedScenario(scenario.id)}
+                  className={`w-full rounded-[24px] border p-5 text-left transition-all duration-200 ${
+                    isActive
+                      ? `${theme.activeShell} ring-1 ring-offset-0`
+                      : `${theme.shell} hover:shadow-md`
+                  }`}
+                >
+                  <div className="flex items-start gap-4">
+                    <div className={`mt-0.5 flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br ${theme.icon}`}>
+                      <i className={`${scenario.icon} text-2xl text-white`}></i>
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <h3 className="text-lg font-bold text-slate-900">{scenario.label}</h3>
+                          <p className="mt-1 text-sm leading-6 text-slate-600">{scenario.description}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className={`rounded-full px-3 py-1 text-xs font-semibold ${isActive ? 'bg-white/70 text-slate-700' : 'bg-slate-100 text-slate-600'}`}>
+                            {scenario.timeline}
+                          </span>
+                          {isActive && (
+                            <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-teal-500">
+                              <i className="ri-check-line text-sm text-white"></i>
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                        <div className="rounded-2xl bg-white/70 px-4 py-3">
+                          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Annual impact</div>
+                          <div className={`mt-1 text-xl font-bold ${theme.accent}`}>{scenario.impact}</div>
+                        </div>
+                        <div className="rounded-2xl bg-white/70 px-4 py-3">
+                          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Confidence</div>
+                          <div className={`mt-1 text-xl font-bold ${theme.accent}`}>{scenario.probability}%</div>
+                        </div>
+                        <div className="rounded-2xl bg-white/70 px-4 py-3">
+                          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Investment posture</div>
+                          <div className={`mt-1 text-xl font-bold ${theme.accent}`}>{scenario.investment}</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
           </div>
-            );
-          })()
-        ))}
-      </div>
+
+          {activeScenario && (
+            <div className={`rounded-[28px] border p-6 ${activeTheme.activeShell}`}>
+              <div className="flex items-center gap-3">
+                <div className={`flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br ${activeTheme.icon}`}>
+                  <i className={`${activeScenario.icon} text-2xl text-white`}></i>
+                </div>
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Selected posture</div>
+                  <h3 className="text-2xl font-bold text-slate-900">{activeScenario.label}</h3>
+                </div>
+              </div>
+
+              <p className="mt-4 text-sm leading-7 text-slate-600">
+                {activeScenario.description}
+              </p>
+
+              <div className="mt-6 grid gap-3 sm:grid-cols-2">
+                <div className="rounded-2xl bg-white/80 px-4 py-4">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Modeled annual upside</div>
+                  <div className={`mt-2 text-3xl font-bold ${activeTheme.accent}`}>{activeScenario.impact}</div>
+                  <div className="mt-1 text-xs text-slate-500">{activeScenario.roi}</div>
+                </div>
+                <div className="rounded-2xl bg-white/80 px-4 py-4">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Delivery confidence</div>
+                  <div className={`mt-2 text-3xl font-bold ${activeTheme.accent}`}>{activeScenario.probability}%</div>
+                  <div className="mt-1 text-xs text-slate-500">{activeScenario.timeline}</div>
+                </div>
+                <div className="rounded-2xl bg-white/80 px-4 py-4">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Investment level</div>
+                  <div className="mt-2 text-3xl font-bold text-slate-900">{activeScenario.investment}</div>
+                  <div className="mt-1 text-xs text-slate-500">Estimated commitment required</div>
+                </div>
+                <div className="rounded-2xl bg-white/80 px-4 py-4">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Risk posture</div>
+                  <div className="mt-2 text-3xl font-bold text-slate-900">{activeScenario.risk}</div>
+                  <div className="mt-1 text-xs text-slate-500">Execution pressure and change load</div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </AIMPanel>
 
       {/* Net Impact Summary */}
       {impactBreakdown.length > 0 && (
@@ -666,26 +731,36 @@ const ImpactForecastsSection: React.FC = () => {
           icon="ri-money-dollar-circle-line"
           accentClass="from-teal-500 to-cyan-600"
         >
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <h2 className="text-xl font-bold text-slate-900 mb-2">Net Impact Calculation</h2>
-              <p className="text-sm text-slate-600">Total value from implementing all recommendations</p>
+              <p className="text-sm text-slate-600">Total modeled value from implementing the current recommendation set.</p>
             </div>
-            <div className="text-right">
-              <div className="text-4xl font-bold text-teal-600 mb-1">{formatMoney(calculateNetImpact() * 1000)}</div>
-              <div className="text-sm text-slate-600">Annual Net Benefit</div>
+            <div className="grid gap-3 sm:grid-cols-3 lg:w-[520px]">
+              <div className="rounded-2xl bg-slate-50 px-4 py-4">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Annual net benefit</div>
+                <div className="mt-2 text-3xl font-bold text-teal-600">{formatMoney(calculateNetImpact() * 1000)}</div>
+              </div>
+              <div className="rounded-2xl bg-slate-50 px-4 py-4">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Focus scenario</div>
+                <div className="mt-2 text-lg font-bold text-slate-900">{activeScenario?.label ?? 'Balanced Improvement'}</div>
+              </div>
+              <div className="rounded-2xl bg-slate-50 px-4 py-4">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Expected confidence</div>
+                <div className="mt-2 text-3xl font-bold text-slate-900">{activeScenario?.probability ?? 0}%</div>
+              </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-4 gap-4 mt-6">
+          <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             {impactBreakdown.map((item, index) => (
-              <div key={index} className="bg-white rounded-lg p-4 border border-slate-200">
-                <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
+              <div key={index} className="rounded-[22px] border border-slate-200 bg-white p-5">
+                <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">
                   {item.category}
                 </div>
-                <div className="flex items-end justify-between mb-2">
-                    <div>
-                      <div className="text-sm text-slate-600">Baseline</div>
+                <div className="grid grid-cols-[1fr,auto,1fr] items-end gap-3 mb-3">
+                  <div>
+                    <div className="text-sm text-slate-600">Baseline</div>
                     <div className="text-lg font-bold text-slate-900">{formatMoney(item.baseline * 1000)}</div>
                   </div>
                   <i className="ri-arrow-right-line text-slate-400"></i>
@@ -694,7 +769,7 @@ const ImpactForecastsSection: React.FC = () => {
                     <div className="text-lg font-bold text-teal-600">{formatMoney(item.withActions * 1000)}</div>
                   </div>
                 </div>
-                <div className="px-2 py-1 bg-teal-100 text-teal-700 text-xs font-bold rounded-full text-center">
+                <div className="rounded-full bg-teal-100 px-3 py-2 text-center text-xs font-bold text-teal-700">
                   {item.change}
                 </div>
               </div>
