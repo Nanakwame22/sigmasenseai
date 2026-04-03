@@ -4,6 +4,7 @@ import { useAuth } from '../../../contexts/AuthContext';
 import { nlQueryService } from '../../../services/nlQueryService';
 import type { QueryResult, QueryHistory } from '../../../services/nlQueryService';
 import { addToast } from '../../../hooks/useToast';
+import { AIMEmptyState, AIMPanel, AIMSectionIntro } from './AIMSectionSystem';
 import {
   LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
@@ -248,36 +249,38 @@ export default function EnhancedQueryEngine({ compact = false }: Props) {
     <div className="space-y-6">
       {/* Header */}
       {!compact && (
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900">Natural Language Query</h2>
-            <p className="text-gray-600 mt-1">Ask questions about your data in plain English — results are saved to the Insight History feed</p>
-          </div>
-          <div className="flex items-center gap-3">
-            {hasApiKey ? (
-              <>
-                <div className="flex items-center gap-2 px-4 py-2 bg-teal-50 text-teal-700 rounded-lg text-sm">
-                  <i className="ri-check-line"></i>
-                  <span>{provider === 'openai' ? 'OpenAI' : 'Anthropic'} connected</span>
-                </div>
-                <button onClick={handleRemoveApiKey} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 whitespace-nowrap cursor-pointer">
-                  Change API Key
+        <AIMSectionIntro
+          eyebrow="Natural Language Query"
+          title="Ask AIM"
+          description="Query SigmaSense in plain English, review the underlying SQL when needed, and save useful answers directly into Insight History."
+          actions={
+            <div className="flex items-center gap-3">
+              {hasApiKey ? (
+                <>
+                  <div className="flex items-center gap-2 px-4 py-2 bg-teal-50 text-teal-700 rounded-lg text-sm">
+                    <i className="ri-check-line"></i>
+                    <span>{provider === 'openai' ? 'OpenAI' : 'Anthropic'} connected</span>
+                  </div>
+                  <button onClick={handleRemoveApiKey} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 whitespace-nowrap cursor-pointer">
+                    Change API Key
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={() => setShowApiKeyModal(true)}
+                  className="px-6 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 flex items-center gap-2 whitespace-nowrap cursor-pointer"
+                >
+                  <i className="ri-key-line"></i>
+                  Configure AI
                 </button>
-              </>
-            ) : (
-              <button
-                onClick={() => setShowApiKeyModal(true)}
-                className="px-6 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 flex items-center gap-2 whitespace-nowrap cursor-pointer"
-              >
-                <i className="ri-key-line"></i>
-                Configure AI
-              </button>
-            )}
-          </div>
-        </div>
+              )}
+            </div>
+          }
+        />
       )}
 
       {/* Query Input */}
+      {compact ? (
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
         {!hasApiKey && (
           <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
@@ -331,10 +334,86 @@ export default function EnhancedQueryEngine({ compact = false }: Props) {
           </div>
         )}
       </div>
+      ) : (
+        <AIMPanel
+          title="Query Studio"
+          description="Ask an operational question, inspect the result, and preserve the answer as reusable intelligence."
+          icon="ri-chat-voice-line"
+          accentClass="from-teal-500 to-cyan-600"
+        >
+          {!hasApiKey && (
+            <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              Ask AIM still works in direct query mode. Add an API key for richer AI summaries and stronger language interpretation.
+            </div>
+          )}
+          <div className="grid gap-5 lg:grid-cols-[1.35fr_0.65fr]">
+            <div>
+              <div className="flex gap-3">
+                <div className="flex-1">
+                  <textarea
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        handleExecuteQuery();
+                      }
+                    }}
+                    placeholder={hasApiKey ? 'Ask anything… results auto-save to Insight History' : 'Ask anything about your data…'}
+                    className="w-full min-h-[132px] px-4 py-4 border border-gray-300 rounded-2xl focus:ring-2 focus:ring-teal-500 focus:border-transparent resize-none text-sm"
+                    rows={4}
+                  />
+                </div>
+                <button
+                  onClick={() => handleExecuteQuery()}
+                  disabled={!query.trim() || isLoading}
+                  className="px-5 py-4 bg-teal-600 text-white rounded-2xl hover:bg-teal-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center gap-2 h-fit whitespace-nowrap cursor-pointer"
+                >
+                  {isLoading ? (
+                    <><i className="ri-loader-4-line animate-spin"></i>Analyzing…</>
+                  ) : (
+                    <><i className="ri-send-plane-fill"></i>Ask AIM</>
+                  )}
+                </button>
+              </div>
+            </div>
+            <div className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-4">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">How to use</div>
+              <ul className="mt-3 space-y-3 text-sm leading-6 text-slate-600">
+                <li className="flex items-start gap-2"><i className="ri-check-line text-teal-600 mt-1"></i><span>Ask for trends, exceptions, comparisons, or operational drivers.</span></li>
+                <li className="flex items-start gap-2"><i className="ri-check-line text-teal-600 mt-1"></i><span>Review the generated SQL when you need analyst-level traceability.</span></li>
+                <li className="flex items-start gap-2"><i className="ri-check-line text-teal-600 mt-1"></i><span>Every successful query can feed the broader AIM memory loop automatically.</span></li>
+              </ul>
+            </div>
+          </div>
+
+          {!result && suggestions.length > 0 && (
+            <div className="mt-5">
+              <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Suggested prompts</div>
+              <div className="flex flex-wrap gap-2">
+                {suggestions.slice(0, 6).map((suggestion, index) => (
+                  <button
+                    key={index}
+                    onClick={() => handleSuggestionClick(suggestion)}
+                    className="px-3 py-1.5 bg-white text-gray-700 rounded-full hover:bg-teal-50 hover:text-teal-700 hover:border-teal-200 border border-slate-200 text-xs transition-all whitespace-nowrap cursor-pointer"
+                  >
+                    {suggestion}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </AIMPanel>
+      )}
 
       {/* Results */}
       {result && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <AIMPanel
+          title="Query Results"
+          description={result.success ? 'Result set, narrative summary, and query trace for your latest Ask AIM request.' : 'AIM could not complete the requested query.'}
+          icon={result.success ? 'ri-database-2-line' : 'ri-error-warning-line'}
+          accentClass={result.success ? 'from-teal-500 to-cyan-600' : 'from-red-500 to-orange-600'}
+        >
           {result.success ? (
             <>
               {/* Saved-to-feed badge */}
@@ -387,12 +466,17 @@ export default function EnhancedQueryEngine({ compact = false }: Props) {
               </div>
             </div>
           )}
-        </div>
+        </AIMPanel>
       )}
 
       {/* Query History */}
       {!compact && history.length > 0 && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <AIMPanel
+          title="Recent Queries"
+          description="Re-open recent Ask AIM questions and compare successful vs failed runs."
+          icon="ri-history-line"
+          accentClass="from-slate-700 to-slate-900"
+        >
           <button
             onClick={() => setShowHistory(!showHistory)}
             className="flex items-center justify-between w-full text-left whitespace-nowrap cursor-pointer"
@@ -422,7 +506,7 @@ export default function EnhancedQueryEngine({ compact = false }: Props) {
               ))}
             </div>
           )}
-        </div>
+        </AIMPanel>
       )}
 
       {/* API Key Modal */}
