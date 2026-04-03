@@ -303,4 +303,94 @@ export function useDashboardData() {
               lastTimestamp: points[points.length - 1]?.timestamp || '',
               evidenceSummary: `${points.length} recent points across ${dedupedData.length} tracked intervals`,
               lineageSummary: metric.category
-       
+                ? `Metric history from ${metric.category} KPI tracking`
+                : 'Metric history from live SigmaSense tracking',
+              provenanceSummary: latestProvenance
+                ? latestProvenance
+                    .replace('etl:', '')
+                    .replace(/:source:[^:]+/, '')
+                    .replace(':mapping:', ' · mapping ')
+                    .replace(':run:', ' · run ')
+                    .replace('pipeline:', 'pipeline ')
+                : 'Legacy or manual provenance',
+            });
+          })
+        );
+
+        avgValue = healthRatios.length > 0
+          ? healthRatios.reduce((sum, value) => sum + value, 0) / healthRatios.length
+          : 0;
+      }
+
+      // --- Recent alerts ---
+      const { data: recentAlertsData } = await supabase
+        .from('alerts')
+        .select('id, title, severity, status, created_at')
+        .eq('organization_id', organizationId)
+        .order('created_at', { ascending: false })
+        .limit(5);
+
+      setStats({
+        totalMetrics: metricsCount || 0,
+        activeAlerts: alertsCount || 0,
+        completedActions: actionsCount || 0,
+        avgMetricValue: avgValue,
+        activeAnomalies: anomaliesCount || 0,
+        pendingRecommendations: pendingRecsCount || 0,
+        completedForecasts: forecastsCount || 0,
+        recentMetrics,
+        recentAlerts: recentAlertsData || [],
+        metricTrendSeries,
+        kpiHealthGrid,
+      });
+
+      setLastUpdated(new Date());
+      setError(null);
+    } catch (err) {
+      console.error('Error fetching dashboard data:', err);
+      setError('Failed to load dashboard data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchDashboardData();
+
+    if (!organizationId) return;
+
+    const metricDataChannel = supabase
+      .channel('metric_data_changes')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'metric_data', filter: `organization_id=eq.${organizationId}` }, () => fetchDashboardData())
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'metric_data', filter: `organization_id=eq.${organizationId}` }, () => fetchDashboardData())
+      .subscribe((status) => {
+        setIsRealtimeConnected(status === 'SUBSCRIBED');
+      });
+
+    const alertsChannel = supabase
+      .channel('alerts_changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'alerts', filter: `organization_id=eq.${organizationId}` }, () => fetchDashboardData())
+      .subscribe();
+
+    const actionsChannel = supabase
+      .channel('actions_changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'action_items', filter: `organization_id=eq.${organizationId}` }, () => fetchDashboardData())
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(metricDataChannel);
+      supabase.removeChannel(alertsChannel);
+      supabase.removeChannel(actionsChannel);
+      setIsRealtimeConnected(false);
+    };
+  }, [organizationId]);
+
+  return {
+    stats,
+    loading,
+    error,
+    refetch: fetchDashboardData,
+    isRealtimeConnected,
+    lastUpdated,
+  };
+}
