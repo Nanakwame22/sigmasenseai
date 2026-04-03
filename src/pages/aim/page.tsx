@@ -147,6 +147,11 @@ const AIMPage: React.FC = () => {
   ];
 
   const isFocusSection = activeSection === 'ask';
+  const workspaceGridClass = isFocusSection
+    ? 'max-w-[1400px]'
+    : isRailMinimized
+      ? 'max-w-[1700px] lg:grid-cols-[minmax(0,1fr)_104px]'
+      : 'max-w-[1700px] lg:grid-cols-[minmax(0,1fr)_360px]';
 
   return (
     <div className="flex h-screen overflow-hidden bg-[radial-gradient(circle_at_top_left,_rgba(45,212,191,0.08),_transparent_18%),radial-gradient(circle_at_top_right,_rgba(59,130,246,0.08),_transparent_16%),linear-gradient(180deg,_#f7fbfc,_#edf5f7_40%,_#f8fafc)]">
@@ -245,7 +250,7 @@ const AIMPage: React.FC = () => {
       </div>
 
       <div className="min-w-0 flex-1 overflow-y-auto">
-        <div className="mx-auto grid max-w-[1700px] gap-8 p-8 lg:grid-cols-[minmax(0,1fr)_360px] lg:p-10">
+        <div className={`mx-auto grid gap-8 p-8 lg:p-10 ${workspaceGridClass}`}>
           <div className="min-w-0">
             <div className="mb-8 rounded-[36px] border border-ai-200/30 bg-[radial-gradient(circle_at_top_left,_rgba(45,212,191,0.18),_transparent_28%),radial-gradient(circle_at_top_right,_rgba(56,189,248,0.14),_transparent_20%),linear-gradient(135deg,_rgba(15,23,42,0.985),_rgba(17,24,39,0.94))] px-8 py-8 text-white shadow-[0_34px_90px_rgba(15,23,42,0.22)]">
               <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
