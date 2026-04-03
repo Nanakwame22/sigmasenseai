@@ -1213,4 +1213,55 @@ export default function DataMappingPage() {
                             <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">Active transform operations</div>
                             <div className="space-y-2">
                               {transformationOperations.map((operation, index) => (
-                                <div key={`preview-operation-${index}`} className="flex flex-wrap items-
+                                <div key={`preview-operation-${index}`} className="flex flex-wrap items-center gap-2 text-sm text-slate-700">
+                                  <span className="px-2.5 py-1 bg-slate-100 rounded-full font-medium">Filter</span>
+                                  <span className="font-medium">{operation.field || 'field'}</span>
+                                  <span>{operationTypeLabels[operation.condition]}</span>
+                                  <span className="px-2.5 py-1 bg-teal-50 text-teal-700 rounded-full">{operation.value || 'value'}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {fieldMappings.map((mapping, index) => {
+                          const metricName = mapping.targetMetricId
+                            ? metrics.find((metric) => metric.id === mapping.targetMetricId)?.name
+                            : null;
+                          return (
+                            <div key={`${mapping.destinationType}-preview-${index}`} className="bg-teal-50/60 rounded-lg p-3 border border-teal-100">
+                              <div className="flex items-center justify-between gap-3">
+                                <div>
+                                  <div className="text-xs font-medium text-teal-700 mb-1">
+                                    {destinationLabels[mapping.destinationType]}
+                                  </div>
+                                  <div className="text-sm font-medium text-slate-900 break-all">
+                                    {formatSample(transformedPreview[mapping.destinationType])}
+                                  </div>
+                                </div>
+                                <div className="text-right">
+                                  <div className="text-xs text-slate-500">from</div>
+                                  <div className="text-sm font-medium text-slate-700">{mapping.sourceField || 'Unmapped'}</div>
+                                  {metricName && (
+                                    <div className="text-xs text-teal-700 mt-1">target metric: {metricName}</div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="rounded-lg bg-slate-50 p-4 text-sm text-slate-600">
+                        Add mappings and load a source preview to see the transformed output here.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
