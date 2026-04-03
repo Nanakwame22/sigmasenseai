@@ -98,9 +98,9 @@ function MiniBarChart({
 
 function ResidualPlot() {
   const points = Array.from({ length: 60 }, (_, i) => ({
-    x: 10 + Math.random() * 280,
-    y: 30 + (Math.random() - 0.5) * 50 + 40,
-    r: 2.5 + Math.random() * 2,
+    x: 12 + i * 4.6,
+    y: 52 + Math.sin(i * 0.55) * 18 + Math.cos(i * 0.21) * 8,
+    r: 2.8 + ((i % 5) * 0.35),
   }));
 
   return (
@@ -520,10 +520,70 @@ export default function AnalyzeIntelligence() {
     (scenarioValues.patient_volume - 35) * 0.89 * 0.05 +
     (scenarioValues.emergency_cases - 5) * 3.45 * 0.1
   ).toFixed(1);
-
-  /* Helper to build driver background classes safely (avoids JSX parsing issues with '/' ) */
-  const driverBgClass = (color: string, opacity: string) => `bg-${color}-${opacity}`;
-  const driverBorderClass = (color: string) => `border-${color}-200/60`;
+  const modelRSquared = parseFloat(modelMetrics.find((metric) => metric.label === 'R²')?.value || '0');
+  const passedDiagnostics = Object.values(diagnosticTests).filter((test) => test.status === 'pass').length;
+  const totalDiagnostics = Object.keys(diagnosticTests).length;
+  const topDrivers = [...coefficientData]
+    .sort((a, b) => Math.abs(b.standardizedBeta) - Math.abs(a.standardizedBeta))
+    .slice(0, 3)
+    .map((driver, index) => {
+      const color = driver.coefficient < 0 ? 'emerald' : index === 1 ? 'rose' : 'amber';
+      const variableLabel = driver.variable.replace(/_/g, ' ');
+      const outcomeLabel = outcomeVariable.replace(/_/g, ' ');
+      const coefficientMagnitude = Math.abs(driver.coefficient).toFixed(2);
+      return {
+        rank: index + 1,
+        variable: variableLabel.replace(/\b\w/g, (char) => char.toUpperCase()),
+        effect:
+          driver.coefficient < 0
+            ? `Each additional ${variableLabel} lowers ${outcomeLabel} by about ${coefficientMagnitude} units`
+            : `Each additional ${variableLabel} raises ${outcomeLabel} by about ${coefficientMagnitude} units`,
+        impact: `${driver.significance} significance with standardized beta ${driver.standardizedBeta.toFixed(2)}`,
+        color,
+      };
+    });
+  const strongestDriver = topDrivers[0];
+  const mediumDrivers = coefficientData.filter((driver) => Math.abs(driver.standardizedBeta) >= 0.3 && Math.abs(driver.standardizedBeta) < 0.5);
+  const smallDrivers = coefficientData.filter((driver) => Math.abs(driver.standardizedBeta) < 0.3);
+  const staffingDriver = coefficientData.find((row) => row.variable === 'staff_count');
+  const emergencyDriver = coefficientData.find((row) => row.variable === 'emergency_cases');
+  const patientVolumeDriver = coefficientData.find((row) => row.variable === 'patient_volume');
+  const projectedStaffingLift = staffingDriver ? Math.abs(staffingDriver.coefficient) * 2 : 0;
+  const projectedRelativeImprovement = 18.4 > 0 ? (projectedStaffingLift / 18.4) * 100 : 0;
+  const modelQualityTone =
+    modelRSquared >= 0.8 ? 'Excellent Model Quality' : modelRSquared >= 0.65 ? 'Strong Model Quality' : 'Moderate Model Quality';
+  const modelQualityBody =
+    modelRSquared >= 0.8
+      ? `The current ${modelType.toLowerCase()} explains ${(modelRSquared * 100).toFixed(1)}% of variance in ${outcomeVariable.replace(/_/g, ' ')}. ${passedDiagnostics} of ${totalDiagnostics} diagnostics passed, so this is suitable for operational planning with routine monitoring.`
+      : `The current ${modelType.toLowerCase()} explains ${(modelRSquared * 100).toFixed(1)}% of variance in ${outcomeVariable.replace(/_/g, ' ')}. ${passedDiagnostics} of ${totalDiagnostics} diagnostics passed, so it is directionally useful but should be monitored against fresh data before high-stakes decisions.`;
+  const aiPanelToneClass =
+    modelRSquared >= 0.8
+      ? 'bg-emerald-50/80 border-emerald-200/60 text-emerald-800'
+      : 'bg-amber-50/80 border-amber-200/60 text-amber-800';
+  const aiPanelIconClass = modelRSquared >= 0.8 ? 'bg-emerald-500' : 'bg-amber-500';
+  const driverThemeMap: Record<string, { card: string; badge: string; title: string; effect: string; impact: string }> = {
+    emerald: {
+      card: 'bg-emerald-50/60 border border-emerald-200/60',
+      badge: 'bg-emerald-500',
+      title: 'text-emerald-800',
+      effect: 'text-emerald-700',
+      impact: 'text-emerald-600',
+    },
+    rose: {
+      card: 'bg-rose-50/60 border border-rose-200/60',
+      badge: 'bg-rose-500',
+      title: 'text-rose-800',
+      effect: 'text-rose-700',
+      impact: 'text-rose-600',
+    },
+    amber: {
+      card: 'bg-amber-50/60 border border-amber-200/60',
+      badge: 'bg-amber-500',
+      title: 'text-amber-800',
+      effect: 'text-amber-700',
+      impact: 'text-amber-600',
+    },
+  };
 
   return (
     <div className="min-h-screen relative overflow-hidden">
@@ -1103,7 +1163,7 @@ export default function AnalyzeIntelligence() {
                       <div className="h-48 flex flex-col items-center justify-center">
                         <div className="relative w-full h-32 flex items-end justify-center gap-[2px]">
                           {Array.from({ length: 20 }, (_, i) => {
-                            const h = i === 0 ? 100 : Math.max(5, 100 * Math.exp(-i * 0.3) * (1 + (Math.random() - 0.5) * 0.3));
+                            const h = i === 0 ? 100 : Math.max(5, 100 * Math.exp(-i * 0.3) * (1 + Math.sin(i * 0.85) * 0.12));
                             return (
                               <div
                                 key={i}
@@ -1122,7 +1182,7 @@ export default function AnalyzeIntelligence() {
                         <div className="relative w-full h-32 flex items-end justify-center gap-[3px]">
                           {Array.from({ length: 25 }, (_, i) => {
                             const isOutlier = i === 8 || i === 15 || i === 21;
-                            const h = isOutlier ? 85 + Math.random() * 15 : 10 + Math.random() * 40;
+                            const h = isOutlier ? 88 + (i % 3) * 4 : 18 + ((i * 9) % 28);
                             return (
                               <div
                                 key={i}
@@ -1227,7 +1287,7 @@ export default function AnalyzeIntelligence() {
                       {Array.from({ length: 30 }, (_, i) => {
                         const base = 20 + Math.sin(i * 0.3) * 8;
                         const trend = i > 15 ? -(i - 15) * 1.5 : 0;
-                        const h = Math.max(5, base + trend + (Math.random() - 0.5) * 6);
+                        const h = Math.max(5, base + trend + Math.sin(i * 0.72) * 4);
                         return (
                           <div key={i} className="flex-1 mx-[1px]">
                             <div
@@ -1439,15 +1499,15 @@ export default function AnalyzeIntelligence() {
 
             <div className="p-5 space-y-5">
               {/* Model Quality */}
-              <div className="bg-emerald-50/80 border border-emerald-200/60 rounded-xl p-4">
+              <div className={`${aiPanelToneClass} border rounded-xl p-4`}>
                 <div className="flex items-center gap-2 mb-2">
-                  <div className="w-6 h-6 rounded-full bg-emerald-500 flex items-center justify-center">
+                  <div className={`w-6 h-6 rounded-full ${aiPanelIconClass} flex items-center justify-center`}>
                     <i className="ri-checkbox-circle-fill text-white text-xs"></i>
                   </div>
-                  <span className="text-sm font-bold text-emerald-800">Excellent Model Quality</span>
+                  <span className="text-sm font-bold">{modelQualityTone}</span>
                 </div>
-                <p className="text-xs text-emerald-700 leading-relaxed">
-                  Your regression model demonstrates strong predictive power with an R\u00B2 of 0.847, indicating that 84.7% of variance in wait times is explained by the selected variables. All 5 of 6 diagnostic tests passed successfully.
+                <p className="text-xs leading-relaxed">
+                  {modelQualityBody}
                 </p>
               </div>
 
@@ -1458,43 +1518,23 @@ export default function AnalyzeIntelligence() {
                   Top 3 Statistical Drivers
                 </h4>
                 <div className="space-y-2.5">
-                  {[
-                    {
-                      rank: 1,
-                      variable: 'Staff Count',
-                      effect: 'Each additional staff member reduces wait time by 2.34 minutes',
-                      impact: 'Strongest negative predictor (β = -0.52)',
-                      color: 'emerald',
-                    },
-                    {
-                      rank: 2,
-                      variable: 'Emergency Cases',
-                      effect: 'Each emergency case increases wait time by 3.45 minutes',
-                      impact: 'Significant positive predictor (β = 0.35)',
-                      color: 'rose',
-                    },
-                    {
-                      rank: 3,
-                      variable: 'Patient Volume',
-                      effect: 'Each additional patient increases wait time by 0.89 minutes',
-                      impact: 'Moderate positive predictor (β = 0.41)',
-                      color: 'amber',
-                    },
-                  ].map((driver) => (
+                  {topDrivers.map((driver) => {
+                    const theme = driverThemeMap[driver.color] || driverThemeMap.amber;
+                    return (
                     <div
                       key={driver.rank}
-                      className={`bg-${driver.color}-50/60 border border-${driver.color}-200/60 rounded-xl p-3`}
+                      className={`${theme.card} rounded-xl p-3`}
                     >
                       <div className="flex items-center gap-2 mb-1">
-                        <div className={`w-5 h-5 rounded-full bg-${driver.color}-500 flex items-center justify-center`}>
+                        <div className={`w-5 h-5 rounded-full ${theme.badge} flex items-center justify-center`}>
                           <span className="text-[9px] font-bold text-white">{driver.rank}</span>
                         </div>
-                        <span className={`text-xs font-bold text-${driver.color}-800`}>{driver.variable}</span>
+                        <span className={`text-xs font-bold ${theme.title}`}>{driver.variable}</span>
                       </div>
-                      <p className={`text-[11px] text-${driver.color}-700 mb-0.5`}>{driver.effect}</p>
-                      <p className={`text-[10px] text-${driver.color}-600 opacity-80`}>{driver.impact}</p>
+                      <p className={`text-[11px] ${theme.effect} mb-0.5`}>{driver.effect}</p>
+                      <p className={`text-[10px] ${theme.impact} opacity-80`}>{driver.impact}</p>
                     </div>
-                  ))}
+                  )})}
                 </div>
               </div>
 
@@ -1503,16 +1543,13 @@ export default function AnalyzeIntelligence() {
                 <h4 className="text-xs font-bold text-slate-800 mb-2">Effect Size Interpretation</h4>
                 <div className="bg-slate-50/80 rounded-xl p-3 text-[11px] text-slate-600 space-y-1.5 leading-relaxed">
                   <p>
-                    <strong className="text-slate-800">Large Effect:</strong> Staff count shows a large standardized
-                    effect (|β| &gt; 0.5), making it the most impactful lever for improvement.
+                    <strong className="text-slate-800">Large Effect:</strong> {strongestDriver?.variable || 'The leading driver'} has the strongest standardized effect, making it the clearest operational lever in the current model.
                   </p>
                   <p>
-                    <strong className="text-slate-800">Medium Effects:</strong> Patient volume and emergency cases show
-                    medium effects (|β| = 0.3-0.5), requiring strategic management.
+                    <strong className="text-slate-800">Medium Effects:</strong> {mediumDrivers.length > 0 ? mediumDrivers.map((driver) => driver.variable.replace(/_/g, ' ')).join(', ') : 'Secondary variables'} show medium-sized effects and should be managed as coordinated supporting levers.
                   </p>
                   <p>
-                    <strong className="text-slate-800">Small Effects:</strong> Time of day and day of week show small but
-                    significant effects (|β| &lt; 0.3).
+                    <strong className="text-slate-800">Small Effects:</strong> {smallDrivers.length > 0 ? smallDrivers.map((driver) => driver.variable.replace(/_/g, ' ')).join(', ') : 'The remaining variables'} add directional context, but they should not drive the first wave of intervention on their own.
                   </p>
                 </div>
               </div>
@@ -1525,16 +1562,13 @@ export default function AnalyzeIntelligence() {
                 </h4>
                 <div className="bg-rose-50/60 border border-rose-200/60 rounded-xl p-3 text-[11px] text-rose-700 space-y-1.5 leading-relaxed">
                   <p>
-                    <strong>Critical Risk:</strong> Current staffing levels are insufficient during peak hours, leading
-                    to wait time spikes exceeding 60 minutes.
+                    <strong>Critical Risk:</strong> {staffingDriver ? `The model still shows staffing pressure as the largest controllable risk, with a coefficient of ${staffingDriver.coefficient.toFixed(2)} per unit shift.` : 'Current operational capacity is still the largest controllable risk.'}
                   </p>
                   <p>
-                    <strong>Operational Risk:</strong> Emergency case surges create cascading bottlenecks through the
-                    entire system.
+                    <strong>Operational Risk:</strong> {emergencyDriver ? `Emergency-case surges add roughly ${emergencyDriver.coefficient.toFixed(2)} units of pressure per case, which can cascade through flow and service levels.` : 'Demand spikes still create cascading bottlenecks through the system.'}
                   </p>
                   <p>
-                    <strong>Mitigation Priority:</strong> Focus on flexible staffing models and emergency triage
-                    protocols.
+                    <strong>Mitigation Priority:</strong> Focus first on staffing flexibility, then demand-shaping and triage discipline to absorb peak-hour volatility.
                   </p>
                 </div>
               </div>
@@ -1544,14 +1578,14 @@ export default function AnalyzeIntelligence() {
                 <h4 className="text-xs font-bold text-slate-800 mb-2">Executive Summary</h4>
                 <div className="bg-indigo-50/60 border border-indigo-200/60 rounded-xl p-3 text-[11px] text-indigo-800 space-y-1.5 leading-relaxed">
                   <p>
-                    Statistical analysis reveals that <strong>staffing optimization</strong> offers the greatest
-                    opportunity for wait time reduction. A 20% increase in staff during peak hours could reduce average
-                    wait times by approximately <strong>4.7 minutes</strong>, representing a <strong>25% improvement</strong>{' '}
-                    in patient experience.
+                    Statistical analysis shows that <strong>{strongestDriver?.variable || 'the leading driver'}</strong> offers the strongest immediate improvement path. A focused operational shift on that lever is projected to change the outcome by about <strong>{projectedStaffingLift.toFixed(1)} units</strong>, or roughly <strong>{projectedRelativeImprovement.toFixed(0)}%</strong> versus the current modeled baseline.
                   </p>
                   <p>
-                    Emergency case management and patient flow optimization should be secondary priorities, with projected
-                    improvements of <strong> 15-18%</strong> when combined with staffing changes.
+                    {patientVolumeDriver && emergencyDriver
+                      ? `Patient volume and emergency demand should be treated as the next constraints to stabilize, since together they add ${(
+                          patientVolumeDriver.coefficient + emergencyDriver.coefficient
+                        ).toFixed(2)} modeled units of pressure when they rise in tandem.`
+                      : 'Secondary operational levers should be managed as supporting actions once the primary driver is under tighter control.'}
                   </p>
                 </div>
               </div>
