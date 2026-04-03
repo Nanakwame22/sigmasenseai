@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from 'recharts';
@@ -95,6 +96,8 @@ interface FieldInsight {
 export default function ETLPipelinesPage() {
   const { user } = useAuth();
   const { showToast } = useToast();
+  const location = useLocation();
+  const appliedFocusRef = useRef<string | null>(null);
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [dataSources, setDataSources] = useState<DataSource[]>([]);
   const [metrics, setMetrics] = useState<any[]>([]);
@@ -135,6 +138,8 @@ export default function ETLPipelinesPage() {
     message: '',
     onConfirm: () => {}
   });
+  const [focusedPipelineId, setFocusedPipelineId] = useState<string | null>(null);
+  const focusedMetricId = new URLSearchParams(location.search).get('metric');
 
   const [formData, setFormData] = useState({
     name: '',
@@ -157,6 +162,43 @@ export default function ETLPipelinesPage() {
       loadPipelineRuns(selectedPipeline.id);
     }
   }, [selectedPipeline]);
+
+  useEffect(() => {
+    if (loading || pipelines.length === 0) return;
+
+    const params = new URLSearchParams(location.search);
+    const pipelineParam = params.get('pipeline');
+    const sourceParam = params.get('source');
+    const metricParam = params.get('metric');
+    const focusKey = `${pipelineParam || ''}-${sourceParam || ''}-${metricParam || ''}`;
+
+    if (!pipelineParam && !sourceParam && !metricParam) return;
+    if (appliedFocusRef.current === focusKey) return;
+
+    let nextPipeline: Pipeline | null = null;
+
+    if (pipelineParam) {
+      nextPipeline = pipelines.find((pipeline) => pipeline.id === pipelineParam) || null;
+    }
+
+    if (!nextPipeline && metricParam) {
+      nextPipeline = pipelines.find((pipeline) =>
+        Array.isArray(pipeline.transformation_rules?.field_mappings) &&
+        pipeline.transformation_rules.field_mappings.some((mapping: FieldMapping) => mapping.targetMetricId === metricParam)
+      ) || null;
+    }
+
+    if (!nextPipeline && sourceParam) {
+      nextPipeline = pipelines.find((pipeline) => pipeline.source_id === sourceParam) || null;
+    }
+
+    if (nextPipeline) {
+      setSelectedPipeline(nextPipeline);
+      setFocusedPipelineId(nextPipeline.id);
+    }
+
+    appliedFocusRef.current = focusKey;
+  }, [location.search, loading, pipelines]);
 
   // Calculate next run times and subscribe to realtime updates
   useEffect(() => {
@@ -1045,6 +1087,27 @@ export default function ETLPipelinesPage() {
         ))}
       </div>
 
+      {selectedPipeline && (
+        <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-4">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">ETL Provenance</div>
+          <p className="mt-1 text-sm font-semibold text-slate-900">
+            {focusedMetricId
+              ? `Focused on the pipeline currently feeding the selected metric`
+              : 'Focused on the latest pipeline execution context'}
+          </p>
+          <p className="mt-1 text-sm text-slate-600">
+            Latest known run status:{' '}
+            <span className="font-semibold text-slate-900">
+              {latestRuns[selectedPipeline.id]?.status || 'No run history yet'}
+            </span>
+            {latestRuns[selectedPipeline.id]?.started_at
+              ? ` • started ${new Date(latestRuns[selectedPipeline.id].started_at).toLocaleString()}`
+              : ''}
+            . SigmaSense currently traces metrics to the pipeline and run stream, but not yet to an exact per-point run id inside `metric_data`.
+          </p>
+        </div>
+      )}
+
       {/* Pipeline Status Chart */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
         <h3 className="text-lg font-semibold text-gray-900 mb-4">Pipeline Status Overview</h3>
@@ -1069,7 +1132,14 @@ export default function ETLPipelinesPage() {
       {/* Pipelines Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {filteredPipelines.map((pipeline) => (
-          <div key={pipeline.id} className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <div
+            key={pipeline.id}
+            className={`bg-white rounded-lg shadow-sm border p-6 ${
+              focusedPipelineId === pipeline.id
+                ? 'border-teal-400 ring-2 ring-teal-100'
+                : 'border-gray-200'
+            }`}
+          >
             {(() => {
               const validation = validatePipelineConfiguration(pipeline);
               const source = dataSources.find((item) => item.id === pipeline.source_id);
@@ -1753,78 +1823,4 @@ export default function ETLPipelinesPage() {
                                   {metrics.find(m => m.id === mapping.targetMetricId)?.name}
                                 </span>
                               </>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              <div className="flex gap-3 pt-4">
-                {currentStep > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => setCurrentStep(currentStep - 1)}
-                    className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors whitespace-nowrap"
-                  >
-                    <i className="ri-arrow-left-line mr-1"></i>
-                    Back
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowModal(false);
-                    setEditingPipeline(null);
-                    resetForm();
-                  }}
-                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors whitespace-nowrap"
-                >
-                  Cancel
-                </button>
-                {currentStep < 3 ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (currentStep === 1 && !formData.source_id) {
-                        showToast('Please select a data source', 'error');
-                        return;
-                      }
-                      if (currentStep === 2 && !fieldMappings.some((mapping) => mapping.destinationType === 'value' && mapping.sourceField)) {
-                        showToast('Add at least one value mapping before continuing.', 'error');
-                        return;
-                      }
-                      setCurrentStep(currentStep + 1);
-                    }}
-                    className="flex-1 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors whitespace-nowrap"
-                  >
-                    Next
-                    <i className="ri-arrow-right-line ml-1"></i>
-                  </button>
-                ) : (
-                  <button
-                    type="submit"
-                    className="flex-1 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors whitespace-nowrap"
-                  >
-                    {editingPipeline ? 'Update Pipeline' : 'Create Pipeline'}
-                  </button>
-                )}
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Confirm Dialog */}
-      <ConfirmDialog
-        isOpen={confirmDialog.isOpen}
-        title={confirmDialog.title}
-        message={confirmDialog.message}
-        onConfirm={confirmDialog.onConfirm}
-        onCancel={() => setConfirmDialog({ ...confirmDialog, isOpen: false })}
-      />
-    </div>
-  );
-}
+                   

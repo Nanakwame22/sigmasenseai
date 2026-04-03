@@ -590,7 +590,11 @@ serve(async (req) => {
       .eq('organization_id', organizationId);
 
     const metricsByName = new Map((metricsData || []).map((metric) => [metric.name, metric.id]));
-    const dataPoints: Array<{ metric_id: string; value: number; timestamp: string; organization_id: string }> = [];
+    const mappingVersion = pipelineData.updated_at
+      ? new Date(pipelineData.updated_at).toISOString()
+      : 'unknown';
+    const provenanceSource = `etl:pipeline:${pipelineId}:run:${runId}:source:${sourceId ?? 'unknown'}:mapping:${mappingVersion}`;
+    const dataPoints: Array<{ metric_id: string; value: number; timestamp: string; organization_id: string; source: string }> = [];
     let recordsSuccess = 0;
     let recordsFailed = 0;
     const failureSamples: Array<Record<string, unknown>> = [];
@@ -712,6 +716,7 @@ serve(async (req) => {
           value,
           timestamp,
           organization_id: organizationId,
+          source: provenanceSource,
         });
         const previousLatest = latestMetricValues.get(metricId);
         if (!previousLatest || new Date(timestamp).getTime() >= new Date(previousLatest.timestamp).getTime()) {
@@ -764,6 +769,7 @@ serve(async (req) => {
         message: 'Writing transformed datapoints to metric_data',
         details: {
           datapoints: dataPoints.length,
+          provenance_source: provenanceSource,
         },
       });
 
@@ -934,17 +940,4 @@ serve(async (req) => {
         .from('etl_pipelines')
         .update({
           total_runs: (pipeline.total_runs || 0) + 1,
-          failed_runs: (pipeline.failed_runs || 0) + 1,
-          status: 'failed',
-          last_run_at: new Date().toISOString(),
-        })
-        .eq('id', pipeline.id)
-        .eq('organization_id', pipeline.organization_id);
-    }
-
-    return new Response(JSON.stringify({ error: message }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
-  }
-});
+          failed_runs: (pipeline.failed_runs || 0) + 

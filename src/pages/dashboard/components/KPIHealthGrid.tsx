@@ -5,6 +5,19 @@ interface KPIHealthGridProps {
   items: KPIHealthItem[];
 }
 
+function formatRelativeTime(timestamp: string) {
+  if (!timestamp) return 'No recent data';
+  const diffMs = Date.now() - new Date(timestamp).getTime();
+  if (!Number.isFinite(diffMs) || diffMs < 0) return 'Just updated';
+  const diffMins = Math.floor(diffMs / 60000);
+  if (diffMins < 1) return 'Just updated';
+  if (diffMins < 60) return `${diffMins}m ago`;
+  const diffHours = Math.floor(diffMins / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+  const diffDays = Math.floor(diffHours / 24);
+  return `${diffDays}d ago`;
+}
+
 function Sparkline({ values, color }: { values: number[]; color: string }) {
   if (!values.length) return null;
   const min = Math.min(...values);
@@ -71,6 +84,7 @@ function KPICard({ item }: { item: KPIHealthItem }) {
     : 100;
   const trendUp = item.trend === 'up';
   const trendStable = item.trend === 'stable';
+  const freshness = formatRelativeTime(item.lastTimestamp);
 
   return (
     <div className="bg-white rounded-xl border border-gray-100 p-4 hover:shadow-md transition-all duration-200 group cursor-pointer">
@@ -120,67 +134,40 @@ function KPICard({ item }: { item: KPIHealthItem }) {
           ></div>
         </div>
       </div>
+
+      <div className="mt-3 rounded-xl border border-slate-100 bg-slate-50/80 p-3">
+        <div className="flex flex-wrap gap-2">
+          <div className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600">
+            Freshness: {freshness}
+          </div>
+          <div className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600">
+            History: {item.historyPoints} points
+          </div>
+        </div>
+        <p className="mt-2 text-[11px] leading-5 text-slate-500">{item.evidenceSummary}</p>
+        <p className="mt-1 text-[11px] leading-5 text-slate-400">{item.lineageSummary}</p>
+        <p className="mt-1 text-[11px] leading-5 text-slate-400">Provenance: {item.provenanceSummary}</p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Link
+            to={`/dashboard/metrics?metric=${item.id}`}
+            className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:border-teal-200 hover:text-teal-700"
+          >
+            <i className="ri-line-chart-line"></i>
+            Metric
+          </Link>
+          <Link
+            to={`/dashboard/etl-pipelines?metric=${item.id}`}
+            className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:border-teal-200 hover:text-teal-700"
+          >
+            <i className="ri-git-branch-line"></i>
+            ETL
+          </Link>
+        </div>
+      </div>
     </div>
   );
 }
 
 export default function KPIHealthGrid({ items }: KPIHealthGridProps) {
   const onTrack = items.filter((i) => i.status === 'on-track').length;
-  const atRisk = items.filter((i) => i.status === 'at-risk').length;
-  const critical = items.filter((i) => i.status === 'critical').length;
-
-  if (!items.length) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full gap-3 text-center py-8">
-        <div className="w-14 h-14 bg-gray-100 rounded-xl flex items-center justify-center">
-          <i className="ri-bar-chart-box-line text-gray-400 text-2xl"></i>
-        </div>
-        <div>
-          <p className="text-gray-500 font-medium text-sm">No KPI data yet</p>
-          <p className="text-gray-400 text-xs mt-1">Add metrics with targets to see health status</p>
-        </div>
-        <Link
-          to="/dashboard/metrics"
-          className="text-xs font-semibold text-blue-600 hover:text-blue-700 mt-1 cursor-pointer"
-        >
-          Go to Metrics →
-        </Link>
-      </div>
-    );
-  }
-
-  return (
-    <div className="h-full flex flex-col">
-      {/* Summary bar */}
-      <div className="flex items-center gap-4 mb-4 pb-4 border-b border-gray-100">
-        <div className="flex items-center gap-1.5">
-          <div className="w-2.5 h-2.5 rounded-full bg-emerald-500"></div>
-          <span className="text-xs font-semibold text-gray-600">{onTrack} On Track</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <div className="w-2.5 h-2.5 rounded-full bg-amber-500"></div>
-          <span className="text-xs font-semibold text-gray-600">{atRisk} At Risk</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <div className="w-2.5 h-2.5 rounded-full bg-red-500"></div>
-          <span className="text-xs font-semibold text-gray-600">{critical} Critical</span>
-        </div>
-        <Link
-          to="/dashboard/metrics"
-          className="ml-auto text-xs font-semibold text-gray-400 hover:text-gray-700 transition-colors cursor-pointer whitespace-nowrap"
-        >
-          View All →
-        </Link>
-      </div>
-
-      {/* Grid */}
-      <div className="flex-1 overflow-y-auto">
-        <div className="grid grid-cols-2 gap-3">
-          {items.map((item) => (
-            <KPICard key={item.id} item={item} />
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
+  const atRisk = items.f

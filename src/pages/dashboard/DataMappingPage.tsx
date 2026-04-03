@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../hooks/useToast';
@@ -104,6 +105,8 @@ function formatSample(value: unknown): string {
 export default function DataMappingPage() {
   const { user, organizationId } = useAuth();
   const { showToast } = useToast();
+  const location = useLocation();
+  const appliedFocusRef = useRef<string | null>(null);
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('sources');
   const [loading, setLoading] = useState(true);
@@ -164,6 +167,42 @@ export default function DataMappingPage() {
 
     loadSourcePreview(selectedSourceId);
   }, [selectedSourceId, dataSources]);
+
+  useEffect(() => {
+    if (loading || dataSources.length === 0) return;
+
+    const params = new URLSearchParams(location.search);
+    const sourceParam = params.get('source');
+    const pipelineParam = params.get('pipeline');
+    const metricParam = params.get('metric');
+    const tabParam = params.get('tab') as ActiveTab | null;
+    const focusKey = `${sourceParam || ''}-${pipelineParam || ''}-${metricParam || ''}-${tabParam || ''}`;
+
+    if (!sourceParam && !pipelineParam && !metricParam && !tabParam) return;
+    if (appliedFocusRef.current === focusKey) return;
+
+    if (tabParam && ['sources', 'mapping', 'preview'].includes(tabParam)) {
+      setActiveTab(tabParam);
+    }
+
+    if (pipelineParam && pipelines.some((pipeline) => pipeline.id === pipelineParam)) {
+      setSelectedPipelineId(pipelineParam);
+    } else if (metricParam) {
+      const matchingPipeline = pipelines.find((pipeline) =>
+        Array.isArray(pipeline.transformation_rules?.field_mappings) &&
+        pipeline.transformation_rules.field_mappings.some((mapping: FieldMapping) => mapping.targetMetricId === metricParam)
+      );
+      if (matchingPipeline) {
+        setSelectedPipelineId(matchingPipeline.id);
+      }
+    }
+
+    if (sourceParam && dataSources.some((source) => source.id === sourceParam)) {
+      setSelectedSourceId(sourceParam);
+    }
+
+    appliedFocusRef.current = focusKey;
+  }, [location.search, loading, dataSources, pipelines]);
 
   const resolveOrganizationId = async () => {
     if (organizationId) return organizationId;
@@ -318,6 +357,7 @@ export default function DataMappingPage() {
 
   const selectedSource = dataSources.find((source) => source.id === selectedSourceId) || null;
   const selectedPipeline = pipelines.find((pipeline) => pipeline.id === selectedPipelineId) || null;
+  const focusedMetricId = new URLSearchParams(location.search).get('metric');
   const activeMappings = fieldMappings.filter((mapping) => mapping.sourceField);
   const valueCandidates = getValueCandidateFields(sourceFields, fieldInsights);
   const totalOperations = pipelines.reduce((sum, pipeline) => sum + ((pipeline.transformation_rules?.operations || []).length), 0);
@@ -821,7 +861,22 @@ export default function DataMappingPage() {
               )}
 
               {selectedPipeline ? (
-                <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                <div className="space-y-3">
+                  <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Lineage Focus</div>
+                    <p className="mt-1 text-sm font-semibold text-slate-900">
+                      {focusedMetricId
+                        ? 'Tracing a metric back through its saved mapping rules'
+                        : 'Reviewing the live mapping configuration for this pipeline'}
+                    </p>
+                    <p className="mt-1 text-sm text-slate-600">
+                      Mapping rules were last updated {selectedPipeline.updated_at ? new Date(selectedPipeline.updated_at).toLocaleString() : 'recently'}.
+                      {focusedMetricId
+                        ? ' This is the strongest provenance detail currently available before ETL runtime.'
+                        : ' These rules determine how source fields are transformed before ETL writes metric history.'}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
                   <div className="flex flex-wrap items-center gap-3">
                     <span className="px-3 py-1 bg-white border border-slate-200 text-slate-700 text-xs font-medium rounded-full">
                       Pipeline destination: {selectedPipeline.destination_type}
@@ -838,6 +893,7 @@ export default function DataMappingPage() {
                     <span className="px-3 py-1 bg-white border border-slate-200 text-slate-700 text-xs font-medium rounded-full">
                       {transformationOperations.length} transform operation{transformationOperations.length === 1 ? '' : 's'}
                     </span>
+                  </div>
                   </div>
                 </div>
               ) : (
@@ -1157,55 +1213,4 @@ export default function DataMappingPage() {
                             <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">Active transform operations</div>
                             <div className="space-y-2">
                               {transformationOperations.map((operation, index) => (
-                                <div key={`preview-operation-${index}`} className="flex flex-wrap items-center gap-2 text-sm text-slate-700">
-                                  <span className="px-2.5 py-1 bg-slate-100 rounded-full font-medium">Filter</span>
-                                  <span className="font-medium">{operation.field || 'field'}</span>
-                                  <span>{operationTypeLabels[operation.condition]}</span>
-                                  <span className="px-2.5 py-1 bg-teal-50 text-teal-700 rounded-full">{operation.value || 'value'}</span>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                        {fieldMappings.map((mapping, index) => {
-                          const metricName = mapping.targetMetricId
-                            ? metrics.find((metric) => metric.id === mapping.targetMetricId)?.name
-                            : null;
-                          return (
-                            <div key={`${mapping.destinationType}-preview-${index}`} className="bg-teal-50/60 rounded-lg p-3 border border-teal-100">
-                              <div className="flex items-center justify-between gap-3">
-                                <div>
-                                  <div className="text-xs font-medium text-teal-700 mb-1">
-                                    {destinationLabels[mapping.destinationType]}
-                                  </div>
-                                  <div className="text-sm font-medium text-slate-900 break-all">
-                                    {formatSample(transformedPreview[mapping.destinationType])}
-                                  </div>
-                                </div>
-                                <div className="text-right">
-                                  <div className="text-xs text-slate-500">from</div>
-                                  <div className="text-sm font-medium text-slate-700">{mapping.sourceField || 'Unmapped'}</div>
-                                  {metricName && (
-                                    <div className="text-xs text-teal-700 mt-1">target metric: {metricName}</div>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <div className="rounded-lg bg-slate-50 p-4 text-sm text-slate-600">
-                        Add mappings and load a source preview to see the transformed output here.
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
+                                <div key={`preview-operation-${index}`} className="flex flex-wrap items-

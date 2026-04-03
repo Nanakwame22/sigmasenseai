@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import Papa from 'papaparse';
@@ -81,6 +82,7 @@ type AuthType = 'none' | 'api_key' | 'bearer' | 'basic';
 
 export default function DataIntegrationPage() {
   const { user, organizationId } = useAuth();
+  const location = useLocation();
   const [dataSources, setDataSources] = useState<DataSource[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -156,6 +158,16 @@ export default function DataIntegrationPage() {
       setLoading(false);
     }
   }, [organizationId]);
+
+  useEffect(() => {
+    const sourceId = new URLSearchParams(location.search).get('source');
+    if (!sourceId || dataSources.length === 0 || selectedSource?.id === sourceId) return;
+
+    const focusedSource = dataSources.find((source) => source.id === sourceId);
+    if (focusedSource) {
+      loadSourceDetail(focusedSource);
+    }
+  }, [location.search, dataSources, selectedSource]);
 
   const fetchDataSources = async () => {
     if (!organizationId) {
@@ -2068,22 +2080,4 @@ export default function DataIntegrationPage() {
                   >
                     {isSavingApi ? (
                       <>
-                        <i className="ri-loader-4-line animate-spin mr-2"></i>
-                        Saving...
-                      </>
-                    ) : (
-                      <>
-                        <i className="ri-save-line mr-2"></i>
-                        Save API Source
-                      </>
-                    )}
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
+                

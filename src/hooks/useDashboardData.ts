@@ -22,6 +22,11 @@ export interface KPIHealthItem {
   status: 'on-track' | 'at-risk' | 'critical';
   sparkline: number[];
   category: string;
+  historyPoints: number;
+  lastTimestamp: string;
+  evidenceSummary: string;
+  lineageSummary: string;
+  provenanceSummary: string;
 }
 
 export interface DashboardStats {
@@ -69,6 +74,11 @@ function normalizeMetricName(name: string | null | undefined) {
 function getPriorityIndex(name: string) {
   const idx = HEALTHCARE_PRIORITY.findIndex((metric) => normalizeMetricName(metric) === normalizeMetricName(name));
   return idx === -1 ? HEALTHCARE_PRIORITY.length + 100 : idx;
+}
+
+function isLegacyRiskMetric(name: string) {
+  const normalized = normalizeMetricName(name);
+  return normalized.includes('risk score') && !HEALTHCARE_PRIORITY.some((metric) => normalizeMetricName(metric) === normalized);
 }
 
 function getMetricHealthRatio(metricName: string, currentValue: number, targetValue: number) {
@@ -152,18 +162,19 @@ export function useDashboardData() {
 
         const { data: allRecentMetricData } = await supabase
           .from('metric_data')
-          .select('id, metric_id, value, timestamp')
+          .select('id, metric_id, value, timestamp, source')
           .in('metric_id', metricIds)
           .order('timestamp', { ascending: false })
           .limit(400);
 
-        const metricPointsById = new Map<string, Array<{ id: string; value: number; timestamp: string }>>();
+        const metricPointsById = new Map<string, Array<{ id: string; value: number; timestamp: string; source?: string }>>();
         (allRecentMetricData || []).forEach((row: any) => {
           const existing = metricPointsById.get(row.metric_id) || [];
           existing.push({
             id: row.id,
             value: Number(row.value) || 0,
             timestamp: row.timestamp,
+            source: row.source || undefined,
           });
           metricPointsById.set(row.metric_id, existing);
         });
@@ -191,12 +202,53 @@ export function useDashboardData() {
         );
 
         const healthRatios: number[] = [];
-
-        await Promise.all(
-          prioritizedMetrics.slice(0, 8).map(async (metric: any, idx: number) => {
-            const points = [...(metricPointsById.get(metric.id) || [])]
+        const rankedMetricsForDisplay = prioritizedMetrics
+          .map((metric: any) => {
+            const rawPoints = metricPointsById.get(metric.id) || [];
+            const sortedPoints = [...rawPoints]
               .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
               .slice(-120);
+
+            const byDate: Record<string, number> = {};
+            sortedPoints.forEach((point: any) => {
+              const date = new Date(point.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+              byDate[date] = point.value;
+            });
+            const dedupedCount = Object.keys(byDate).length;
+            const latestTimestamp = sortedPoints[sortedPoints.length - 1]?.timestamp || '';
+
+            return {
+              metric,
+              points: sortedPoints,
+              dedupedCount,
+              latestTimestamp,
+              priorityIndex: getPriorityIndex(metric.name),
+              isHealthcarePriority: getPriorityIndex(metric.name) < HEALTHCARE_PRIORITY.length,
+              isLegacyRisk: isLegacyRiskMetric(metric.name),
+            };
+          })
+          .sort((a, b) => {
+            const aUsable = a.dedupedCount >= 2 ? 1 : 0;
+            const bUsable = b.dedupedCount >= 2 ? 1 : 0;
+            if (aUsable !== bUsable) return bUsable - aUsable;
+
+            if (a.isHealthcarePriority !== b.isHealthcarePriority) {
+              return a.isHealthcarePriority ? -1 : 1;
+            }
+
+            if (a.isLegacyRisk !== b.isLegacyRisk) {
+              return a.isLegacyRisk ? 1 : -1;
+            }
+
+            const timeDiff = new Date(b.latestTimestamp || 0).getTime() - new Date(a.latestTimestamp || 0).getTime();
+            if (timeDiff !== 0) return timeDiff;
+
+            if (a.priorityIndex !== b.priorityIndex) return a.priorityIndex - b.priorityIndex;
+            return a.metric.name.localeCompare(b.metric.name);
+          });
+
+        await Promise.all(
+          rankedMetricsForDisplay.slice(0, 8).map(async ({ metric, points }, idx: number) => {
 
             if (!points || points.length < 2) return;
 
@@ -233,6 +285,9 @@ export function useDashboardData() {
               });
             }
 
+            const latestProvenance = points[points.length - 1]?.source
+              ? String(points[points.length - 1].source)
+              : '';
             kpiHealthGrid.push({
               id: metric.id,
               name: metric.name,
@@ -244,84 +299,8 @@ export function useDashboardData() {
               status,
               sparkline: values.slice(-8),
               category: metric.category || 'General',
-            });
-          })
-        );
-
-        avgValue = healthRatios.length > 0
-          ? healthRatios.reduce((sum, value) => sum + value, 0) / healthRatios.length
-          : 0;
-      }
-
-      // --- Recent alerts ---
-      const { data: recentAlertsData } = await supabase
-        .from('alerts')
-        .select('id, title, severity, status, created_at')
-        .eq('organization_id', organizationId)
-        .order('created_at', { ascending: false })
-        .limit(5);
-
-      setStats({
-        totalMetrics: metricsCount || 0,
-        activeAlerts: alertsCount || 0,
-        completedActions: actionsCount || 0,
-        avgMetricValue: avgValue,
-        activeAnomalies: anomaliesCount || 0,
-        pendingRecommendations: pendingRecsCount || 0,
-        completedForecasts: forecastsCount || 0,
-        recentMetrics,
-        recentAlerts: recentAlertsData || [],
-        metricTrendSeries,
-        kpiHealthGrid,
-      });
-
-      setLastUpdated(new Date());
-      setError(null);
-    } catch (err) {
-      console.error('Error fetching dashboard data:', err);
-      setError('Failed to load dashboard data');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchDashboardData();
-
-    if (!organizationId) return;
-
-    const metricDataChannel = supabase
-      .channel('metric_data_changes')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'metric_data', filter: `organization_id=eq.${organizationId}` }, () => fetchDashboardData())
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'metric_data', filter: `organization_id=eq.${organizationId}` }, () => fetchDashboardData())
-      .subscribe((status) => {
-        setIsRealtimeConnected(status === 'SUBSCRIBED');
-      });
-
-    const alertsChannel = supabase
-      .channel('alerts_changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'alerts', filter: `organization_id=eq.${organizationId}` }, () => fetchDashboardData())
-      .subscribe();
-
-    const actionsChannel = supabase
-      .channel('actions_changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'action_items', filter: `organization_id=eq.${organizationId}` }, () => fetchDashboardData())
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(metricDataChannel);
-      supabase.removeChannel(alertsChannel);
-      supabase.removeChannel(actionsChannel);
-      setIsRealtimeConnected(false);
-    };
-  }, [organizationId]);
-
-  return {
-    stats,
-    loading,
-    error,
-    refetch: fetchDashboardData,
-    isRealtimeConnected,
-    lastUpdated,
-  };
-}
+              historyPoints: points.length,
+              lastTimestamp: points[points.length - 1]?.timestamp || '',
+              evidenceSummary: `${points.length} recent points across ${dedupedData.length} tracked intervals`,
+              lineageSummary: metric.category
+       

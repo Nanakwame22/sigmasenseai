@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { addToast } from '../../hooks/useToast';
@@ -19,7 +20,7 @@ interface Metric {
   aggregation_formula?: string;
   is_auto_aggregated?: boolean;
   data_points_count?: number;
-  recent_data?: Array<{ value: number; timestamp: string }>;
+  recent_data?: Array<{ value: number; timestamp: string; source?: string }>;
 }
 
 interface MetricDataPoint {
@@ -84,8 +85,34 @@ const buildColumnMetricHistory = (
     }>;
 };
 
+const formatMetricFreshness = (timestamp?: string) => {
+  if (!timestamp) return 'No recent history';
+  const diffMs = Date.now() - new Date(timestamp).getTime();
+  if (!Number.isFinite(diffMs) || diffMs < 0) return 'Just updated';
+  const diffMins = Math.floor(diffMs / 60000);
+  if (diffMins < 1) return 'Just updated';
+  if (diffMins < 60) return `${diffMins}m ago`;
+  const diffHours = Math.floor(diffMins / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+  return `${Math.floor(diffHours / 24)}d ago`;
+};
+
+const getMetricTrustTone = (count: number, hasSource: boolean) => {
+  if (count >= 10 && hasSource) return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+  if (count >= 3) return 'bg-amber-50 text-amber-700 border-amber-200';
+  return 'bg-slate-100 text-slate-600 border-slate-200';
+};
+
+const formatTargetAttainment = (currentValue: number, targetValue: number) => {
+  if (!Number.isFinite(targetValue) || targetValue <= 0) {
+    return 'Monitor only';
+  }
+  return `${((currentValue / targetValue) * 100).toFixed(1)}% of target`;
+};
+
 export default function MetricsPage() {
   const { user, organizationId } = useAuth();
+  const location = useLocation();
   const [metrics, setMetrics] = useState<Metric[]>([]);
   const [dataSources, setDataSources] = useState<DataSource[]>([]);
   const [loading, setLoading] = useState(true);
@@ -101,6 +128,7 @@ export default function MetricsPage() {
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const [clearAllConfirmOpen, setClearAllConfirmOpen] = useState(false);
   const [seeding, setSeeding] = useState(false);
+  const focusedMetricId = new URLSearchParams(location.search).get('metric');
 
   const [formData, setFormData] = useState({
     name: '',
@@ -185,7 +213,7 @@ export default function MetricsPage() {
         // Get recent 30 data points for sparkline
         const { data: recentData } = await supabase
           .from('metric_data')
-          .select('value, timestamp')
+          .select('value, timestamp, source')
           .eq('metric_id', metric.id)
           .order('timestamp', { ascending: true })
           .limit(30);
@@ -1180,8 +1208,35 @@ export default function MetricsPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {metrics.map((metric) => (
-            <div key={metric.id} className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 hover:shadow-md transition-shadow">
+          {metrics.map((metric) => {
+            const latestHistoryPoint = metric.recent_data?.[metric.recent_data.length - 1];
+            const hasSource = Boolean(metric.data_source_name);
+            const trustTone = getMetricTrustTone(metric.data_points_count || 0, hasSource);
+            const lineageLabel = hasSource
+              ? `Data Integration → ${metric.data_source_name} → Metrics`
+              : 'Manual metric capture → Metrics';
+            const provenanceLabel = latestHistoryPoint?.source
+              ? latestHistoryPoint.source.startsWith('etl:')
+                ? latestHistoryPoint.source
+                    .replace('etl:', '')
+                    .replace(/:source:[^:]+/, '')
+                    .replace(':mapping:', ' · mapping ')
+                    .replace(':run:', ' · run ')
+                    .replace('pipeline:', 'pipeline ')
+                : latestHistoryPoint.source
+              : hasSource
+                ? 'Awaiting ETL provenance on newer points'
+                : 'Manual entry or legacy point';
+
+            return (
+            <div
+              key={metric.id}
+              className={`bg-white rounded-xl shadow-sm border p-6 hover:shadow-md transition-shadow ${
+                focusedMetricId === metric.id
+                  ? 'border-teal-400 ring-2 ring-teal-100'
+                  : 'border-slate-200'
+              }`}
+            >
               <div className="flex items-start justify-between mb-4">
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-1">
@@ -1232,6 +1287,61 @@ export default function MetricsPage() {
                 </div>
               </div>
 
+              <div className="mb-4 rounded-xl border border-slate-100 bg-slate-50/80 p-3">
+                <div className="flex flex-wrap gap-2">
+                  <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${trustTone}`}>
+                    Freshness: {formatMetricFreshness(latestHistoryPoint?.timestamp)}
+                  </span>
+                  <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600">
+                    History: {metric.data_points_count || 0} points
+                  </span>
+                </div>
+                <p className="mt-2 text-[11px] leading-5 text-slate-500">
+                  Evidence: {metric.recent_data && metric.recent_data.length > 0
+                    ? `Recent trend is based on the latest ${metric.recent_data.length} stored points for this metric.`
+                    : 'No recent trend history has been stored yet, so downstream analytics will remain cautious.'}
+                </p>
+                <p className="mt-1 text-[11px] leading-5 text-slate-400">
+                  Lineage: {lineageLabel}
+                </p>
+                <p className="mt-1 text-[11px] leading-5 text-slate-400">
+                  Provenance: {provenanceLabel}
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {hasSource ? (
+                    <Link
+                      to={`/dashboard/data-integration?source=${metric.data_source_id || ''}`}
+                      className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:border-teal-200 hover:text-teal-700"
+                    >
+                      <i className="ri-links-line"></i>
+                      Source
+                    </Link>
+                  ) : (
+                    <Link
+                      to="/dashboard/metrics"
+                      className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:border-teal-200 hover:text-teal-700"
+                    >
+                      <i className="ri-edit-circle-line"></i>
+                      Manual
+                    </Link>
+                  )}
+                  <Link
+                    to={`/dashboard/data-mapping?source=${metric.data_source_id || ''}&metric=${metric.id}&tab=mapping`}
+                    className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:border-teal-200 hover:text-teal-700"
+                  >
+                    <i className="ri-map-pin-line"></i>
+                    Mapping
+                  </Link>
+                  <Link
+                    to={`/dashboard/etl-pipelines?source=${metric.data_source_id || ''}&metric=${metric.id}`}
+                    className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:border-teal-200 hover:text-teal-700"
+                  >
+                    <i className="ri-git-branch-line"></i>
+                    ETL
+                  </Link>
+                </div>
+              </div>
+
               {/* Mini Sparkline */}
               {metric.recent_data && metric.recent_data.length > 0 && (
                 <div className="mb-4 h-12 -mx-2">
@@ -1265,7 +1375,7 @@ export default function MetricsPage() {
                 <div className="pt-3 border-t border-gray-100">
                   <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(metric.current_value, metric.target_value)}`}>
                     <i className="ri-pulse-line"></i>
-                    {((metric.current_value / metric.target_value) * 100).toFixed(1)}% of target
+                    {formatTargetAttainment(metric.current_value, metric.target_value)}
                   </div>
                 </div>
 
@@ -1283,7 +1393,8 @@ export default function MetricsPage() {
                 )}
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -1728,130 +1839,4 @@ export default function MetricsPage() {
                         onChange={(e) => setColumnMapping(prev => ({ ...prev, nameColumn: e.target.value }))}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                         required
-                      >
-                        <option value="">Select column</option>
-                        {availableColumns.map(col => (
-                          <option key={col} value={col}>{col}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {/* Value Column */}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Value Column
-                      </label>
-                      <select
-                        value={columnMapping.valueColumn}
-                        onChange={(e) => setColumnMapping(prev => ({ ...prev, valueColumn: e.target.value }))}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      >
-                        <option value="">Select column (optional)</option>
-                        {availableColumns.map(col => (
-                          <option key={col} value={col}>{col}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {/* Unit Column */}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Unit Column
-                      </label>
-                      <select
-                        value={columnMapping.unitColumn}
-                        onChange={(e) => setColumnMapping(prev => ({ ...prev, unitColumn: e.target.value }))}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      >
-                        <option value="">Select column (optional)</option>
-                        {availableColumns.map(col => (
-                          <option key={col} value={col}>{col}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-
-                  {/* Preview */}
-                  {columnMapping.nameColumn && (
-                    <div className="mt-6">
-                      <h4 className="font-medium mb-3">Preview (first 5 rows)</h4>
-                      <div className="overflow-x-auto">
-                        <table className="min-w-full border border-gray-300">
-                          <thead className="bg-gray-50">
-                            <tr>
-                              <th className="px-4 py-2 text-left text-sm font-medium text-gray-900 border-b">Metric Name</th>
-                              <th className="px-4 py-2 text-left text-sm font-medium text-gray-900 border-b">Value</th>
-                              <th className="px-4 py-2 text-left text-sm font-medium text-gray-900 border-b">Unit</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {importData.slice(0, 5).map((row, index) => (
-                              <tr key={index} className="border-b">
-                                <td className="px-4 py-2 text-sm text-gray-900">
-                                  {row[columnMapping.nameColumn] || '-'}
-                                </td>
-                                <td className="px-4 py-2 text-sm text-gray-900">
-                                  {columnMapping.valueColumn ? (row[columnMapping.valueColumn] || '0') : '0'}
-                                </td>
-                                <td className="px-4 py-2 text-sm text-gray-900">
-                                  {columnMapping.unitColumn ? (row[columnMapping.unitColumn] || '-') : '-'}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex justify-between">
-                  <button
-                    onClick={() => setImportStep('select')}
-                    className="px-4 py-2 text-gray-600 hover:text-gray-800 whitespace-nowrap"
-                  >
-                    <i className="ri-arrow-left-line mr-2"></i>
-                    Back
-                  </button>
-                  <button
-                    onClick={handleImportMetrics}
-                    disabled={!columnMapping.nameColumn}
-                    className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed whitespace-nowrap"
-                  >
-                    Import Metrics
-                    <i className="ri-download-line ml-2"></i>
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      <ConfirmDialog
-        isOpen={deleteConfirmOpen}
-        title="Delete Metric?"
-        message="Are you sure you want to delete this metric? This action cannot be undone."
-        confirmText="Delete"
-        cancelText="Cancel"
-        confirmVariant="danger"
-        onConfirm={handleDeleteConfirm}
-        onCancel={() => {
-          setDeleteConfirmOpen(false);
-          setDeleteTargetId(null);
-        }}
-      />
-
-      <ConfirmDialog
-        isOpen={clearAllConfirmOpen}
-        title="Clear All Metrics?"
-        message="Are you absolutely sure you want to delete ALL metrics? This will permanently delete all metrics and their historical data. This action cannot be undone."
-        confirmText="Delete All"
-        cancelText="Cancel"
-        confirmVariant="danger"
-        onConfirm={handleClearAllConfirm}
-        onCancel={() => setClearAllConfirmOpen(false)}
-      />
-    </div>
-  );
-}
+             

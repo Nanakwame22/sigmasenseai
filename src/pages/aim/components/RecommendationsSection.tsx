@@ -9,6 +9,35 @@ import { AIMEmptyState, AIMMetricTiles, AIMPanel, AIMSectionIntro } from './AIMS
 // Track which recommendation IDs have already been pushed this session
 const pushedSet = new Set<string>();
 
+const categoryLineage: Record<string, string> = {
+  performance: 'Metrics → Forecasts/targets → AIM recommendations',
+  quality: 'Quality signals → anomalies/metrics → AIM recommendations',
+  efficiency: 'Operational metrics → throughput/utilization logic → AIM recommendations',
+  cost: 'Cost and capacity signals → value logic → AIM recommendations',
+  risk: 'Alerts and volatility signals → risk logic → AIM recommendations',
+};
+
+function formatRelativeTime(timestamp?: string) {
+  if (!timestamp) return 'Freshness pending';
+  const diffMs = Date.now() - new Date(timestamp).getTime();
+  if (!Number.isFinite(diffMs) || diffMs < 0) return 'Just updated';
+  const diffMins = Math.floor(diffMs / 60000);
+  if (diffMins < 1) return 'Just updated';
+  if (diffMins < 60) return `${diffMins}m ago`;
+  const diffHours = Math.floor(diffMins / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+  return `${Math.floor(diffHours / 24)}d ago`;
+}
+
+function getRecommendationEvidence(rec: Recommendation) {
+  const signals = [];
+  if (rec.confidence_score) signals.push(`${rec.confidence_score}% confidence`);
+  if (rec.impact_score) signals.push(`${rec.impact_score}% modeled impact`);
+  if (rec.effort_score) signals.push(`${rec.effort_score}% effort load`);
+  if (rec.recommended_actions?.length) signals.push(`${rec.recommended_actions.length} suggested actions`);
+  return signals.join(' • ');
+}
+
 export default function RecommendationsSection() {
   const { user } = useAuth();
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
@@ -409,6 +438,23 @@ export default function RecommendationsSection() {
                           </div>
                         </div>
 
+                        <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/90 p-4">
+                          <div className="flex flex-wrap gap-2">
+                            <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-600">
+                              Freshness: {formatRelativeTime(rec.updated_at || rec.created_at)}
+                            </span>
+                            <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-600">
+                              Evidence: {rec.category}
+                            </span>
+                          </div>
+                          <p className="mt-2 text-[11px] leading-5 text-slate-500">
+                            {getRecommendationEvidence(rec) || 'Confidence and action evidence will strengthen as AIM accumulates more live operational context.'}
+                          </p>
+                          <p className="mt-1 text-[11px] leading-5 text-slate-400">
+                            Lineage: {categoryLineage[rec.category] || 'Operational signals → AIM recommendation engine'}
+                          </p>
+                        </div>
+
                         {expandedId === rec.id && (
                           <div className="mt-6 space-y-4">
                             {rec.recommended_actions && rec.recommended_actions.length > 0 && (
@@ -503,68 +549,4 @@ export default function RecommendationsSection() {
                       )}
                       <button
                         onClick={() => setExpandedId(expandedId === rec.id ? null : rec.id)}
-                        className="px-4 py-2 bg-gray-50 text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors text-sm whitespace-nowrap"
-                      >
-                        {expandedId === rec.id ? 'Less' : 'Details'}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          })
-        )}
-      </div>
-
-      {/* Action Modal */}
-      {actionModal.show && actionModal.recommendation && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg max-w-md w-full p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">
-              {actionModal.type === 'start' && 'Start Recommendation'}
-              {actionModal.type === 'complete' && 'Complete Recommendation'}
-              {actionModal.type === 'dismiss' && 'Dismiss Recommendation'}
-            </h3>
-            <p className="text-sm text-gray-600 mb-4">{actionModal.recommendation.title}</p>
-            {(actionModal.type === 'complete' || actionModal.type === 'dismiss') && (
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  {actionModal.type === 'complete' ? 'Results & Notes' : 'Reason for Dismissal'}
-                </label>
-                <textarea
-                  value={actionNotes}
-                  onChange={(e) => setActionNotes(e.target.value)}
-                  rows={4}
-                  maxLength={500}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent text-sm"
-                  placeholder={
-                    actionModal.type === 'complete'
-                      ? 'Describe the results and impact...'
-                      : 'Why are you dismissing this recommendation?'
-                  }
-                />
-              </div>
-            )}
-            <div className="flex gap-3">
-              <button
-                onClick={executeAction}
-                className="flex-1 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors whitespace-nowrap"
-              >
-                Confirm
-              </button>
-              <button
-                onClick={() => {
-                  setActionModal({ show: false, type: null, recommendation: null });
-                  setActionNotes('');
-                }}
-                className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors whitespace-nowrap"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
+                        className="px-4 py-2 bg-gray-50 text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors tex
