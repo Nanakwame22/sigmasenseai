@@ -639,4 +639,57 @@ export default function PredictiveAlertsPanel() {
                     onChange={() => setPreferences({ ...preferences, frequency: 'realtime' })}
                     className="w-5 h-5 text-teal-600 cursor-pointer" 
                   />
-                  <span className="text-sm text-gray-700">Re
+                  <span className="text-sm text-gray-700">Real-time (as they occur)</span>
+                </label>
+                <label className="flex items-center space-x-3 cursor-pointer">
+                  <input 
+                    type="radio" 
+                    name="frequency" 
+                    checked={preferences.frequency === 'daily'}
+                    onChange={() => setPreferences({ ...preferences, frequency: 'daily' })}
+                    className="w-5 h-5 text-teal-600 cursor-pointer" 
+                  />
+                  <span className="text-sm text-gray-700">Daily digest (9:00 AM)</span>
+                </label>
+                <label className="flex items-center space-x-3 cursor-pointer">
+                  <input 
+                    type="radio" 
+                    name="frequency" 
+                    checked={preferences.frequency === 'weekly'}
+                    onChange={() => setPreferences({ ...preferences, frequency: 'weekly' })}
+                    className="w-5 h-5 text-teal-600 cursor-pointer" 
+                  />
+                  <span className="text-sm text-gray-700">Weekly summary (Monday)</span>
+                </label>
+                <label className="flex items-center space-x-3 cursor-pointer">
+                  <input 
+                    type="checkbox" 
+                    checked={preferences.critical_always}
+                    onChange={(e) => setPreferences({ ...preferences, critical_always: e.target.checked })}
+                    className="w-5 h-5 text-teal-600 rounded cursor-pointer" 
+                  />
+                  <span className="text-sm text-gray-700">Always notify for critical alerts</span>
+                </label>
+              </div>
+            </div>
+
+            <div className="flex gap-3 pt-6 border-t border-gray-200">
+              <button 
+                onClick={() => setShowPreferences(false)}
+                className="flex-1 px-6 py-2 border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium whitespace-nowrap"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={handleSavePreferences}
+                className="flex-1 px-6 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors text-sm font-medium whitespace-nowrap"
+              >
+                Save Preferences
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
