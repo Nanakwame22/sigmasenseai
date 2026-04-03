@@ -12,6 +12,7 @@ import type { ImpactScenario, ForecastData, ImpactBreakdown, ROIMetrics } from '
 import { LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { exportToCSV, exportToJSON } from '../../../utils/exportUtils';
 import { addToast } from '../../../hooks/useToast';
+import { AIMEmptyState, AIMMetricTiles, AIMPanel, AIMSectionIntro } from './AIMSectionSystem';
 
 interface Metric {
   id: string;
@@ -290,17 +291,58 @@ const ImpactForecastsSection: React.FC = () => {
         </div>
       )}
 
-      {/* Advanced Forecasting Section */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h3 className="text-lg font-semibold text-gray-900">Advanced Statistical Forecasting</h3>
-            <p className="text-sm text-gray-600 mt-1">Generate forecasts using advanced statistical methods</p>
-          </div>
+      <AIMSectionIntro
+        eyebrow="Impact Forecasts"
+        title="Executive Impact Forecasting"
+        description="Model strategic upside, compare investment paths, and translate recommendations into financial and KPI movement before you commit resources."
+        actions={
+          <button
+            onClick={() => setShowExportModal(true)}
+            className="px-4 py-2 bg-gradient-to-r from-teal-500 to-cyan-600 text-white text-sm font-semibold rounded-xl hover:shadow-lg transition-all whitespace-nowrap flex items-center gap-2"
+          >
+            <i className="ri-download-line"></i>
+            Export Forecast
+          </button>
+        }
+      />
+
+      <AIMMetricTiles
+        items={[
+          {
+            label: 'Selected Scenario',
+            value: scenarioCards.find(card => card.id === selectedScenario)?.label ?? 'Balanced Approach',
+            detail: scenarioCards.find(card => card.id === selectedScenario)?.timeline ?? '6-8 months',
+          },
+          {
+            label: 'Modeled Annual Upside',
+            value: scenarioCards.find(card => card.id === selectedScenario)?.impact ?? '$0K',
+            detail: scenarioCards.find(card => card.id === selectedScenario)?.roi ?? '0% ROI',
+            accent: 'text-emerald-600',
+          },
+          {
+            label: 'Execution Posture',
+            value: `${scenarioCards.find(card => card.id === selectedScenario)?.risk ?? 'Low'} risk`,
+            detail: `Investment ${scenarioCards.find(card => card.id === selectedScenario)?.investment ?? '$0K'}`,
+          },
+          {
+            label: 'Net Annual Benefit',
+            value: `$${Math.round(calculateNetImpact())}K`,
+            detail: 'Across current recommended actions',
+            accent: calculateNetImpact() >= 0 ? 'text-teal-600' : 'text-red-600',
+          },
+        ]}
+      />
+
+      <AIMPanel
+        title="Forecast Studio"
+        description="Generate advanced statistical forecasts for any live metric and compare them with the broader scenario outlook."
+        icon="ri-line-chart-line"
+        accentClass="from-teal-500 to-cyan-600"
+        actions={
           <button
             onClick={generateForecast}
             disabled={isGeneratingForecast || !selectedMetric}
-            className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 whitespace-nowrap"
+            className="px-4 py-2 bg-teal-600 text-white rounded-xl hover:bg-teal-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 whitespace-nowrap"
           >
             {isGeneratingForecast ? (
               <>
@@ -314,27 +356,27 @@ const ImpactForecastsSection: React.FC = () => {
               </>
             )}
           </button>
-        </div>
-
+        }
+      >
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Select Metric</label>
             {metrics.length === 0 ? (
-              <div className="col-span-3 flex flex-col items-center justify-center py-10 px-6 bg-slate-50 border-2 border-dashed border-slate-200 rounded-xl text-center">
-                <div className="w-14 h-14 bg-teal-50 rounded-full flex items-center justify-center mb-4">
-                  <i className="ri-line-chart-line text-2xl text-teal-500"></i>
-                </div>
-                <h4 className="text-base font-semibold text-slate-800 mb-1">No metrics found</h4>
-                <p className="text-sm text-slate-500 mb-4 max-w-xs">
-                  You need at least one metric before generating a forecast. Set up your metrics to get started.
-                </p>
-                <a
-                  href="/dashboard/metrics"
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-teal-600 text-white text-sm font-semibold rounded-lg hover:bg-teal-700 transition-colors whitespace-nowrap"
-                >
-                  <i className="ri-add-line"></i>
-                  Set Up Metrics
-                </a>
+              <div className="col-span-3">
+                <AIMEmptyState
+                  icon="ri-line-chart-line"
+                  title="No metrics found"
+                  description="You need at least one metric before AIM can generate a statistical forecast."
+                  action={
+                    <a
+                      href="/dashboard/metrics"
+                      className="inline-flex items-center gap-2 px-4 py-2 bg-teal-600 text-white text-sm font-semibold rounded-xl hover:bg-teal-700 transition-colors whitespace-nowrap"
+                    >
+                      <i className="ri-add-line"></i>
+                      Set Up Metrics
+                    </a>
+                  }
+                />
               </div>
             ) : (
               <select
@@ -393,26 +435,29 @@ const ImpactForecastsSection: React.FC = () => {
             <div><strong>Seasonal:</strong> Seasonal decomposition - Best for data with recurring patterns</div>
           </div>
         </div>
-      </div>
+      </AIMPanel>
 
       {/* Advanced Forecasts Results */}
       {advancedForecasts.length > 0 && (
         <div className="space-y-6">
           {advancedForecasts.map((forecast) => (
-            <div key={forecast.id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-              <div className="flex items-start justify-between mb-6">
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900">{forecast.metric_name}</h3>
-                  <p className="text-sm text-gray-600 mt-1">
-                    Generated {new Date(forecast.generated_at).toLocaleString()} using {forecast.method.toUpperCase().replace('_', ' ')}
-                  </p>
-                </div>
+            <AIMPanel
+              key={forecast.id}
+              title={forecast.metric_name}
+              description={`Generated ${new Date(forecast.generated_at).toLocaleString()} using ${forecast.method.toUpperCase().replace('_', ' ')}`}
+              icon="ri-pulse-line"
+              accentClass="from-blue-500 to-indigo-600"
+              actions={
                 <button
                   onClick={() => setAdvancedForecasts(prev => prev.filter(f => f.id !== forecast.id))}
-                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                  className="text-slate-400 hover:text-slate-600 transition-colors"
                 >
                   <i className="ri-close-line text-xl"></i>
                 </button>
+              }
+            >
+              <div className="flex items-start justify-between mb-6">
+                <div></div>
               </div>
 
               {/* Forecast Statistics */}
@@ -542,59 +587,10 @@ const ImpactForecastsSection: React.FC = () => {
                   )}
                 </div>
               )}
-            </div>
+            </AIMPanel>
           ))}
         </div>
       )}
-
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-900 mb-2">Impact Forecasts</h1>
-          <p className="text-slate-600">Predicted business outcomes and KPI projections</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => setShowExportModal(true)}
-            className="px-4 py-2 bg-gradient-to-r from-teal-500 to-cyan-600 text-white text-sm font-semibold rounded-lg hover:shadow-lg transition-all whitespace-nowrap flex items-center gap-2"
-          >
-            <i className="ri-download-line"></i>
-            Export Forecast
-          </button>
-        </div>
-      </div>
-
-      <div className="rounded-[28px] border border-slate-200 bg-[radial-gradient(circle_at_top_left,_rgba(20,184,166,0.12),_transparent_30%),linear-gradient(135deg,_#ffffff,_#f8fafc)] p-6 shadow-sm">
-        <div className="grid gap-6 lg:grid-cols-[1.3fr_0.7fr]">
-          <div>
-            <div className="mb-3 flex items-center gap-2">
-              <span className="rounded-full bg-teal-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-teal-700">Forecast Studio</span>
-              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">Scenario-calibrated</span>
-            </div>
-            <h2 className="text-2xl font-bold tracking-tight text-slate-900">Model strategic upside before you commit action</h2>
-            <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600">
-              AIM blends live recommendation value, project momentum, and KPI history to estimate the operational lift, timing, and investment profile for each scenario.
-            </p>
-          </div>
-          <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
-            <div className="rounded-2xl border border-slate-200 bg-white/90 p-4">
-              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Selected Scenario</div>
-              <div className="mt-2 text-xl font-bold text-slate-900">{scenarioCards.find(card => card.id === selectedScenario)?.label ?? 'Balanced Approach'}</div>
-              <div className="mt-1 text-sm text-slate-600">{scenarioCards.find(card => card.id === selectedScenario)?.timeline ?? '6-8 months'}</div>
-            </div>
-            <div className="rounded-2xl border border-slate-200 bg-white/90 p-4">
-              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Modeled Annual Upside</div>
-              <div className="mt-2 text-xl font-bold text-emerald-600">{scenarioCards.find(card => card.id === selectedScenario)?.impact ?? '$0K'}</div>
-              <div className="mt-1 text-sm text-slate-600">{scenarioCards.find(card => card.id === selectedScenario)?.roi ?? '0% ROI'}</div>
-            </div>
-            <div className="rounded-2xl border border-slate-200 bg-white/90 p-4">
-              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Execution Posture</div>
-              <div className="mt-2 text-xl font-bold text-slate-900">{scenarioCards.find(card => card.id === selectedScenario)?.risk ?? 'Low'} risk</div>
-              <div className="mt-1 text-sm text-slate-600">Investment {scenarioCards.find(card => card.id === selectedScenario)?.investment ?? '$0K'}</div>
-            </div>
-          </div>
-        </div>
-      </div>
 
       {/* Scenario Selector */}
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -642,7 +638,12 @@ const ImpactForecastsSection: React.FC = () => {
 
       {/* Net Impact Summary */}
       {impactBreakdown.length > 0 && (
-        <div className="bg-gradient-to-br from-teal-50 to-cyan-50 rounded-xl border border-teal-200 p-6">
+        <AIMPanel
+          title="Net Impact Calculation"
+          description="Total modeled value from implementing the current recommendation set."
+          icon="ri-money-dollar-circle-line"
+          accentClass="from-teal-500 to-cyan-600"
+        >
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-xl font-bold text-slate-900 mb-2">Net Impact Calculation</h2>
@@ -677,11 +678,16 @@ const ImpactForecastsSection: React.FC = () => {
               </div>
             ))}
           </div>
-        </div>
+        </AIMPanel>
       )}
 
       {/* KPI Projection Chart */}
-      <div className="bg-white rounded-xl border border-slate-200 p-6">
+      <AIMPanel
+        title="KPI Projection Chart"
+        description={`${timeHorizon}-month forecast with scenario comparison`}
+        icon="ri-bar-chart-grouped-line"
+        accentClass="from-slate-700 to-slate-900"
+      >
         <div className="flex items-center justify-between mb-6">
           <div>
             <h2 className="text-xl font-bold text-slate-900 mb-2">KPI Projection Chart</h2>
@@ -810,7 +816,7 @@ const ImpactForecastsSection: React.FC = () => {
             <div className="text-xs text-slate-500 mt-1">over {timeHorizon} months</div>
           </div>
         </div>
-      </div>
+      </AIMPanel>
 
       {/* Cost/Savings Simulator */}
       {roiMetrics && (

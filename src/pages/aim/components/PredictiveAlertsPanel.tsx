@@ -15,6 +15,7 @@ import {
 } from '../../../services/alertMonitoring';
 import type { Alert, AlertPreferences } from '../../../services/alertMonitoring';
 import { addToast } from '../../../hooks/useToast';
+import { AIMEmptyState, AIMMetricTiles, AIMPanel, AIMSectionIntro } from './AIMSectionSystem';
 
 export default function PredictiveAlertsPanel() {
   const { organization, organizationId } = useAuth();
@@ -220,114 +221,95 @@ export default function PredictiveAlertsPanel() {
     );
   }
 
+  const filterTheme = (value: typeof filter, activeClass: string) =>
+    filter === value ? activeClass : 'bg-slate-100 text-slate-700 hover:bg-slate-200';
+
+  const severityTheme = {
+    critical: 'bg-red-100 text-red-700',
+    high: 'bg-orange-100 text-orange-700',
+    medium: 'bg-yellow-100 text-yellow-700',
+    low: 'bg-blue-100 text-blue-700',
+  } as const;
+
+  const statusTheme = {
+    new: 'bg-blue-100 text-blue-700',
+    acknowledged: 'bg-amber-100 text-amber-700',
+    resolved: 'bg-emerald-100 text-emerald-700',
+    dismissed: 'bg-slate-100 text-slate-700',
+  } as const;
+
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center space-x-3">
-            <div className="w-12 h-12 flex items-center justify-center bg-gradient-to-br from-red-500 to-orange-500 rounded-lg">
-              <i className="ri-alarm-warning-line text-2xl text-white"></i>
-            </div>
-            <div>
-              <h2 className="text-2xl font-bold text-gray-900">Predictive Alerts</h2>
-              <p className="text-sm text-gray-600">Real-time monitoring and early warnings</p>
-            </div>
-          </div>
+      <AIMSectionIntro
+        eyebrow="Predictive Alerts"
+        title="Operational Early Warning Center"
+        description="Monitor emerging risk, manage notification posture, and act on high-confidence signals before they become operational incidents."
+        actions={
           <div className="flex items-center space-x-2">
             <button
               onClick={handleRefresh}
               disabled={refreshing}
-              className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium whitespace-nowrap flex items-center gap-2"
+              className="px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-xl hover:bg-slate-50 transition-colors text-sm font-medium whitespace-nowrap flex items-center gap-2"
             >
               <i className={`ri-refresh-line ${refreshing ? 'animate-spin' : ''}`}></i>
               Refresh
             </button>
             <button
               onClick={() => setShowPreferences(true)}
-              className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium whitespace-nowrap flex items-center gap-2"
+              className="px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-xl hover:bg-slate-50 transition-colors text-sm font-medium whitespace-nowrap flex items-center gap-2"
             >
               <i className="ri-settings-3-line"></i>
               Settings
             </button>
           </div>
-        </div>
+        }
+      />
 
-        {/* Stats */}
-        <div className="grid grid-cols-4 gap-4 mb-6">
-          <div className="bg-gradient-to-br from-red-50 to-orange-50 rounded-lg p-4 border border-red-200">
-            <div className="flex items-center space-x-2 mb-2">
-              <i className="ri-error-warning-line text-red-600"></i>
-              <span className="text-sm font-semibold text-red-900">Critical</span>
-            </div>
-            <div className="text-3xl font-bold text-red-600">{stats.critical}</div>
-            <div className="text-xs text-gray-600 mt-1">Require immediate action</div>
-          </div>
-          <div className="bg-gradient-to-br from-orange-50 to-yellow-50 rounded-lg p-4 border border-orange-200">
-            <div className="flex items-center space-x-2 mb-2">
-              <i className="ri-alert-line text-orange-600"></i>
-              <span className="text-sm font-semibold text-orange-900">High Priority</span>
-            </div>
-            <div className="text-3xl font-bold text-orange-600">{stats.high}</div>
-            <div className="text-xs text-gray-600 mt-1">Plan preventive action</div>
-          </div>
-          <div className="bg-gradient-to-br from-blue-50 to-cyan-50 rounded-lg p-4 border border-blue-200">
-            <div className="flex items-center space-x-2 mb-2">
-              <i className="ri-notification-3-line text-blue-600"></i>
-              <span className="text-sm font-semibold text-blue-900">New Alerts</span>
-            </div>
-            <div className="text-3xl font-bold text-blue-600">{stats.new}</div>
-            <div className="text-xs text-gray-600 mt-1">Unacknowledged</div>
-          </div>
-          <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg p-4 border border-green-200">
-            <div className="flex items-center space-x-2 mb-2">
-              <i className="ri-checkbox-circle-line text-green-600"></i>
-              <span className="text-sm font-semibold text-green-900">Resolved</span>
-            </div>
-            <div className="text-3xl font-bold text-green-600">{stats.resolved}</div>
-            <div className="text-xs text-gray-600 mt-1">Successfully handled</div>
-          </div>
-        </div>
+      <AIMMetricTiles
+        items={[
+          { label: 'Critical Alerts', value: stats.critical, detail: 'Require immediate action', accent: 'text-red-600' },
+          { label: 'High Priority', value: stats.high, detail: 'Plan preventive action', accent: 'text-orange-600' },
+          { label: 'Unacknowledged', value: stats.new, detail: 'Still waiting for review', accent: 'text-blue-600' },
+          { label: 'Resolved', value: stats.resolved, detail: 'Closed successfully', accent: 'text-emerald-600' },
+        ]}
+      />
 
-        {/* Filters */}
-        <div className="flex items-center space-x-2">
+      <AIMPanel
+        title="Alert Stream"
+        description="Filter by workflow state and severity to focus response effort where it matters most."
+        icon="ri-radar-line"
+        accentClass="from-red-500 to-orange-600"
+      >
+        <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => setFilter('all')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
-              filter === 'all' ? 'bg-teal-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
+            className={`px-4 py-2 rounded-full text-sm font-medium transition-colors whitespace-nowrap ${filterTheme('all', 'bg-slate-900 text-white')}`}
           >
             All ({stats.total})
           </button>
           <button
             onClick={() => setFilter('new')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
-              filter === 'new' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
+            className={`px-4 py-2 rounded-full text-sm font-medium transition-colors whitespace-nowrap ${filterTheme('new', 'bg-blue-600 text-white')}`}
           >
             New ({stats.new})
           </button>
           <button
             onClick={() => setFilter('acknowledged')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
-              filter === 'acknowledged' ? 'bg-yellow-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
+            className={`px-4 py-2 rounded-full text-sm font-medium transition-colors whitespace-nowrap ${filterTheme('acknowledged', 'bg-amber-500 text-white')}`}
           >
             Acknowledged ({stats.acknowledged})
           </button>
           <button
             onClick={() => setFilter('resolved')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
-              filter === 'resolved' ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
+            className={`px-4 py-2 rounded-full text-sm font-medium transition-colors whitespace-nowrap ${filterTheme('resolved', 'bg-emerald-600 text-white')}`}
           >
             Resolved ({stats.resolved})
           </button>
-          <div className="flex-1"></div>
+          <div className="ml-auto"></div>
           <select
             value={severityFilter}
             onChange={(e) => setSeverityFilter(e.target.value as any)}
-            className="px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent text-sm"
+            className="px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent text-sm"
           >
             <option value="all">All Severity</option>
             <option value="critical">Critical</option>
@@ -336,26 +318,23 @@ export default function PredictiveAlertsPanel() {
             <option value="low">Low</option>
           </select>
         </div>
-      </div>
 
-      {/* Alert List */}
-      {filteredAlerts.length === 0 ? (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
-          <div className="w-16 h-16 bg-gradient-to-br from-green-100 to-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <i className="ri-checkbox-circle-line text-3xl text-green-600"></i>
-          </div>
-          <h3 className="text-xl font-bold text-gray-900 mb-2">All Clear!</h3>
-          <p className="text-gray-600">No {filter !== 'all' ? filter : ''} alerts at this time. Your operations are running smoothly.</p>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {filteredAlerts.map((alert) => (
-            <div
-              key={alert.id}
-              className={`bg-gradient-to-br ${getAlertBg(alert.alert_type)} rounded-xl shadow-sm border p-6 hover:shadow-md transition-all`}
-            >
-              <div className="flex items-start justify-between">
-                <div className="flex items-start space-x-4 flex-1">
+        <div className="mt-6">
+          {filteredAlerts.length === 0 ? (
+            <AIMEmptyState
+              icon="ri-checkbox-circle-line"
+              title="All clear"
+              description={`No ${filter !== 'all' ? filter : ''} alerts are active right now. AIM is not seeing any immediate operating pressure in the monitored signal set.`}
+            />
+          ) : (
+            <div className="space-y-4">
+              {filteredAlerts.map((alert) => (
+                <div
+                  key={alert.id}
+                  className={`bg-gradient-to-br ${getAlertBg(alert.alert_type)} rounded-[24px] border p-6 shadow-sm transition-all hover:shadow-md`}
+                >
+                  <div className="flex items-start justify-between gap-6">
+                    <div className="flex items-start space-x-4 flex-1">
                   <div className={`w-12 h-12 flex items-center justify-center bg-gradient-to-br ${getAlertColor(alert.alert_type)} rounded-lg flex-shrink-0`}>
                     <i className={`${
                       alert.alert_type === 'critical' ? 'ri-error-warning-line' :
@@ -365,53 +344,43 @@ export default function PredictiveAlertsPanel() {
                   </div>
                   <div className="flex-1">
                     <div className="flex items-center space-x-3 mb-2">
-                      <h3 className="text-lg font-bold text-gray-900">{alert.title}</h3>
-                      <span className={`px-3 py-1 text-xs font-semibold rounded-full ${
-                        alert.severity === 'critical' ? 'bg-red-100 text-red-700' :
-                        alert.severity === 'high' ? 'bg-orange-100 text-orange-700' :
-                        alert.severity === 'medium' ? 'bg-yellow-100 text-yellow-700' :
-                        'bg-blue-100 text-blue-700'
-                      }`}>
+                      <h3 className="text-lg font-bold text-slate-900">{alert.title}</h3>
+                      <span className={`px-3 py-1 text-xs font-semibold rounded-full ${severityTheme[alert.severity]}`}>
                         {alert.severity.toUpperCase()}
                       </span>
                       {alert.category && (
-                        <span className="px-3 py-1 bg-white text-gray-700 text-xs font-semibold rounded-full border border-gray-300">
+                        <span className="px-3 py-1 bg-white text-slate-700 text-xs font-semibold rounded-full border border-slate-300">
                           {alert.category}
                         </span>
                       )}
-                      <span className={`px-3 py-1 text-xs font-semibold rounded-full ${
-                        alert.status === 'new' ? 'bg-blue-100 text-blue-700' :
-                        alert.status === 'acknowledged' ? 'bg-yellow-100 text-yellow-700' :
-                        alert.status === 'resolved' ? 'bg-green-100 text-green-700' :
-                        'bg-gray-100 text-gray-700'
-                      }`}>
+                      <span className={`px-3 py-1 text-xs font-semibold rounded-full ${statusTheme[alert.status]}`}>
                         {alert.status.toUpperCase()}
                       </span>
                     </div>
-                    <p className="text-sm text-gray-700 mb-4 leading-relaxed">{alert.description}</p>
+                    <p className="text-sm text-slate-700 mb-4 leading-relaxed">{alert.description}</p>
                     
                     {(alert.predicted_date || alert.days_until || alert.confidence) && (
                       <div className="grid grid-cols-3 gap-4 mb-4">
                         {alert.predicted_date && (
-                          <div className="bg-white rounded-lg p-3 border border-gray-200">
-                            <div className="text-xs text-gray-600 mb-1">Predicted Date</div>
-                            <div className="text-sm font-bold text-gray-900">
+                          <div className="bg-white rounded-2xl p-3 border border-slate-200">
+                            <div className="text-xs text-slate-600 mb-1">Predicted Date</div>
+                            <div className="text-sm font-bold text-slate-900">
                               {new Date(alert.predicted_date).toLocaleDateString()}
                             </div>
                           </div>
                         )}
                         {alert.days_until !== undefined && (
-                          <div className="bg-white rounded-lg p-3 border border-gray-200">
-                            <div className="text-xs text-gray-600 mb-1">Days Until</div>
+                          <div className="bg-white rounded-2xl p-3 border border-slate-200">
+                            <div className="text-xs text-slate-600 mb-1">Days Until</div>
                             <div className="text-sm font-bold text-red-600">{alert.days_until} days</div>
                           </div>
                         )}
                         {alert.confidence && (
-                          <div className="bg-white rounded-lg p-3 border border-gray-200">
-                            <div className="text-xs text-gray-600 mb-1">Confidence</div>
+                          <div className="bg-white rounded-2xl p-3 border border-slate-200">
+                            <div className="text-xs text-slate-600 mb-1">Confidence</div>
                             <div className="flex items-center space-x-2">
-                              <div className="text-sm font-bold text-gray-900">{Math.round(alert.confidence)}%</div>
-                              <div className="flex-1 bg-gray-200 rounded-full h-2">
+                              <div className="text-sm font-bold text-slate-900">{Math.round(alert.confidence)}%</div>
+                              <div className="flex-1 bg-slate-200 rounded-full h-2">
                                 <div
                                   className="bg-gradient-to-r from-teal-500 to-cyan-500 h-2 rounded-full"
                                   style={{ width: `${alert.confidence}%` }}
@@ -424,13 +393,13 @@ export default function PredictiveAlertsPanel() {
                     )}
 
                     {alert.actions && alert.actions.length > 0 && (
-                      <div className="bg-white rounded-lg p-4 border border-gray-200">
-                        <div className="text-xs font-semibold text-gray-700 mb-2">Recommended Actions:</div>
+                      <div className="bg-white rounded-2xl p-4 border border-slate-200">
+                        <div className="text-xs font-semibold text-slate-700 mb-2">Recommended Actions</div>
                         <div className="space-y-2">
                           {alert.actions.map((action, index) => (
                             <div key={index} className="flex items-center space-x-2">
                               <i className="ri-checkbox-circle-line text-green-600"></i>
-                              <span className="text-sm text-gray-700">{action}</span>
+                              <span className="text-sm text-slate-700">{action}</span>
                             </div>
                           ))}
                         </div>
@@ -456,7 +425,7 @@ export default function PredictiveAlertsPanel() {
                       </button>
                       <button 
                         onClick={() => handleSnooze(alert.id, 24)}
-                        className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium whitespace-nowrap"
+                        className="px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors text-sm font-medium whitespace-nowrap"
                       >
                         Snooze 24h
                       </button>
@@ -472,16 +441,18 @@ export default function PredictiveAlertsPanel() {
                   )}
                   <button 
                     onClick={() => handleDismiss(alert.id)}
-                    className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium whitespace-nowrap"
+                    className="px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors text-sm font-medium whitespace-nowrap"
                   >
                     Dismiss
                   </button>
                 </div>
               </div>
+                </div>
+              ))}
             </div>
-          ))}
+          )}
         </div>
-      )}
+      </AIMPanel>
 
       {/* Resolve Modal */}
       {selectedAlert && (
