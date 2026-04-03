@@ -81,6 +81,24 @@ export default function DashboardHome() {
   const avgPctVsTarget = stats.avgMetricValue > 0
     ? (stats.avgMetricValue - 85)
     : 0;
+  const dedupedRecentAlerts = stats.recentAlerts.reduce<Array<(typeof stats.recentAlerts[number]) & { repeatCount: number }>>((acc, alert) => {
+    const key = `${alert.title.trim().toLowerCase()}::${alert.severity.toLowerCase()}::${alert.status.toLowerCase()}`;
+    const existing = acc.find(
+      (item) => `${item.title.trim().toLowerCase()}::${item.severity.toLowerCase()}::${item.status.toLowerCase()}` === key
+    );
+
+    if (existing) {
+      existing.repeatCount += 1;
+      if (new Date(alert.created_at).getTime() > new Date(existing.created_at).getTime()) {
+        existing.created_at = alert.created_at;
+        existing.id = alert.id;
+      }
+      return acc;
+    }
+
+    acc.push({ ...alert, repeatCount: 1 });
+    return acc;
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -213,8 +231,8 @@ export default function DashboardHome() {
 
             {/* Alert list */}
             <div className="flex-1 space-y-2.5 overflow-y-auto">
-              {stats.recentAlerts.length > 0 ? (
-                stats.recentAlerts.slice(0, 4).map((alert) => {
+              {dedupedRecentAlerts.length > 0 ? (
+                dedupedRecentAlerts.slice(0, 4).map((alert) => {
                   const sev = {
                     critical: { bg: 'bg-red-400/20', text: 'text-red-300', icon: 'ri-alert-line' },
                     high: { bg: 'bg-amber-400/20', text: 'text-amber-300', icon: 'ri-error-warning-line' },
@@ -234,6 +252,11 @@ export default function DashboardHome() {
                             <span className={`px-1.5 py-0.5 ${sev.bg} ${sev.text} rounded text-xs font-medium capitalize`}>
                               {alert.severity}
                             </span>
+                            {alert.repeatCount > 1 && (
+                              <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-white/10 text-slate-200">
+                                {alert.repeatCount} similar
+                              </span>
+                            )}
                             <span className="text-slate-400 text-xs">
                               {new Date(alert.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
                             </span>
