@@ -387,4 +387,25 @@ export function useDashboardData() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'alerts', filter: `organization_id=eq.${organizationId}` }, () => fetchDashboardData())
       .subscribe();
 
-    const 
+    const actionsChannel = supabase
+      .channel('actions_changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'action_items', filter: `organization_id=eq.${organizationId}` }, () => fetchDashboardData())
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(metricDataChannel);
+      supabase.removeChannel(alertsChannel);
+      supabase.removeChannel(actionsChannel);
+      setIsRealtimeConnected(false);
+    };
+  }, [organizationId]);
+
+  return {
+    stats,
+    loading,
+    error,
+    refetch: fetchDashboardData,
+    isRealtimeConnected,
+    lastUpdated,
+  };
+}
