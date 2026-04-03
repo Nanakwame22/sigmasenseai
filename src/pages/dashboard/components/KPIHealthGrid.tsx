@@ -170,4 +170,61 @@ function KPICard({ item }: { item: KPIHealthItem }) {
 
 export default function KPIHealthGrid({ items }: KPIHealthGridProps) {
   const onTrack = items.filter((i) => i.status === 'on-track').length;
-  const atRisk = items.f
+  const atRisk = items.filter((i) => i.status === 'at-risk').length;
+  const critical = items.filter((i) => i.status === 'critical').length;
+
+  if (!items.length) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-3 text-center py-8">
+        <div className="w-14 h-14 bg-gray-100 rounded-xl flex items-center justify-center">
+          <i className="ri-bar-chart-box-line text-gray-400 text-2xl"></i>
+        </div>
+        <div>
+          <p className="text-gray-500 font-medium text-sm">No KPI data yet</p>
+          <p className="text-gray-400 text-xs mt-1">Add metrics with targets to see health status</p>
+        </div>
+        <Link
+          to="/dashboard/metrics"
+          className="text-xs font-semibold text-blue-600 hover:text-blue-700 mt-1 cursor-pointer"
+        >
+          Go to Metrics →
+        </Link>
+      </div>
+    );
+  }
+
+  return (
+    <div className="h-full flex flex-col">
+      {/* Summary bar */}
+      <div className="flex items-center gap-4 mb-4 pb-4 border-b border-gray-100">
+        <div className="flex items-center gap-1.5">
+          <div className="w-2.5 h-2.5 rounded-full bg-emerald-500"></div>
+          <span className="text-xs font-semibold text-gray-600">{onTrack} On Track</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <div className="w-2.5 h-2.5 rounded-full bg-amber-500"></div>
+          <span className="text-xs font-semibold text-gray-600">{atRisk} At Risk</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <div className="w-2.5 h-2.5 rounded-full bg-red-500"></div>
+          <span className="text-xs font-semibold text-gray-600">{critical} Critical</span>
+        </div>
+        <Link
+          to="/dashboard/metrics"
+          className="ml-auto text-xs font-semibold text-gray-400 hover:text-gray-700 transition-colors cursor-pointer whitespace-nowrap"
+        >
+          View All →
+        </Link>
+      </div>
+
+      {/* Grid */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="grid grid-cols-2 gap-3">
+          {items.map((item) => (
+            <KPICard key={item.id} item={item} />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
