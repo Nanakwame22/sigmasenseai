@@ -2080,4 +2080,22 @@ export default function DataIntegrationPage() {
                   >
                     {isSavingApi ? (
                       <>
-                
+                        <i className="ri-loader-4-line animate-spin mr-2"></i>
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <i className="ri-save-line mr-2"></i>
+                        Save API Source
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
