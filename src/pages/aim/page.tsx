@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAIMData } from '../../hooks/useAIMData';
@@ -29,7 +29,20 @@ const AIMPage: React.FC = () => {
   const aimStats = useAIMData();
   const [activeSection, setActiveSection] = useState<Section>('overview');
   const [isQuickAskOpen, setIsQuickAskOpen] = useState(false);
-  const [isRailMinimized, setIsRailMinimized] = useState(false);
+  const [isRailMinimized, setIsRailMinimized] = useState(true);
+
+  useEffect(() => {
+    const saved = localStorage.getItem('aim_quick_ask_minimized');
+    if (saved === 'false') {
+      setIsRailMinimized(false);
+    } else if (saved === 'true') {
+      setIsRailMinimized(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('aim_quick_ask_minimized', String(isRailMinimized));
+  }, [isRailMinimized]);
 
   const formatLastRefresh = (date: Date | null) => {
     if (!date) return 'Never';
