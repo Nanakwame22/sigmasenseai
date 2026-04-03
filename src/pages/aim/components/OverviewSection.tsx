@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../contexts/AuthContext';
 import CPIClinicalPanel from './CPIClinicalPanel';
+import { AIMEmptyState, AIMMetricTiles, AIMPanel, AIMSectionIntro } from './AIMSectionSystem';
 
 interface OverviewStats {
   overallPerformance: number;
@@ -39,6 +40,13 @@ const CATEGORY_COLORS: Record<string, string> = {
   forecasts: 'bg-cyan-100 text-cyan-700',
   'root-cause': 'bg-orange-100 text-orange-700',
   general: 'bg-gray-100 text-gray-700',
+};
+
+const RISK_THEME: Record<string, { shell: string; icon: string; accent: string }> = {
+  low: { shell: 'bg-emerald-50', icon: 'text-emerald-600', accent: 'text-emerald-600' },
+  medium: { shell: 'bg-amber-50', icon: 'text-amber-600', accent: 'text-amber-600' },
+  high: { shell: 'bg-orange-50', icon: 'text-orange-600', accent: 'text-orange-600' },
+  critical: { shell: 'bg-red-50', icon: 'text-red-600', accent: 'text-red-600' },
 };
 
 export default function OverviewSection() {
@@ -232,15 +240,6 @@ export default function OverviewSection() {
     }
   };
 
-  const getRiskColor = (level: string) => {
-    switch (level) {
-      case 'critical': return 'text-red-600 bg-red-50';
-      case 'high': return 'text-orange-600 bg-orange-50';
-      case 'medium': return 'text-yellow-600 bg-yellow-50';
-      default: return 'text-green-600 bg-green-50';
-    }
-  };
-
   const getRiskLabel = (level: string) => {
     return level.charAt(0).toUpperCase() + level.slice(1);
   };
@@ -260,7 +259,7 @@ export default function OverviewSection() {
       <div className="space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="bg-white rounded-xl p-6 border border-gray-200 animate-pulse">
+            <div key={i} className="rounded-[28px] border border-slate-200 bg-white p-6 animate-pulse shadow-[0_20px_60px_rgba(15,23,42,0.05)]">
               <div className="h-4 bg-gray-200 rounded w-1/2 mb-4"></div>
               <div className="h-8 bg-gray-200 rounded w-3/4"></div>
             </div>
@@ -273,110 +272,70 @@ export default function OverviewSection() {
   // Empty state
   if (stats.overallPerformance === 0 && stats.activeOpportunities === 0 && keyDrivers.length === 0) {
     return (
-      <div className="bg-white rounded-xl p-12 border border-gray-200 text-center">
-        <div className="w-16 h-16 bg-teal-50 rounded-full flex items-center justify-center mx-auto mb-4">
-          <i className="ri-bar-chart-box-line text-3xl text-teal-600"></i>
-        </div>
-        <h3 className="text-xl font-semibold text-gray-900 mb-2">No Data Available Yet</h3>
-        <p className="text-gray-600 mb-6 max-w-md mx-auto">
-          Start by adding KPIs, metrics, and connecting data sources to see AI-powered insights and recommendations here.
-        </p>
-        <button
-          onClick={() => window.REACT_APP_NAVIGATE?.('/dashboard/kpi-manager')}
-          className="px-6 py-2.5 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors whitespace-nowrap cursor-pointer"
-        >
-          Set Up KPIs
-        </button>
-      </div>
+      <AIMEmptyState
+        icon="ri-bar-chart-box-line"
+        title="No overview data available yet"
+        description="Start by adding KPIs, metrics, and connected data sources so AIM can surface performance, risk, and recommendation signals."
+        action={
+          <button
+            onClick={() => window.REACT_APP_NAVIGATE?.('/dashboard/kpi-manager')}
+            className="px-6 py-2.5 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors whitespace-nowrap cursor-pointer"
+          >
+            Set Up KPIs
+          </button>
+        }
+      />
     );
   }
 
   return (
     <div className="space-y-6">
-      {/* Key Metrics Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {/* Overall Performance */}
-        <div className="bg-white rounded-xl p-6 border border-gray-200 hover:shadow-lg transition-shadow">
-          <div className="flex items-center justify-between mb-4">
-            <span className="text-sm font-medium text-gray-600">Overall Performance</span>
-            <div className="w-10 h-10 bg-teal-50 rounded-lg flex items-center justify-center">
-              <i className="ri-line-chart-line text-xl text-teal-600"></i>
-            </div>
-          </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-3xl font-bold text-gray-900">{stats.overallPerformance}%</span>
-            {stats.overallPerformance >= 90 && (
-              <span className="text-sm text-green-600 flex items-center gap-1">
-                <i className="ri-arrow-up-line"></i>Excellent
-              </span>
-            )}
-          </div>
-          <div className="mt-3 w-full bg-gray-100 rounded-full h-2">
-            <div
-              className="bg-teal-600 h-2 rounded-full transition-all"
-              style={{ width: `${Math.min(stats.overallPerformance, 100)}%` }}
-            ></div>
-          </div>
-        </div>
+      <AIMSectionIntro
+        eyebrow="Command Center"
+        title="AIM Overview"
+        description="See the current operating picture, the strongest AI opportunities, and the newest Ask AIM questions in one place."
+      />
 
-        {/* Active Opportunities */}
-        <div className="bg-white rounded-xl p-6 border border-gray-200 hover:shadow-lg transition-shadow">
-          <div className="flex items-center justify-between mb-4">
-            <span className="text-sm font-medium text-gray-600">Active Opportunities</span>
-            <div className="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center">
-              <i className="ri-lightbulb-flash-line text-xl text-blue-600"></i>
-            </div>
-          </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-3xl font-bold text-gray-900">{stats.activeOpportunities}</span>
-            <span className="text-sm text-gray-500">pending</span>
-          </div>
-          <p className="text-sm text-gray-600 mt-2">Ready for implementation</p>
-        </div>
-
-        {/* Predicted Impact */}
-        <div className="bg-white rounded-xl p-6 border border-gray-200 hover:shadow-lg transition-shadow">
-          <div className="flex items-center justify-between mb-4">
-            <span className="text-sm font-medium text-gray-600">Predicted Impact</span>
-            <div className="w-10 h-10 bg-green-50 rounded-lg flex items-center justify-center">
-              <i className="ri-money-dollar-circle-line text-xl text-green-600"></i>
-            </div>
-          </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-3xl font-bold text-gray-900">
-              ${stats.predictedImpact >= 1000000
-                ? `${(stats.predictedImpact / 1000000).toFixed(1)}M`
-                : `${(stats.predictedImpact / 1000).toFixed(0)}K`}
-            </span>
-          </div>
-          <p className="text-sm text-gray-600 mt-2">Potential annual savings</p>
-        </div>
-
-        {/* Risk Level */}
-        <div className="bg-white rounded-xl p-6 border border-gray-200 hover:shadow-lg transition-shadow">
-          <div className="flex items-center justify-between mb-4">
-            <span className="text-sm font-medium text-gray-600">Risk Level</span>
-            <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${getRiskColor(stats.riskLevel)}`}>
-              <i className="ri-alert-line text-xl"></i>
-            </div>
-          </div>
-          <div className="flex items-baseline gap-2">
-            <span className={`text-3xl font-bold ${getRiskColor(stats.riskLevel).split(' ')[0]}`}>
-              {getRiskLabel(stats.riskLevel)}
-            </span>
-          </div>
-          <p className="text-sm text-gray-600 mt-2">{stats.alertCount} active alerts</p>
-        </div>
-      </div>
+      <AIMMetricTiles
+        items={[
+          {
+            label: 'Overall Performance',
+            value: `${stats.overallPerformance}%`,
+            detail: stats.overallPerformance >= 90 ? 'Excellent alignment to target' : 'Blended KPI and metric attainment',
+            accent: 'text-slate-950',
+          },
+          {
+            label: 'Active Opportunities',
+            value: stats.activeOpportunities,
+            detail: 'Recommendations ready for action',
+            accent: 'text-blue-600',
+          },
+          {
+            label: 'Predicted Impact',
+            value: stats.predictedImpact >= 1000000
+              ? `$${(stats.predictedImpact / 1000000).toFixed(1)}M`
+              : `$${(stats.predictedImpact / 1000).toFixed(0)}K`,
+            detail: 'Modeled annual upside from current work',
+            accent: 'text-emerald-600',
+          },
+          {
+            label: 'Risk Level',
+            value: getRiskLabel(stats.riskLevel),
+            detail: `${stats.alertCount} active alerts under watch`,
+            accent: RISK_THEME[stats.riskLevel]?.accent || 'text-slate-950',
+          },
+        ]}
+      />
 
       {/* AI Performance Narrative */}
-      <div className="bg-gradient-to-br from-teal-50 to-blue-50 rounded-xl p-6 border border-teal-100">
+      <AIMPanel
+        title="AI Performance Summary"
+        description="A concise narrative of what AIM sees in your current operating state."
+        icon="ri-robot-line"
+        accentClass="from-teal-500 to-cyan-600"
+      >
         <div className="flex items-start gap-4">
-          <div className="w-12 h-12 bg-white rounded-lg flex items-center justify-center flex-shrink-0 shadow-sm">
-            <i className="ri-robot-line text-2xl text-teal-600"></i>
-          </div>
           <div className="flex-1">
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">AI Performance Summary</h3>
             <p className="text-gray-700 leading-relaxed">
               {stats.alertCount === 0 && stats.recommendationCount === 0
                 ? 'Your system is being monitored. AI will generate insights as data becomes available.'
@@ -386,33 +345,28 @@ export default function OverviewSection() {
             </p>
           </div>
         </div>
-      </div>
+      </AIMPanel>
 
       {/* ── Clinical Intelligence Panel ── */}
       <CPIClinicalPanel />
 
       {/* ── Recent Ask Sigma Queries ── */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-gradient-to-br from-teal-500 to-cyan-600 rounded-lg flex items-center justify-center">
-              <i className="ri-chat-voice-line text-lg text-white"></i>
-            </div>
-            <div>
-              <h3 className="text-base font-bold text-gray-900">Recent Ask Sigma Queries</h3>
-              <p className="text-xs text-gray-500">Latest questions surfaced in the insights feed</p>
-            </div>
-          </div>
+      <AIMPanel
+        title="Recent Ask Sigma Queries"
+        description="Latest natural-language questions surfaced in the insights feed."
+        icon="ri-chat-voice-line"
+        accentClass="from-teal-500 to-cyan-600"
+        actions={
           <button
             onClick={() => window.REACT_APP_NAVIGATE?.('/aim')}
             className="text-xs text-teal-600 hover:text-teal-800 flex items-center gap-1 cursor-pointer whitespace-nowrap"
           >
             View all <i className="ri-arrow-right-s-line"></i>
           </button>
-        </div>
-
+        }
+      >
         {queriesLoading ? (
-          <div className="p-6 space-y-3">
+          <div className="space-y-3">
             {[1, 2, 3].map((i) => (
               <div key={i} className="animate-pulse flex gap-3">
                 <div className="w-8 h-8 bg-gray-200 rounded-lg flex-shrink-0"></div>
@@ -424,7 +378,7 @@ export default function OverviewSection() {
             ))}
           </div>
         ) : recentQueries.length === 0 ? (
-          <div className="px-6 py-10 text-center">
+          <div className="px-2 py-6 text-center">
             <div className="w-12 h-12 bg-teal-50 rounded-full flex items-center justify-center mx-auto mb-3">
               <i className="ri-chat-3-line text-2xl text-teal-400"></i>
             </div>
@@ -458,12 +412,16 @@ export default function OverviewSection() {
             ))}
           </div>
         )}
-      </div>
+      </AIMPanel>
 
       {/* Key Drivers of Change */}
       {keyDrivers.length > 0 && (
-        <div>
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Key Drivers of Change</h3>
+        <AIMPanel
+          title="Key Drivers of Change"
+          description="Top current drivers shaping risk, recommendations, and performance movement."
+          icon="ri-radar-line"
+          accentClass="from-violet-500 to-indigo-600"
+        >
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {keyDrivers.map((driver) => (
               <div
@@ -502,7 +460,7 @@ export default function OverviewSection() {
               </div>
             ))}
           </div>
-        </div>
+        </AIMPanel>
       )}
     </div>
   );
