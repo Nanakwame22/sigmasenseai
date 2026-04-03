@@ -34,6 +34,18 @@ export interface ImpactBreakdown {
   changePercent: number;
 }
 
+function calculateSeriesMean(values: number[]): number {
+  if (values.length === 0) return 0;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function calculateSeriesStdDev(values: number[]): number {
+  if (values.length <= 1) return 0;
+  const mean = calculateSeriesMean(values);
+  const variance = values.reduce((sum, value) => sum + Math.pow(value - mean, 2), 0) / values.length;
+  return Math.sqrt(variance);
+}
+
 /**
  * Generate impact scenarios based on active recommendations and projects
  */
@@ -195,6 +207,7 @@ export async function generateKPIForecast(
     const orgId = profileData?.organization_id;
 
     let baseline = 2400;
+    let recentValues: number[] = [];
 
     if (orgId) {
       const { data: metricData } = await supabase
@@ -205,7 +218,9 @@ export async function generateKPIForecast(
         .limit(30);
 
       if (metricData && metricData.length > 0) {
-        const recentValues = metricData.map(d => d.value);
+        recentValues = metricData
+          .map(d => Number(d.value))
+          .filter(value => Number.isFinite(value));
         baseline = recentValues.reduce((a, b) => a + b, 0) / recentValues.length;
       }
     }
@@ -216,20 +231,28 @@ export async function generateKPIForecast(
     const monthlyImpact = selectedScenario.annualImpact / 12;
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     const forecasts: ForecastData[] = [];
+    const trailingStdDev = calculateSeriesStdDev(recentValues);
+    const safeStdDev = trailingStdDev > 0 ? trailingStdDev : baseline * 0.015;
+    const recentTrend = recentValues.length >= 2
+      ? (recentValues[0] - recentValues[recentValues.length - 1]) / Math.max(recentValues.length - 1, 1)
+      : 0;
 
     for (let i = 0; i < timeHorizon; i++) {
       const monthIndex = (new Date().getMonth() + i) % 12;
       const improvementFactor = (i + 1) / timeHorizon;
       const cumulativeImpact = monthlyImpact * improvementFactor;
-      const variance = baseline * 0.02;
-      const randomVariance = () => (Math.random() - 0.5) * variance;
+      const seasonalityPhase = ((monthIndex + 1) / 12) * Math.PI * 2;
+      const seasonalOffset = Math.sin(seasonalityPhase) * safeStdDev * 0.35;
+      const trendOffset = recentTrend * (i + 1);
+      const projectedBaseline = baseline + trendOffset + seasonalOffset;
+      const spread = Math.max(safeStdDev * (1 + i * 0.03), baseline * 0.01);
 
       forecasts.push({
         month: months[monthIndex],
-        baseline: Math.round(baseline + randomVariance()),
-        withActions: Math.round(baseline + cumulativeImpact + randomVariance()),
-        optimistic: Math.round(baseline + cumulativeImpact * 1.3 + randomVariance()),
-        pessimistic: Math.round(baseline + cumulativeImpact * 0.7 + randomVariance())
+        baseline: Math.round(projectedBaseline),
+        withActions: Math.round(projectedBaseline + cumulativeImpact),
+        optimistic: Math.round(projectedBaseline + cumulativeImpact + spread * 0.8),
+        pessimistic: Math.round(projectedBaseline + cumulativeImpact - spread * 0.8)
       });
     }
 
