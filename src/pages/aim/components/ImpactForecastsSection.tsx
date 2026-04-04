@@ -275,14 +275,16 @@ const ImpactForecastsSection: React.FC = () => {
     if (!Number.isFinite(numeric)) return '--';
     const unit = (selectedMetricDetails?.unit ?? '').toLowerCase();
 
-    if (unit.includes('%') || unit.includes('percent')) return `${numeric.toFixed(1)}%`;
-    if (unit.includes('hour')) return `${numeric.toFixed(1)} h`;
-    if (unit.includes('minute') || unit === 'min') return `${numeric.toFixed(1)} min`;
-    if (unit.includes('ratio')) return `${numeric.toFixed(1)} ratio`;
-    if (unit.includes('score')) return `${numeric.toFixed(0)} score`;
-    if (unit.includes('bed')) return `${numeric.toFixed(0)} beds`;
-    if (unit.includes('count')) return `${numeric.toFixed(0)} count`;
-    return numeric.toFixed(Math.abs(numeric) >= 10 ? 0 : 1);
+    const decimalValue = Math.abs(numeric) < 1 ? 2 : Math.abs(numeric) < 10 ? 1 : 0;
+
+    if (unit.includes('%') || unit.includes('percent')) return `${numeric.toFixed(Math.abs(numeric) < 1 ? 2 : 1)}%`;
+    if (unit.includes('hour')) return `${numeric.toFixed(decimalValue)} h`;
+    if (unit.includes('minute') || unit === 'min') return `${numeric.toFixed(decimalValue)} min`;
+    if (unit.includes('ratio')) return `${numeric.toFixed(Math.abs(numeric) < 10 ? 2 : 1)} ratio`;
+    if (unit.includes('score')) return `${numeric.toFixed(Math.abs(numeric) < 10 ? 1 : 0)} score`;
+    if (unit.includes('bed')) return `${numeric.toFixed(Math.abs(numeric) < 10 ? 1 : 0)} beds`;
+    if (unit.includes('count')) return `${numeric.toFixed(Math.abs(numeric) < 10 ? 1 : 0)} count`;
+    return numeric.toFixed(decimalValue);
   };
   const visibleSeries = forecastData.flatMap((point) => [
     point.baseline,

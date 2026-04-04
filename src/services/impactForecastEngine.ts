@@ -46,6 +46,22 @@ function calculateSeriesStdDev(values: number[]): number {
   return Math.sqrt(variance);
 }
 
+function isLowerBetterMetric(metric?: { name?: string | null; unit?: string | null }) {
+  const label = `${metric?.name ?? ''} ${metric?.unit ?? ''}`.toLowerCase();
+  return [
+    'wait',
+    'los',
+    'length of stay',
+    'readmission',
+    'turnaround',
+    'infection',
+    'error',
+    'defect',
+    'critical value',
+    'risk',
+  ].some((token) => label.includes(token));
+}
+
 interface OrganizationForecastContext {
   orgId: string | null;
   metrics: Array<{ id: string; name: string; current_value: number | null; target_value: number | null; unit: string | null }>;
@@ -358,7 +374,12 @@ export async function generateKPIForecast(
     const recentTrend = recentValues.length >= 2
       ? (recentValues[recentValues.length - 1] - recentValues[0]) / Math.max(recentValues.length - 1, 1)
       : 0;
-    const targetGap = targetValue - baseline;
+    const lowerIsBetter = isLowerBetterMetric(targetMetric);
+    const directionalGap = lowerIsBetter ? baseline - targetValue : targetValue - baseline;
+    const normalizedGap = Math.abs(directionalGap) / Math.max(Math.abs(targetValue), Math.abs(baseline), 1);
+    const minimumSpread = Math.max(safeStdDev * 0.9, Math.abs(baseline) * 0.05, 0.2);
+    const modeledOpportunity = Math.max(Math.abs(directionalGap), minimumSpread * (1 + normalizedGap));
+    const directionSign = lowerIsBetter ? -1 : 1;
 
     for (let i = 0; i < timeHorizon; i++) {
       const monthIndex = (new Date().getMonth() + i) % 12;
@@ -367,9 +388,11 @@ export async function generateKPIForecast(
       const seasonalOffset = Math.sin(seasonalityPhase) * safeStdDev * 0.35;
       const trendOffset = recentTrend * (i + 1);
       const projectedBaseline = baseline + trendOffset + seasonalOffset;
-      const actionLift = targetGap * improvementFactor * scenarioCapture;
-      const optimisticLift = targetGap * improvementFactor * Math.min(1.05, scenarioCapture + 0.18);
-      const pessimisticLift = targetGap * improvementFactor * Math.max(0.18, scenarioCapture - 0.2);
+      const actionLift = directionSign * modeledOpportunity * improvementFactor * scenarioCapture;
+      const optimisticLift =
+        directionSign * modeledOpportunity * improvementFactor * Math.min(1.12, scenarioCapture + 0.22);
+      const pessimisticLift =
+        directionSign * modeledOpportunity * improvementFactor * Math.max(0.22, scenarioCapture - 0.18);
 
       forecasts.push({
         month: months[monthIndex],
