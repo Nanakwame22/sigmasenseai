@@ -268,6 +268,23 @@ const ImpactForecastsSection: React.FC = () => {
 
   const activeScenario = scenarioCards.find((card) => card.id === selectedScenario) ?? scenarioCards[0];
   const activeTheme = SCENARIO_THEME[activeScenario?.id] || SCENARIO_THEME.balanced;
+  const visibleSeries = forecastData.flatMap((point) => [
+    point.baseline,
+    point.withActions,
+    ...(showComparison ? [point.optimistic] : []),
+  ]);
+  const seriesMin = visibleSeries.length > 0 ? Math.min(...visibleSeries) : 0;
+  const seriesMax = visibleSeries.length > 0 ? Math.max(...visibleSeries) : 0;
+  const seriesRange = Math.max(1, seriesMax - seriesMin);
+  const domainPadding = Math.max(seriesRange * 0.18, Math.max(Math.abs(seriesMax), 1) * 0.04, 1);
+  const chartDomain: [number, number] = [
+    Math.max(0, seriesMin - domainPadding),
+    seriesMax + domainPadding,
+  ];
+  const leadSeriesAverage =
+    forecastData.length > 0
+      ? forecastData.reduce((sum, point) => sum + point.withActions, 0) / forecastData.length
+      : 0;
 
   if (loading && forecastData.length === 0) {
     return (
@@ -833,57 +850,80 @@ const ImpactForecastsSection: React.FC = () => {
         </div>
 
         {/* Chart */}
-        <div className="relative h-80">
-          <div className="absolute inset-0 flex items-end justify-between gap-2">
-            {forecastData.map((data, index) => {
-              const maxValue = Math.max(data.baseline, data.withActions, data.optimistic);
-              const chartMax = Math.max(...forecastData.map(d => Math.max(d.baseline, d.withActions, d.optimistic))) * 1.1;
-              
-              return (
-                <div key={index} className="flex-1 flex flex-col items-center gap-2">
-                  <div className="w-full flex items-end justify-center gap-1 h-64">
-                    {/* Baseline Bar */}
-                    <div className="relative group flex-1">
-                      <div
-                        className="w-full bg-slate-300 rounded-t-lg transition-all duration-500 hover:bg-slate-400"
-                        style={{ height: `${(data.baseline / chartMax) * 100}%` }}
-                      >
-                        <div className="absolute -top-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-900 text-white text-xs px-2 py-1 rounded whitespace-nowrap">
-                          {formatMoney(data.baseline)}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* With Actions Bar */}
-                    <div className="relative group flex-1">
-                      <div
-                        className="w-full bg-gradient-to-t from-teal-500 to-cyan-600 rounded-t-lg transition-all duration-500 hover:shadow-lg"
-                        style={{ height: `${(data.withActions / chartMax) * 100}%` }}
-                      >
-                        <div className="absolute -top-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-900 text-white text-xs px-2 py-1 rounded whitespace-nowrap">
-                          {formatMoney(data.withActions)}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Optimistic Bar */}
-                    {showComparison && (
-                      <div className="relative group flex-1">
-                        <div
-                          className="w-full bg-gradient-to-t from-blue-500 to-indigo-600 rounded-t-lg transition-all duration-500 hover:shadow-lg"
-                          style={{ height: `${(data.optimistic / chartMax) * 100}%` }}
-                        >
-                          <div className="absolute -top-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-900 text-white text-xs px-2 py-1 rounded whitespace-nowrap">
-                            {formatMoney(data.optimistic)}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                  <div className="text-xs font-medium text-slate-600">{data.month}</div>
-                </div>
-              );
-            })}
+        <div className="relative min-h-[360px] rounded-[24px] border border-slate-200 bg-white/80 px-3 pb-2 pt-4">
+          <ResponsiveContainer width="100%" height={320}>
+            <LineChart data={forecastData} margin={{ top: 12, right: 20, left: 6, bottom: 8 }}>
+              <CartesianGrid stroke="#E2E8F0" strokeDasharray="3 5" vertical={false} />
+              <XAxis
+                dataKey="month"
+                tickLine={false}
+                axisLine={false}
+                tick={{ fill: '#64748B', fontSize: 12 }}
+              />
+              <YAxis
+                tickLine={false}
+                axisLine={false}
+                tick={{ fill: '#64748B', fontSize: 12 }}
+                tickFormatter={(value) => formatMoney(value)}
+                domain={chartDomain}
+                width={70}
+              />
+              <Tooltip
+                contentStyle={{
+                  borderRadius: '18px',
+                  border: '1px solid #D7E3F0',
+                  backgroundColor: '#0F172A',
+                  boxShadow: '0 20px 45px rgba(15, 23, 42, 0.18)',
+                }}
+                labelStyle={{ color: '#E2E8F0', fontWeight: 600 }}
+                itemStyle={{ color: '#F8FAFC' }}
+                formatter={(value: number, name: string) => {
+                  const labelMap: Record<string, string> = {
+                    baseline: 'Baseline',
+                    withActions: 'With Actions',
+                    optimistic: 'Optimistic',
+                  };
+                  return [formatMoney(Number(value ?? 0)), labelMap[name] ?? name];
+                }}
+              />
+              <Line
+                type="monotone"
+                dataKey="baseline"
+                stroke="#94A3B8"
+                strokeWidth={2}
+                dot={false}
+                activeDot={{ r: 5, fill: '#94A3B8', stroke: '#fff', strokeWidth: 2 }}
+              />
+              <Line
+                type="monotone"
+                dataKey="withActions"
+                stroke="#14B8A6"
+                strokeWidth={4}
+                dot={false}
+                activeDot={{ r: 6, fill: '#14B8A6', stroke: '#fff', strokeWidth: 2 }}
+              />
+              {showComparison && (
+                <Line
+                  type="monotone"
+                  dataKey="optimistic"
+                  stroke="#4F46E5"
+                  strokeWidth={2.5}
+                  strokeDasharray="6 6"
+                  dot={false}
+                  activeDot={{ r: 5, fill: '#4F46E5', stroke: '#fff', strokeWidth: 2 }}
+                />
+              )}
+            </LineChart>
+          </ResponsiveContainer>
+          <div className="mt-3 flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3">
+            <div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Lead trajectory</div>
+              <div className="mt-1 text-sm font-semibold text-slate-900">With Actions stays emphasized as the executive path</div>
+            </div>
+            <div className="text-right">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Average modeled level</div>
+              <div className="mt-1 text-lg font-bold text-teal-600">{formatMoney(leadSeriesAverage)}</div>
+            </div>
           </div>
         </div>
 
