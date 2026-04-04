@@ -19,6 +19,7 @@ import {
   normalizeAIMAlert,
   summarizeAIMAlerts,
 } from '../../../services/aimAlertSummary';
+import { getIntelligenceConfidenceState } from '../../../services/intelligenceContract';
 import { addToast } from '../../../hooks/useToast';
 import { AIMEmptyState, AIMMetricTiles, AIMPanel, AIMSectionIntro } from './AIMSectionSystem';
 
@@ -43,17 +44,15 @@ const alertLineage: Record<string, string> = {
 
 const getAlertReadiness = (alert: Alert) => {
   const readiness = getAIMAlertReadiness(alert);
-  if ((alert.confidence || 0) >= 85 && alert.severity === 'critical') {
+  if (readiness === 'Action-ready') {
     return { label: 'Action-ready', tone: 'bg-emerald-100 text-emerald-700 border-emerald-200' };
   }
-  if ((alert.confidence || 0) >= 70 || alert.severity === 'high') {
+  if (readiness === 'Needs review') {
     return { label: 'Needs review', tone: 'bg-amber-100 text-amber-700 border-amber-200' };
   }
   return {
     label: readiness,
-    tone: readiness === 'Needs review'
-      ? 'bg-amber-100 text-amber-700 border-amber-200'
-      : 'bg-sky-100 text-sky-700 border-sky-200',
+    tone: 'bg-sky-100 text-sky-700 border-sky-200',
   };
 };
 
@@ -511,7 +510,7 @@ export default function PredictiveAlertsPanel() {
                               Decision Readiness: {readiness.label}
                             </span>
                             <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-600">
-                              Confidence basis: {Math.round(alert.confidence || 0)}%
+                              Confidence basis: {getIntelligenceConfidenceState(alert.confidence || 0)} ({Math.round(alert.confidence || 0)}%)
                             </span>
                             <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-600">
                               Lead window: {getLeadWindow(alert)}

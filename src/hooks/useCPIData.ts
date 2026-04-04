@@ -2,6 +2,11 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { syncCPIToMetrics } from '../services/cpiMetricsBridge';
 import { useAuth } from '../contexts/AuthContext';
+import {
+  buildCPIEvidenceContract,
+  type IntelligenceFreshnessState,
+  type IntelligenceSourceLabel,
+} from '../services/intelligenceContract';
 
 export interface CPIDomainSnapshot {
   id: string;
@@ -13,9 +18,9 @@ export interface CPIDomainSnapshot {
   alerts_count: number;
   updated_at: string;
   freshness_label?: string;
-  freshness_state?: 'live' | 'delayed' | 'stale';
+  freshness_state?: IntelligenceFreshnessState;
   evidence_summary?: string;
-  source_label?: 'Source-backed' | 'Derived' | 'Inferred';
+  source_label?: Extract<IntelligenceSourceLabel, 'Source-backed' | 'Derived' | 'Inferred'>;
 }
 
 export interface CPIFeedItem {
@@ -120,40 +125,25 @@ function computeHealth(current: number | null, target: number | null, lowerIsBet
   };
 }
 
-function getFreshnessState(timestamp: string | null | undefined): 'live' | 'delayed' | 'stale' {
-  if (!timestamp) return 'stale';
-  const ageMs = Date.now() - new Date(timestamp).getTime();
-  if (!Number.isFinite(ageMs) || ageMs < 0) return 'live';
-  const ageHours = ageMs / (1000 * 60 * 60);
-  if (ageHours <= 6) return 'live';
-  if (ageHours <= 24) return 'delayed';
-  return 'stale';
-}
-
-function formatFreshnessLabel(timestamp: string | null | undefined) {
-  if (!timestamp) return 'Awaiting fresh source telemetry';
-  const ageMs = Date.now() - new Date(timestamp).getTime();
-  if (!Number.isFinite(ageMs) || ageMs < 0) return 'Source refreshed just now';
-  const ageMinutes = Math.floor(ageMs / 60000);
-  if (ageMinutes < 1) return 'Source refreshed just now';
-  if (ageMinutes < 60) return `Last source update ${ageMinutes}m ago`;
-  const ageHours = Math.floor(ageMinutes / 60);
-  if (ageHours < 24) return `Last source update ${ageHours}h ago`;
-  return `Last source update ${Math.floor(ageHours / 24)}d ago`;
-}
-
 function buildTrustMeta(
   latestAt: string | null | undefined,
   metricNames: string[],
-  sourceLabel: 'Source-backed' | 'Derived' | 'Inferred',
+  sourceLabel: Extract<IntelligenceSourceLabel, 'Source-backed' | 'Derived' | 'Inferred'>,
   rationale: string
 ) {
+  const contract = buildCPIEvidenceContract({
+    latestAt,
+    metricNames,
+    sourceLabel,
+    rationale,
+  });
+
   return {
-    updated_at: latestAt ?? new Date().toISOString(),
-    freshness_label: formatFreshnessLabel(latestAt),
-    freshness_state: getFreshnessState(latestAt),
-    source_label: sourceLabel,
-    evidence_summary: `${rationale} Inputs: ${metricNames.join(', ')}.`,
+    updated_at: contract.lastRecomputedAt ?? new Date().toISOString(),
+    freshness_label: contract.freshnessLabel,
+    freshness_state: contract.freshnessState,
+    source_label: contract.sourceLabel,
+    evidence_summary: contract.evidenceSummary,
   };
 }
 

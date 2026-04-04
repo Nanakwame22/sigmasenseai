@@ -1,6 +1,7 @@
 import type { Alert } from './alertMonitoring';
+import { getAlertDecisionReadiness, type IntelligenceReadiness } from './intelligenceContract';
 
-type AlertReadiness = 'Action-ready' | 'Needs review' | 'Directional';
+type AlertReadiness = Exclude<IntelligenceReadiness, 'Monitor only'>;
 
 const safeSeverity = (severity: unknown): Alert['severity'] => {
   return severity === 'critical' || severity === 'high' || severity === 'medium' || severity === 'low'
@@ -64,13 +65,11 @@ export const dedupeAIMAlerts = (alerts: Alert[]) => {
 };
 
 export const getAIMAlertReadiness = (alert: Alert): AlertReadiness => {
-  if ((alert.confidence || 0) >= 85 && alert.severity === 'critical') {
-    return 'Action-ready';
-  }
-  if ((alert.confidence || 0) >= 70 || alert.severity === 'high') {
-    return 'Needs review';
-  }
-  return 'Directional';
+  const readiness = getAlertDecisionReadiness({
+    confidenceScore: alert.confidence,
+    severity: alert.severity,
+  });
+  return readiness === 'Monitor only' ? 'Directional' : readiness;
 };
 
 export const summarizeAIMAlerts = (alerts: Alert[]) => {

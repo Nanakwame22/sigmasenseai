@@ -3,6 +3,11 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { summarizeAIMAlerts, dedupeAIMAlerts } from '../services/aimAlertSummary';
 import { summarizeAIMTrackedWorkRecords } from '../services/aimTrackedWorkSummary';
+import {
+  buildAIMEvidenceContract,
+  getAIMDecisionReadiness,
+  type IntelligenceReadiness,
+} from '../services/intelligenceContract';
 
 interface AIMStats {
   dataSourcesCount: number;
@@ -14,7 +19,7 @@ interface AIMStats {
   aiConfidence: number;
   evidenceCoverage: number;
   evidenceSignals: number;
-  decisionReadiness: 'Monitor only' | 'Directional' | 'Needs review' | 'Action-ready';
+  decisionReadiness: IntelligenceReadiness;
   predictedImpact: number;
   alertLeadTime: number;
   loading: boolean;
@@ -182,14 +187,28 @@ export const useAIMData = () => {
         ? (Date.now() - new Date(latestMetricData.timestamp).getTime()) / 3600000
         : Number.POSITIVE_INFINITY;
 
-      const decisionReadiness: AIMStats['decisionReadiness'] =
-        avgConfidence >= 80 && freshnessAgeHours <= 24 && ((recommendationsCount || 0) > 0 || alertSummary.active > 0)
-          ? 'Action-ready'
-          : avgConfidence >= 65 && ((recommendationsCount || 0) > 0 || alertSummary.active > 0)
-            ? 'Needs review'
-            : liveSignalCount >= 3
-              ? 'Directional'
-              : 'Monitor only';
+      const decisionReadiness = getAIMDecisionReadiness({
+        confidenceScore: avgConfidence,
+        freshnessAgeHours,
+        hasActionSignals: (recommendationsCount || 0) > 0 || alertSummary.active > 0,
+        liveSignalCount,
+      });
+
+      const evidenceContract = buildAIMEvidenceContract({
+        latestAt: latestMetricData?.timestamp ?? null,
+        sourceLabel: liveSignalCount >= 4 ? 'Source-backed' : liveSignalCount >= 2 ? 'Derived' : 'Heuristic',
+        decisionReadiness,
+        evidenceSignals: liveSignalCount,
+        totalSignals: 5,
+        confidenceScore: Math.round(avgConfidence),
+        summary:
+          'Evidence for AIM comes from connected sources, fresh metrics, live recommendations, predictive alerts, and tracked execution state.',
+        missingEvidence:
+          liveSignalCount >= 4
+            ? ['Outcome verification from completed work would strengthen future recommendations.']
+            : ['More fresh metric history', 'Sustained recommendation pressure', 'Closed-loop execution outcomes'],
+        assumptions: ['Confidence combines recommendation quality, forecast accuracy, and live-signal coverage.'],
+      });
 
       setStats(prev => ({
         ...prev,
@@ -201,10 +220,10 @@ export const useAIMData = () => {
         actionCenterCount: trackedWorkSummary.total,
         predictiveAlertsCount: alertSummary.active,
         predictiveAlertsNewCount: alertSummary.new,
-        aiConfidence: Math.round(avgConfidence),
-        evidenceCoverage,
-        evidenceSignals: liveSignalCount,
-        decisionReadiness,
+        aiConfidence: evidenceContract.confidenceScore || Math.round(avgConfidence),
+        evidenceCoverage: evidenceContract.evidenceCoverage ?? evidenceCoverage,
+        evidenceSignals: evidenceContract.evidenceSignals ?? liveSignalCount,
+        decisionReadiness: evidenceContract.decisionReadiness,
         predictedImpact: Math.round(totalPredictedImpact),
         alertLeadTime: Math.round(avgLeadTime),
         loading: false,

@@ -5,6 +5,10 @@ import { useAuth } from '../../../contexts/AuthContext';
 import { supabase } from '../../../lib/supabase';
 import { addToast } from '../../../hooks/useToast';
 import { AIMEmptyState, AIMMetricTiles, AIMPanel, AIMSectionIntro } from './AIMSectionSystem';
+import {
+  getIntelligenceConfidenceState,
+  getRecommendationDecisionReadiness,
+} from '../../../services/intelligenceContract';
 
 // Track which recommendation IDs have already been pushed this session
 const pushedSet = new Set<string>();
@@ -39,13 +43,18 @@ function getRecommendationEvidence(rec: Recommendation) {
 }
 
 function getRecommendationReadiness(rec: Recommendation) {
-  if ((rec.confidence_score || 0) >= 80 && (rec.impact_score || 0) >= 60) {
-    return { label: 'Action-ready', tone: 'bg-emerald-100 text-emerald-700 border-emerald-200' };
+  const readiness = getRecommendationDecisionReadiness({
+    confidenceScore: rec.confidence_score,
+    impactScore: rec.impact_score,
+  });
+
+  if (readiness === 'Action-ready') {
+    return { label: readiness, tone: 'bg-emerald-100 text-emerald-700 border-emerald-200' };
   }
-  if ((rec.confidence_score || 0) >= 65) {
-    return { label: 'Needs review', tone: 'bg-amber-100 text-amber-700 border-amber-200' };
+  if (readiness === 'Needs review') {
+    return { label: readiness, tone: 'bg-amber-100 text-amber-700 border-amber-200' };
   }
-  return { label: 'Directional', tone: 'bg-sky-100 text-sky-700 border-sky-200' };
+  return { label: readiness, tone: 'bg-sky-100 text-sky-700 border-sky-200' };
 }
 
 function getRecommendationRationale(rec: Recommendation) {
@@ -739,7 +748,7 @@ export default function RecommendationsSection() {
                                 Decision Readiness: {readiness.label}
                               </span>
                               <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-600">
-                                Confidence basis: {rec.confidence_score || 0}% signal confidence
+                                Confidence basis: {getIntelligenceConfidenceState(rec.confidence_score || 0)} ({rec.confidence_score || 0}%)
                               </span>
                               <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-600">
                                 Effort load: {rec.effort_score || 0}%
