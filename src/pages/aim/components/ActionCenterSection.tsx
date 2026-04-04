@@ -42,6 +42,28 @@ const TYPE_THEME: Record<string, string> = {
   Kaizen: 'bg-emerald-100 text-emerald-700',
 };
 
+async function getOrganizationId(userId: string): Promise<string | null> {
+  const { data: profile } = await supabase
+    .from('user_profiles')
+    .select('organization_id')
+    .eq('id', userId)
+    .maybeSingle();
+
+  if (profile?.organization_id) {
+    return profile.organization_id;
+  }
+
+  const { data: membership } = await supabase
+    .from('user_organizations')
+    .select('organization_id')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  return membership?.organization_id ?? null;
+}
+
 const ActionCenterSection: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -67,19 +89,11 @@ const ActionCenterSection: React.FC = () => {
     try {
       setLoading(true);
       
-      // Get user's organization
-      const { data: userProfile } = await supabase
-        .from('user_profiles')
-        .select('organization_id')
-        .eq('id', user.id)
-        .single();
-
-      if (!userProfile?.organization_id) {
+      const orgId = await getOrganizationId(user.id);
+      if (!orgId) {
         setLoading(false);
         return;
       }
-
-      const orgId = userProfile.organization_id;
 
       // Load action items
       const { data: actionItems } = await supabase
@@ -210,19 +224,13 @@ const ActionCenterSection: React.FC = () => {
     if (!user) return;
     
     try {
-      // Get user's organization
-      const { data: userProfile } = await supabase
-        .from('user_profiles')
-        .select('organization_id')
-        .eq('id', user.id)
-        .single();
-
-      if (!userProfile?.organization_id) return;
+      const orgId = await getOrganizationId(user.id);
+      if (!orgId) return;
 
       const { data } = await supabase
         .from('user_profiles')
         .select('id, full_name, role')
-        .eq('organization_id', userProfile.organization_id)
+        .eq('organization_id', orgId)
         .order('full_name');
 
       if (data) {
@@ -328,6 +336,13 @@ const ActionCenterSection: React.FC = () => {
     completed: actions.filter(a => a.status === 'Completed').length,
     notStarted: actions.filter(a => a.status === 'Not Started').length,
     totalImpact: actions.reduce((sum, a) => sum + a.impactValue, 0)
+  };
+  const hasTrackedExecution = stats.total > 0;
+  const queueIsFilteredEmpty = hasTrackedExecution && filteredActions.length === 0;
+  const readinessCounts = {
+    tasks: actions.filter((action) => action.type === 'Task').length,
+    dmaic: actions.filter((action) => action.type === 'DMAIC').length,
+    kaizen: actions.filter((action) => action.type === 'Kaizen').length,
   };
 
   if (loading) {
@@ -484,11 +499,45 @@ const ActionCenterSection: React.FC = () => {
       <div className="bg-white rounded-[28px] border border-slate-200 overflow-hidden shadow-[0_20px_60px_rgba(15,23,42,0.06)]">
         {filteredActions.length === 0 ? (
           <div className="p-6">
-            <AIMEmptyState
-              icon="ri-task-line"
-              title="No actions found"
-              description="Adjust the current filters or create a new action to start tracking operational work."
-            />
+            {queueIsFilteredEmpty ? (
+              <div className="space-y-4">
+                <div className="rounded-[24px] border border-slate-200 bg-white p-6">
+                  <div className="flex items-start gap-4">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-teal-500 to-cyan-600">
+                      <i className="ri-links-line text-2xl text-white"></i>
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-bold text-slate-900">Tracked execution is active</h3>
+                      <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+                        AIM is already linked to tracked work, but the current filters are hiding it. Clear the queue filters to bring live
+                        action items, DMAIC work, and Kaizen initiatives back into view.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-5 grid gap-4 md:grid-cols-3">
+                    <div className="rounded-2xl bg-slate-50 p-4">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Task Items</div>
+                      <div className="mt-2 text-2xl font-bold text-slate-900">{readinessCounts.tasks}</div>
+                    </div>
+                    <div className="rounded-2xl bg-slate-50 p-4">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">DMAIC Work</div>
+                      <div className="mt-2 text-2xl font-bold text-slate-900">{readinessCounts.dmaic}</div>
+                    </div>
+                    <div className="rounded-2xl bg-slate-50 p-4">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Kaizen Items</div>
+                      <div className="mt-2 text-2xl font-bold text-slate-900">{readinessCounts.kaizen}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <AIMEmptyState
+                icon="ri-task-line"
+                title="No actions found"
+                description="Adjust the current filters or create a new action to start tracking operational work."
+              />
+            )}
           </div>
         ) : (
           <div className="overflow-x-auto">
