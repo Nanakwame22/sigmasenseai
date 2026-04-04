@@ -110,6 +110,65 @@ const formatTargetAttainment = (currentValue: number, targetValue: number) => {
   return `${((currentValue / targetValue) * 100).toFixed(1)}% of target`;
 };
 
+const OPERATIONAL_METRIC_PATTERNS = [
+  'wait time',
+  'available beds',
+  'occupied beds',
+  'bed occupancy',
+  'patients per nurse',
+  'discharges pending',
+  'los average',
+  'length of stay',
+  'bed turnover',
+  'turnaround time'
+];
+
+const COMPOSITE_RISK_PATTERNS = [
+  'risk score',
+  'risk rate',
+  'readmission prevention risk',
+  'patient flow risk',
+  'laboratory risk',
+  'staffing optimization risk'
+];
+
+const metricPriorityScore = (metric: Metric) => {
+  const name = metric.name.toLowerCase();
+  const hasLiveHistory = (metric.data_points_count || 0) > 0 && (metric.recent_data?.length || 0) > 0;
+  const hasSourceLikeSignal = Boolean(
+    metric.data_source_id ||
+    metric.data_source_name ||
+    metric.is_auto_aggregated ||
+    metric.recent_data?.some((point) => point.source?.startsWith('etl:'))
+  );
+  const isOperationalName = OPERATIONAL_METRIC_PATTERNS.some((pattern) => name.includes(pattern));
+  const isCompositeRisk = COMPOSITE_RISK_PATTERNS.some((pattern) => name.includes(pattern));
+  const category = (metric.category || '').toLowerCase();
+  const isOperationalCategory = category === 'operations';
+
+  let score = 0;
+  if (hasLiveHistory) score += 1000;
+  if (hasSourceLikeSignal) score += 220;
+  if (metric.is_auto_aggregated) score += 120;
+  if (isOperationalName) score += 260;
+  if (isOperationalCategory) score += 80;
+  if (isCompositeRisk) score -= 220;
+  score += Math.min(metric.data_points_count || 0, 200);
+  return score;
+};
+
+const sortMetricsForDisplay = (items: Metric[]) =>
+  [...items].sort((a, b) => {
+    const scoreDiff = metricPriorityScore(b) - metricPriorityScore(a);
+    if (scoreDiff !== 0) return scoreDiff;
+
+    const aTs = a.recent_data?.[a.recent_data.length - 1]?.timestamp;
+    const bTs = b.recent_data?.[b.recent_data.length - 1]?.timestamp;
+    const aTime = aTs ? new Date(aTs).getTime() : 0;
+    const bTime = bTs ? new Date(bTs).getTime() : 0;
+    return bTime - aTime;
+  });
+
 export default function MetricsPage() {
   const { user, organizationId } = useAuth();
   const location = useLocation();
@@ -158,9 +217,18 @@ export default function MetricsPage() {
   });
   const [availableColumns, setAvailableColumns] = useState<string[]>([]);
 
-  const activeMetrics = metrics.filter((metric) => (metric.data_points_count || 0) > 0 && (metric.recent_data?.length || 0) > 0);
-  const inactiveMetrics = metrics.filter((metric) => !((metric.data_points_count || 0) > 0 && (metric.recent_data?.length || 0) > 0));
-  const trackedMetrics = activeMetrics.filter((metric) => Boolean(metric.data_source_id));
+  const activeMetrics = sortMetricsForDisplay(
+    metrics.filter((metric) => (metric.data_points_count || 0) > 0 && (metric.recent_data?.length || 0) > 0)
+  );
+  const inactiveMetrics = sortMetricsForDisplay(
+    metrics.filter((metric) => !((metric.data_points_count || 0) > 0 && (metric.recent_data?.length || 0) > 0))
+  );
+  const trackedMetrics = activeMetrics.filter((metric) => Boolean(
+    metric.data_source_id ||
+    metric.data_source_name ||
+    metric.is_auto_aggregated ||
+    metric.recent_data?.some((point) => point.source?.startsWith('etl:'))
+  ));
   const manualDefinitions = inactiveMetrics.filter((metric) => !metric.data_source_id);
 
   useEffect(() => {
