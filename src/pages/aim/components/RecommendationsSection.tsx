@@ -7,8 +7,8 @@ import { addToast } from '../../../hooks/useToast';
 import { AIMEmptyState, AIMMetricTiles, AIMPanel, AIMSectionIntro } from './AIMSectionSystem';
 import {
   getIntelligenceConfidenceState,
-  getRecommendationDecisionReadiness,
 } from '../../../services/intelligenceContract';
+import { toRecommendationSignal } from '../../../services/intelligenceObjects';
 
 // Track which recommendation IDs have already been pushed this session
 const pushedSet = new Set<string>();
@@ -34,19 +34,17 @@ function formatRelativeTime(timestamp?: string) {
 }
 
 function getRecommendationEvidence(rec: Recommendation) {
-  const signals = [];
-  if (rec.confidence_score) signals.push(`${rec.confidence_score}% confidence`);
-  if (rec.impact_score) signals.push(`${rec.impact_score}% modeled impact`);
-  if (rec.effort_score) signals.push(`${rec.effort_score}% effort load`);
-  if (rec.recommended_actions?.length) signals.push(`${rec.recommended_actions.length} suggested actions`);
-  return signals.join(' • ');
+  const signal = toRecommendationSignal(rec);
+  const evidence = [];
+  if (signal.confidenceScore) evidence.push(`${signal.confidenceScore}% confidence`);
+  if (signal.impactScore) evidence.push(`${signal.impactScore}% modeled impact`);
+  if (signal.effortScore) evidence.push(`${signal.effortScore}% effort load`);
+  if (signal.recommendedActions?.length) evidence.push(`${signal.recommendedActions.length} suggested actions`);
+  return evidence.join(' • ');
 }
 
 function getRecommendationReadiness(rec: Recommendation) {
-  const readiness = getRecommendationDecisionReadiness({
-    confidenceScore: rec.confidence_score,
-    impactScore: rec.impact_score,
-  });
+  const readiness = toRecommendationSignal(rec).evidence.decisionReadiness;
 
   if (readiness === 'Action-ready') {
     return { label: readiness, tone: 'bg-emerald-100 text-emerald-700 border-emerald-200' };
@@ -660,6 +658,7 @@ export default function RecommendationsSection() {
           )
         ) : (
           recommendations.map((rec) => {
+            const signal = toRecommendationSignal(rec);
             const isPushed = pushedIds.has(rec.id);
             const isPushing = pushingId === rec.id;
             const readiness = getRecommendationReadiness(rec);
@@ -718,13 +717,13 @@ export default function RecommendationsSection() {
                         <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/90 p-4">
                           <div className="flex flex-wrap items-center gap-2">
                             <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-600">
-                              Freshness: {formatRelativeTime(rec.updated_at || rec.created_at)}
+                              Freshness: {signal.evidence.freshnessLabel}
                             </span>
                             <span className={`rounded-full border px-3 py-1 text-[11px] font-semibold ${readiness.tone}`}>
                               {readiness.label}
                             </span>
                             <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-600">
-                              Evidence: {rec.category}
+                              Provenance: {signal.evidence.sourceLabel}
                             </span>
                             <button
                               onClick={() => setExpandedId(isExpanded ? null : rec.id)}
@@ -748,23 +747,26 @@ export default function RecommendationsSection() {
                                 Decision Readiness: {readiness.label}
                               </span>
                               <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-600">
-                                Confidence basis: {getIntelligenceConfidenceState(rec.confidence_score || 0)} ({rec.confidence_score || 0}%)
+                                Confidence basis: {signal.evidence.confidenceState} ({signal.confidenceScore}%)
                               </span>
                               <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-600">
                                 Effort load: {rec.effort_score || 0}%
+                              </span>
+                              <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-600">
+                                Provenance: {signal.evidence.sourceLabel}
                               </span>
                             </div>
                             <div className="grid gap-4 lg:grid-cols-3">
                               <div className="rounded-2xl border border-white/70 bg-white/90 p-4">
                                 <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Why AIM surfaced this</div>
                                 <p className="mt-2 text-sm leading-6 text-slate-700">
-                                  {rationale.whyNow}
+                                  {signal.evidence.evidenceSummary}
                                 </p>
                               </div>
                               <div className="rounded-2xl border border-white/70 bg-white/90 p-4">
                                 <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Evidence window</div>
                                 <p className="mt-2 text-sm leading-6 text-slate-700">
-                                  Latest signal refresh: {formatRelativeTime(rec.updated_at || rec.created_at)}. Stronger evidence appears as more recommendations, alerts, and tracked outcomes accumulate.
+                                  Latest signal refresh: {signal.evidence.freshnessLabel}. Stronger evidence appears as more recommendations, alerts, and tracked outcomes accumulate.
                                 </p>
                               </div>
                               <div className="rounded-2xl border border-white/70 bg-white/90 p-4">

@@ -6,27 +6,21 @@ import { exportToCSV } from '../../../utils/exportUtils';
 import { addToast } from '../../../hooks/useToast';
 import { AIMEmptyState, AIMMetricTiles, AIMPanel, AIMSectionIntro } from './AIMSectionSystem';
 import { summarizeAIMTrackedWorkItems } from '../../../services/aimTrackedWorkSummary';
+import type { CanonicalTrackedWorkItem } from '../../../services/intelligenceObjects';
 
-interface Action {
+interface Action extends CanonicalTrackedWorkItem {
   id: string;
   sourceId: string;
   sourceType: 'action_item' | 'dmaic_project' | 'kaizen_item';
   title: string;
-  type: 'Task' | 'DMAIC' | 'Kaizen';
-  status: 'Not Started' | 'In Progress' | 'Completed' | 'On Hold';
-  priority: 'High' | 'Medium' | 'Low';
+  workType: 'Task' | 'DMAIC' | 'Kaizen';
   owner: string;
   ownerId: string | null;
-  dueDate: string;
   progress: number;
   impact: string;
-  impactValue: number;
   createdFrom: string;
   sourceSignalLabel: string;
   sourceSignalDetail: string;
-  linkedRecommendationId: string | null;
-  outcomeState: 'Captured' | 'Awaiting Verification' | 'Monitoring' | 'At Risk' | 'Baseline Ready';
-  outcomeDetail: string;
 }
 
 const STATUS_THEME: Record<string, { badge: string; bar: string }> = {
@@ -191,7 +185,7 @@ const ActionCenterSection: React.FC = () => {
             sourceId: item.id,
             sourceType: 'action_item',
             title: item.title,
-            type: 'Task',
+            workType: 'Task',
             status: item.status === 'completed' ? 'Completed' :
                    item.status === 'in_progress' ? 'In Progress' :
                    item.status === 'on_hold' ? 'On Hold' : 'Not Started',
@@ -251,7 +245,7 @@ const ActionCenterSection: React.FC = () => {
             sourceId: project.id,
             sourceType: 'dmaic_project',
             title: project.title,
-            type: 'DMAIC',
+            workType: 'DMAIC',
             status: project.status === 'completed' ? 'Completed' :
                    project.status === 'on_hold' ? 'On Hold' : 'In Progress',
             priority: project.priority === 'high' ? 'High' :
@@ -307,7 +301,7 @@ const ActionCenterSection: React.FC = () => {
             sourceId: item.id,
             sourceType: 'kaizen_item',
             title: item.title,
-            type: 'Kaizen',
+            workType: 'Kaizen',
             status: item.status === 'completed' ? 'Completed' :
                    item.status === 'in_progress' ? 'In Progress' :
                    item.status === 'rejected' ? 'On Hold' : 'Not Started',
@@ -381,7 +375,7 @@ const ActionCenterSection: React.FC = () => {
   }, [actions]);
 
   const filteredActions = actions
-    .filter(action => filterType === 'all' || action.type === filterType)
+    .filter(action => filterType === 'all' || action.workType === filterType)
     .filter(action => filterStatus === 'all' || action.status === filterStatus)
     .filter(action => filterPriority === 'all' || action.priority === filterPriority);
 
@@ -434,7 +428,7 @@ const ActionCenterSection: React.FC = () => {
   const handleExportActions = () => {
     const exportData = filteredActions.map(action => ({
       Title: action.title,
-      Type: action.type,
+      Type: action.workType,
       Status: action.status,
       Priority: action.priority,
       Owner: action.owner,
@@ -451,9 +445,9 @@ const ActionCenterSection: React.FC = () => {
   const hasTrackedExecution = stats.total > 0;
   const queueIsFilteredEmpty = hasTrackedExecution && filteredActions.length === 0;
   const readinessCounts = {
-    tasks: actions.filter((action) => action.type === 'Task').length,
-    dmaic: actions.filter((action) => action.type === 'DMAIC').length,
-    kaizen: actions.filter((action) => action.type === 'Kaizen').length,
+    tasks: actions.filter((action) => action.workType === 'Task').length,
+    dmaic: actions.filter((action) => action.workType === 'DMAIC').length,
+    kaizen: actions.filter((action) => action.workType === 'Kaizen').length,
   };
   const outcomeLoop = {
     linked: actions.filter((action) => action.linkedRecommendationId).length,
@@ -732,8 +726,8 @@ const ActionCenterSection: React.FC = () => {
                       </div>
                     </td>
                     <td className="py-4 px-4 text-center">
-                      <span className={`px-3 py-1 text-xs font-semibold rounded-full whitespace-nowrap ${TYPE_THEME[action.type] || TYPE_THEME.Task}`}>
-                        {action.type}
+                      <span className={`px-3 py-1 text-xs font-semibold rounded-full whitespace-nowrap ${TYPE_THEME[action.workType] || TYPE_THEME.Task}`}>
+                        {action.workType}
                       </span>
                     </td>
                     <td className="py-4 px-4 text-center">
