@@ -1224,7 +1224,7 @@ export default function DataIntegrationPage() {
               </div>
               <h1 className="text-3xl font-bold tracking-tight text-slate-900 mb-2">Data Integration</h1>
               <p className="max-w-2xl text-slate-600">
-                Connect, monitor, and operationalize source systems with clear health signals, schema awareness, and ETL-ready handoff into the rest of SigmaSense.
+                Connect, monitor, and operationalize source systems with clear health signals, schema awareness, and an ETL-ready handoff into the rest of SigmaSense.
               </p>
               <div className="mt-5 flex flex-wrap gap-3">
                 <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
