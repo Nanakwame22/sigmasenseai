@@ -94,6 +94,23 @@ const DecisionSupportSection: React.FC = () => {
 
   const activeScenario = scenarios.find((scenario) => scenario.id === selectedScenarios[0]) || scenarios[0] || null;
   const activeScenarioTheme = activeScenario ? (SCENARIO_THEME[activeScenario.id] || SCENARIO_THEME['scenario-2']) : SCENARIO_THEME['scenario-2'];
+  const hasScenarioComparison = scenarios.length > 0 && !!activeScenario;
+  const hasTradeOffContent = Boolean(
+    tradeOffs &&
+      (
+        tradeOffs.netScore > 0 ||
+        tradeOffs.benefits.some((group) => group.items.length > 0) ||
+        tradeOffs.considerations.some((group) => group.items.length > 0)
+      )
+  );
+  const hasConfidenceContent = Boolean(
+    confidenceBreakdown &&
+      (
+        confidenceBreakdown.overallScore > 0 ||
+        confidenceBreakdown.factors.some((factor) => factor.score > 0)
+      )
+  );
+  const readinessHighlights = (confidenceBreakdown?.factors ?? []).slice(0, 3);
 
   if (loading) {
     return (
@@ -123,7 +140,7 @@ const DecisionSupportSection: React.FC = () => {
         }
       />
 
-      {activeScenario && (
+      {hasScenarioComparison && activeScenario && (
         <AIMMetricTiles
           items={[
             {
@@ -153,7 +170,7 @@ const DecisionSupportSection: React.FC = () => {
       )}
 
       {/* Scenario Comparison */}
-      {scenarios.length > 0 && (
+      {hasScenarioComparison && (
         <AIMPanel
           title="Executive Decision Brief"
           description="Select the operating posture AIM recommends, then compare the upside, cost, and execution risk in one briefing surface."
@@ -338,7 +355,7 @@ const DecisionSupportSection: React.FC = () => {
       )}
 
       {/* Trade-Offs Analysis */}
-      {tradeOffs && (
+      {hasTradeOffContent && tradeOffs && (
         <AIMPanel
           title="Anticipated Trade-Offs"
           description="Balance implementation benefits against execution complexity and risk."
@@ -409,7 +426,7 @@ const DecisionSupportSection: React.FC = () => {
       )}
 
       {/* Confidence Score Breakdown */}
-      {confidenceBreakdown && (
+      {hasConfidenceContent && confidenceBreakdown && (
         <AIMPanel
           title="Confidence Score & Data Evidence"
           description={`How AIM calculates its ${confidenceBreakdown.overallScore}% confidence rating`}
@@ -458,8 +475,86 @@ const DecisionSupportSection: React.FC = () => {
         </AIMPanel>
       )}
 
+      {!hasScenarioComparison && (
+        <AIMPanel
+          title="Decision Readiness"
+          description="AIM has supporting signals, but it does not yet have enough aligned evidence to publish a decision-ready scenario brief."
+          icon="ri-compass-discover-line"
+          accentClass="from-teal-500 to-cyan-600"
+        >
+          <div className="grid gap-4 md:grid-cols-4">
+            <div className="rounded-[22px] border border-slate-200 bg-white p-5">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Scenario coverage</div>
+              <div className="mt-2 text-3xl font-bold text-slate-900">{scenarios.length}</div>
+              <div className="mt-1 text-sm text-slate-500">decision path{scenarios.length === 1 ? '' : 's'} currently ready</div>
+            </div>
+            <div className="rounded-[22px] border border-slate-200 bg-white p-5">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Justification briefs</div>
+              <div className="mt-2 text-3xl font-bold text-slate-900">{justifications.length}</div>
+              <div className="mt-1 text-sm text-slate-500">recommendation narratives available</div>
+            </div>
+            <div className="rounded-[22px] border border-slate-200 bg-white p-5">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Confidence coverage</div>
+              <div className="mt-2 text-3xl font-bold text-teal-600">
+                {hasConfidenceContent && confidenceBreakdown ? `${confidenceBreakdown.overallScore}%` : 'Pending'}
+              </div>
+              <div className="mt-1 text-sm text-slate-500">evidence-backed confidence depth</div>
+            </div>
+            <div className="rounded-[22px] border border-slate-200 bg-white p-5">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Current status</div>
+              <div className="mt-2 text-2xl font-bold text-amber-600">Needs more evidence</div>
+              <div className="mt-1 text-sm text-slate-500">AIM is still gathering the strongest decision path</div>
+            </div>
+          </div>
+
+          <div className="mt-6 grid gap-4 lg:grid-cols-[1.1fr,0.9fr]">
+            <div className="rounded-[24px] border border-slate-200 bg-white p-5">
+              <div className="text-sm font-semibold text-slate-900">What AIM can already confirm</div>
+              <div className="mt-4 space-y-3">
+                {(readinessHighlights.length > 0 ? readinessHighlights : [
+                  {
+                    factor: 'Signal Alignment',
+                    score: 0,
+                    description: 'Active alerts, metrics, and recommendations are not yet aligned enough for a decisive scenario brief.',
+                    weight: 0,
+                  },
+                ]).map((factor, idx) => (
+                  <div key={idx} className="rounded-2xl bg-slate-50 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-semibold text-slate-900">{factor.factor}</div>
+                        <div className="mt-1 text-sm text-slate-600">{factor.description}</div>
+                      </div>
+                      <div className="text-xl font-bold text-teal-600">{factor.score}%</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-[24px] border border-dashed border-slate-300 bg-slate-50 p-5">
+              <div className="text-sm font-semibold text-slate-900">What will improve readiness</div>
+              <div className="mt-4 space-y-3 text-sm text-slate-600">
+                <div className="flex items-start gap-3">
+                  <i className="ri-checkbox-circle-line mt-0.5 text-teal-600"></i>
+                  <span>More action-ready recommendations or stronger scenario evidence from connected alerts and metrics.</span>
+                </div>
+                <div className="flex items-start gap-3">
+                  <i className="ri-checkbox-circle-line mt-0.5 text-teal-600"></i>
+                  <span>Additional target-backed metric coverage so AIM can compare scenario outcomes with more confidence.</span>
+                </div>
+                <div className="flex items-start gap-3">
+                  <i className="ri-checkbox-circle-line mt-0.5 text-teal-600"></i>
+                  <span>More forecast and action history so the decision brief can separate upside from execution risk more clearly.</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </AIMPanel>
+      )}
+
       {/* No Data State */}
-      {scenarios.length === 0 && justifications.length === 0 && (
+      {scenarios.length === 0 && justifications.length === 0 && !hasTradeOffContent && !hasConfidenceContent && (
         <AIMEmptyState
           icon="ri-scales-line"
           title="No decision analysis available yet"

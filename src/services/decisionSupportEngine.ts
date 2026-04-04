@@ -72,7 +72,19 @@ async function getOrganizationId(userId: string): Promise<string | null> {
     .eq('id', userId)
     .maybeSingle();
 
-  return data?.organization_id ?? null;
+  if (data?.organization_id) {
+    return data.organization_id;
+  }
+
+  const { data: membership } = await supabase
+    .from('user_organizations')
+    .select('organization_id')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  return membership?.organization_id ?? null;
 }
 
 async function loadOrgContext(userId: string): Promise<OrgContext> {
