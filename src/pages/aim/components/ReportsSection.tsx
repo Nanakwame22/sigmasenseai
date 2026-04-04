@@ -105,6 +105,8 @@ const REPORT_TEMPLATES: Array<{
   },
 ];
 
+const getLocalReportsKey = (orgId: string) => `aim-local-reports:${orgId}`;
+
 const ReportsSection: React.FC = () => {
   const { organization, organizationId, user } = useAuth();
 
@@ -333,6 +335,30 @@ const ReportsSection: React.FC = () => {
     syncSectionsToTemplate(selectedTemplate);
   }, [selectedTemplate]);
 
+  const loadLocalReports = (currentOrgId: string): Report[] => {
+    if (typeof window === 'undefined') return [];
+
+    try {
+      const raw = window.localStorage.getItem(getLocalReportsKey(currentOrgId));
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (error) {
+      console.error('Error loading local AIM reports:', error);
+      return [];
+    }
+  };
+
+  const saveLocalReports = (currentOrgId: string, nextReports: Report[]) => {
+    if (typeof window === 'undefined') return;
+
+    try {
+      window.localStorage.setItem(getLocalReportsKey(currentOrgId), JSON.stringify(nextReports));
+    } catch (error) {
+      console.error('Error saving local AIM reports:', error);
+    }
+  };
+
   const loadReports = async () => {
     if (!orgId) return;
 
@@ -349,8 +375,8 @@ const ReportsSection: React.FC = () => {
 
       if (error) throw error;
 
-      const loadedReports: Report[] = (auditLogs || []).map((log) => {
-        const metadata = log.metadata as any;
+      const remoteReports: Report[] = (auditLogs || []).map((log) => {
+        const metadata = (log.metadata || log.new_values || log.details) as any;
         return {
           id: log.id,
           title: metadata?.report_title || `AIM Report - ${new Date(log.created_at).toLocaleDateString()}`,
@@ -362,7 +388,12 @@ const ReportsSection: React.FC = () => {
         };
       });
 
-      setReports(loadedReports);
+      const localReports = loadLocalReports(orgId);
+      const mergedReports = [...localReports, ...remoteReports].filter(
+        (report, index, list) => list.findIndex((item) => item.id === report.id) === index
+      );
+
+      setReports(mergedReports);
     } catch (error) {
       console.error('Error loading reports:', error);
     } finally {
@@ -471,34 +502,71 @@ const ReportsSection: React.FC = () => {
         generated_by: user?.id
       };
 
-      const { error: insertError } = await supabase
-        .from('audit_logs')
-        .insert({
-          organization_id: orgId,
-          user_id: user?.id,
-          action: 'report_generated',
-          resource_type: 'report',
-          resource_id: `report-${Date.now()}`,
-          metadata: {
-            report_title: `${template.title} - ${new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`,
-            report_type: template.type,
-            report_size: `${Math.max(1.4, (selectedSections.reduce((sum, section) => sum + section.pages, 0) / 6)).toFixed(1)} MB`,
-            report_data: reportData
-          }
-        });
-
-      if (insertError) throw insertError;
-
-      setShowExportFormatDialog(true);
-      setPendingExportReport({
-        id: `report-${Date.now()}`,
+      const reportId = `report-${Date.now()}`;
+      const newReport: Report = {
+        id: reportId,
         title: `${template.title} - ${new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`,
         type: template.type,
         date: new Date().toISOString().split('T')[0],
         size: `${Math.max(1.4, (selectedSections.reduce((sum, section) => sum + section.pages, 0) / 6)).toFixed(1)} MB`,
         status: 'Ready',
         data: reportData
-      });
+      };
+
+      const auditPayload = {
+        organization_id: orgId,
+        user_id: user?.id,
+        action: 'report_generated',
+        resource_type: 'report',
+        resource_id: reportId,
+        entity_type: 'report',
+        entity_id: reportId,
+        entity_name: newReport.title,
+        severity: 'info',
+        status: 'success',
+        details: {
+          report_title: newReport.title,
+          report_type: newReport.type,
+          report_size: newReport.size,
+          report_data: reportData
+        },
+        metadata: {
+          report_title: newReport.title,
+          report_type: newReport.type,
+          report_size: newReport.size,
+          report_data: reportData
+        },
+        new_values: {
+          report_title: newReport.title,
+          report_type: newReport.type,
+          report_size: newReport.size,
+          report_data: reportData
+        }
+      };
+
+      const { error: insertError } = await supabase
+        .from('audit_logs')
+        .insert(auditPayload);
+
+      if (insertError) {
+        console.error('Report audit persistence failed:', insertError);
+        const existingLocalReports = loadLocalReports(orgId);
+        const nextLocalReports = [newReport, ...existingLocalReports].filter(
+          (report, index, list) => list.findIndex((item) => item.id === report.id) === index
+        );
+        saveLocalReports(orgId, nextLocalReports);
+        setReports(nextLocalReports);
+        addToast('Report generated and saved locally. Audit logging is currently unavailable.', 'warning');
+      } else {
+        saveLocalReports(orgId, [newReport, ...loadLocalReports(orgId)].filter(
+          (report, index, list) => list.findIndex((item) => item.id === report.id) === index
+        ));
+        await loadReports();
+        await loadAuditStats();
+      }
+
+      setShowExportFormatDialog(true);
+      setPendingExportReport(newReport);
 
     } catch (error) {
       console.error('Error generating report:', error);
