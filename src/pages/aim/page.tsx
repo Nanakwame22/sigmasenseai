@@ -205,34 +205,37 @@ const AIMPage: React.FC = () => {
     }
   };
 
-  const navItems: { id: Section; icon: string; label: string; badge: string | null; pulse: boolean }[] = [
-    { id: 'overview', icon: 'ri-dashboard-3-line', label: 'Overview', badge: null, pulse: false },
+  const navItems: { id: Section; icon: string; label: string; badge: string | null; badgeLabel?: string | null; pulse: boolean }[] = [
+    { id: 'overview', icon: 'ri-dashboard-3-line', label: 'Overview', badge: null, badgeLabel: null, pulse: false },
     {
       id: 'recommendations',
       icon: 'ri-lightbulb-line',
       label: 'Recommendations',
       badge: aimStats.recommendationsCount > 0 ? aimStats.recommendationsCount.toString() : null,
+      badgeLabel: null,
       pulse: aimStats.recommendationsPulse,
     },
-    { id: 'forecasts', icon: 'ri-line-chart-line', label: 'Impact Forecasts', badge: null, pulse: false },
-    { id: 'decision', icon: 'ri-compass-3-line', label: 'Decision Support', badge: null, pulse: false },
+    { id: 'forecasts', icon: 'ri-line-chart-line', label: 'Impact Forecasts', badge: null, badgeLabel: null, pulse: false },
+    { id: 'decision', icon: 'ri-compass-3-line', label: 'Decision Support', badge: null, badgeLabel: null, pulse: false },
     {
       id: 'action',
       icon: 'ri-task-line',
       label: 'Action Center',
       badge: null,
+      badgeLabel: null,
       pulse: aimStats.actionPulse,
     },
     {
       id: 'alerts',
       icon: 'ri-alarm-warning-line',
       label: 'Predictive Alerts',
-      badge: aimStats.predictiveAlertsCount > 0 ? aimStats.predictiveAlertsCount.toString() : null,
+      badge: aimStats.predictiveAlertsNewCount > 0 ? aimStats.predictiveAlertsNewCount.toString() : null,
+      badgeLabel: aimStats.predictiveAlertsNewCount > 0 ? 'New' : null,
       pulse: aimStats.alertsPulse,
     },
-    { id: 'ask', icon: 'ri-chat-voice-line', label: 'Ask AIM', badge: null, pulse: false },
-    { id: 'history', icon: 'ri-history-line', label: 'Insight History', badge: null, pulse: false },
-    { id: 'reports', icon: 'ri-file-chart-line', label: 'Reports', badge: null, pulse: false },
+    { id: 'ask', icon: 'ri-chat-voice-line', label: 'Ask AIM', badge: null, badgeLabel: null, pulse: false },
+    { id: 'history', icon: 'ri-history-line', label: 'Insight History', badge: null, badgeLabel: null, pulse: false },
+    { id: 'reports', icon: 'ri-file-chart-line', label: 'Reports', badge: null, badgeLabel: null, pulse: false },
   ];
 
   const isFocusSection = activeSection === 'ask';
@@ -300,7 +303,20 @@ const AIMPage: React.FC = () => {
                       activeSection === item.id ? 'text-white' : 'text-brand-400 group-hover:text-ai-400'
                     }`}
                   ></i>
-                  <span className="text-sm font-medium whitespace-nowrap tracking-[0.01em]">{item.label}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium whitespace-nowrap tracking-[0.01em]">{item.label}</span>
+                    {item.badgeLabel && (
+                      <span
+                        className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] ${
+                          activeSection === item.id
+                            ? 'border-white/20 bg-white/10 text-white/90'
+                            : 'border-ai-400/20 bg-ai-500/10 text-ai-300'
+                        }`}
+                      >
+                        {item.badgeLabel}
+                      </span>
+                    )}
+                  </div>
                 </div>
                 {item.badge && !aimStats.loading && (
                   <span

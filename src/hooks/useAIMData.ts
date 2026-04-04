@@ -9,6 +9,7 @@ interface AIMStats {
   recommendationsCount: number;
   actionCenterCount: number;
   predictiveAlertsCount: number;
+  predictiveAlertsNewCount: number;
   aiConfidence: number;
   evidenceCoverage: number;
   evidenceSignals: number;
@@ -31,6 +32,7 @@ export const useAIMData = () => {
     recommendationsCount: 0,
     actionCenterCount: 0,
     predictiveAlertsCount: 0,
+    predictiveAlertsNewCount: 0,
     aiConfidence: 0,
     evidenceCoverage: 0,
     evidenceSignals: 0,
@@ -197,6 +199,7 @@ export const useAIMData = () => {
         recommendationsCount: recommendationsCount || 0,
         actionCenterCount: totalActionCount,
         predictiveAlertsCount: alertSummary.active,
+        predictiveAlertsNewCount: alertSummary.new,
         aiConfidence: Math.round(avgConfidence),
         evidenceCoverage,
         evidenceSignals: liveSignalCount,
