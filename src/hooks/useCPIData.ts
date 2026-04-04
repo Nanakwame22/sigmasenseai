@@ -12,6 +12,10 @@ export interface CPIDomainSnapshot {
   predictive_insight: string;
   alerts_count: number;
   updated_at: string;
+  freshness_label?: string;
+  freshness_state?: 'live' | 'delayed' | 'stale';
+  evidence_summary?: string;
+  source_label?: 'Source-backed' | 'Derived' | 'Inferred';
 }
 
 export interface CPIFeedItem {
@@ -45,12 +49,14 @@ interface MetricRecord {
   unit: string | null;
   current_value: number | null;
   target_value: number | null;
+  data_source_id?: string | null;
 }
 
 interface MetricPointRecord {
   metric_id: string;
   value: number;
   timestamp: string;
+  source?: string | null;
 }
 
 const LIVE_METRIC_PRIORITY = [
@@ -111,6 +117,43 @@ function computeHealth(current: number | null, target: number | null, lowerIsBet
   return {
     risk: Math.round(Math.max(0, Math.min(100, risk))),
     status: risk >= 75 ? 'critical' as const : risk >= 45 ? 'elevated' as const : 'stable' as const,
+  };
+}
+
+function getFreshnessState(timestamp: string | null | undefined): 'live' | 'delayed' | 'stale' {
+  if (!timestamp) return 'stale';
+  const ageMs = Date.now() - new Date(timestamp).getTime();
+  if (!Number.isFinite(ageMs) || ageMs < 0) return 'live';
+  const ageHours = ageMs / (1000 * 60 * 60);
+  if (ageHours <= 6) return 'live';
+  if (ageHours <= 24) return 'delayed';
+  return 'stale';
+}
+
+function formatFreshnessLabel(timestamp: string | null | undefined) {
+  if (!timestamp) return 'No recent source update';
+  const ageMs = Date.now() - new Date(timestamp).getTime();
+  if (!Number.isFinite(ageMs) || ageMs < 0) return 'Updated just now';
+  const ageMinutes = Math.floor(ageMs / 60000);
+  if (ageMinutes < 1) return 'Updated just now';
+  if (ageMinutes < 60) return `Updated ${ageMinutes}m ago`;
+  const ageHours = Math.floor(ageMinutes / 60);
+  if (ageHours < 24) return `Updated ${ageHours}h ago`;
+  return `Updated ${Math.floor(ageHours / 24)}d ago`;
+}
+
+function buildTrustMeta(
+  latestAt: string | null | undefined,
+  metricNames: string[],
+  sourceLabel: 'Source-backed' | 'Derived' | 'Inferred',
+  rationale: string
+) {
+  return {
+    updated_at: latestAt ?? new Date().toISOString(),
+    freshness_label: formatFreshnessLabel(latestAt),
+    freshness_state: getFreshnessState(latestAt),
+    source_label: sourceLabel,
+    evidence_summary: `${rationale} Inputs: ${metricNames.join(', ')}.`,
   };
 }
 
@@ -267,13 +310,15 @@ function buildLiveDomains(metrics: MetricRecord[], metricPoints: MetricPointReco
   const getLatestValues = (metricName: string) => {
     const metric = getMetric(metricName);
     if (!metric) {
-      return { metric: null as MetricRecord | null, current: null as number | null, previous: null as number | null };
+      return { metric: null as MetricRecord | null, current: null as number | null, previous: null as number | null, latestAt: null as string | null, source: null as string | null };
     }
     const points = [...(pointMap.get(metric.id) || [])].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     return {
       metric,
       current: points[0]?.value ?? metric.current_value ?? null,
       previous: points[1]?.value ?? points[0]?.value ?? null,
+      latestAt: points[0]?.timestamp ?? null,
+      source: points[0]?.source ?? null,
     };
   };
 
@@ -290,6 +335,10 @@ function buildLiveDomains(metrics: MetricRecord[], metricPoints: MetricPointReco
   const occupancyRate = totalBeds > 0 ? ((occupied.current || 0) / totalBeds) * 100 : null;
   const rnCoverage = patientsPerNurse.current ? Math.max(0, Math.min(100, 100 - Math.max(0, patientsPerNurse.current - 4) * 18)) : null;
   const dischargeBeforeNoon = discharges.current !== null ? Math.max(25, Math.min(92, 90 - discharges.current * 4)) : null;
+  const latestTimestamp = (...timestamps: Array<string | null | undefined>) =>
+    timestamps
+      .filter((value): value is string => Boolean(value))
+      .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0] ?? null;
 
   const edHealth = computeHealth(wait.current, wait.metric?.target_value ?? 30, true);
   const inpatientHealth = computeHealth(los.current, los.metric?.target_value ?? 24, true);
@@ -323,7 +372,12 @@ function buildLiveDomains(metrics: MetricRecord[], metricPoints: MetricPointReco
         ? `ED wait time is elevated at ${formatMetricValue(wait.current, wait.metric?.unit)}. Throughput pressure is likely building and should be monitored.`
         : 'ED flow is currently within a manageable range based on recent wait-time performance.',
       alerts_count: edHealth.status === 'critical' ? 3 : edHealth.status === 'elevated' ? 1 : 0,
-      updated_at: now,
+      ...buildTrustMeta(
+        latestTimestamp(wait.latestAt, occupied.latestAt),
+        ['ED Wait Time', 'Occupied Beds'],
+        'Source-backed',
+        'Risk is computed directly from live ED wait-time pressure and patient-load telemetry.'
+      ),
     },
     {
       id: 'live-inpatient',
@@ -345,7 +399,12 @@ function buildLiveDomains(metrics: MetricRecord[], metricPoints: MetricPointReco
         ? `Average length of stay is ${formatMetricValue(los.current, los.metric?.unit)}, indicating inpatient throughput friction.`
         : 'Inpatient flow is stable with no major LOS pressure detected from the latest metric feed.',
       alerts_count: inpatientHealth.status === 'critical' ? 2 : inpatientHealth.status === 'elevated' ? 1 : 0,
-      updated_at: now,
+      ...buildTrustMeta(
+        latestTimestamp(los.latestAt, discharges.latestAt),
+        ['LOS Average Hours', 'Discharges Pending'],
+        'Derived',
+        'Status blends live inpatient LOS with discharge backlog to estimate throughput pressure.'
+      ),
     },
     {
       id: 'live-beds',
@@ -367,7 +426,12 @@ function buildLiveDomains(metrics: MetricRecord[], metricPoints: MetricPointReco
         ? `Only ${formatMetricValue(available.current, available.metric?.unit)} remain available, which raises bed shortage risk.`
         : 'Bed availability is currently above the minimum operating buffer.',
       alerts_count: bedsHealth.status === 'critical' ? 2 : bedsHealth.status === 'elevated' ? 1 : 0,
-      updated_at: now,
+      ...buildTrustMeta(
+        latestTimestamp(available.latestAt, occupied.latestAt, discharges.latestAt),
+        ['Available Beds', 'Occupied Beds', 'Discharges Pending'],
+        'Source-backed',
+        'Bed pressure is anchored in imported bed availability and occupancy signals, with discharge backlog used for context.'
+      ),
     },
     {
       id: 'live-lab',
@@ -389,7 +453,12 @@ function buildLiveDomains(metrics: MetricRecord[], metricPoints: MetricPointReco
         ? `${Math.round(criticalLabs.current)} critical lab results remain unacknowledged and may need escalation.`
         : 'No critical lab backlog is currently visible in the imported KPI layer.',
       alerts_count: criticalLabs.current && criticalLabs.current > 0 ? Math.round(criticalLabs.current) : 0,
-      updated_at: now,
+      ...buildTrustMeta(
+        latestTimestamp(criticalLabs.latestAt),
+        ['Critical Labs Unacknowledged'],
+        'Source-backed',
+        'The lab signal is taken directly from the imported critical-labs backlog metric.'
+      ),
     },
     {
       id: 'live-care',
@@ -411,7 +480,12 @@ function buildLiveDomains(metrics: MetricRecord[], metricPoints: MetricPointReco
         ? 'Care coordination may be lagging because discharge-related backlog is rising above target.'
         : 'Care coordination is stable based on current discharge pressure and escalation counts.',
       alerts_count: careHealth.status === 'critical' ? 2 : careHealth.status === 'elevated' ? 1 : 0,
-      updated_at: now,
+      ...buildTrustMeta(
+        latestTimestamp(discharges.latestAt, criticalLabs.latestAt),
+        ['Discharges Pending', 'Critical Labs Unacknowledged'],
+        'Inferred',
+        'Care coordination status is inferred from discharge pressure and escalation load rather than a dedicated source feed.'
+      ),
     },
     {
       id: 'live-staffing',
@@ -433,7 +507,12 @@ function buildLiveDomains(metrics: MetricRecord[], metricPoints: MetricPointReco
         ? `Patients per nurse is ${formatMetricValue(patientsPerNurse.current, patientsPerNurse.metric?.unit)}, suggesting staffing strain.`
         : 'Staffing load is currently within the preferred operating range.',
       alerts_count: staffingHealth.status === 'critical' ? 2 : staffingHealth.status === 'elevated' ? 1 : 0,
-      updated_at: now,
+      ...buildTrustMeta(
+        latestTimestamp(patientsPerNurse.latestAt),
+        ['Patients Per Nurse'],
+        'Source-backed',
+        'Staffing capacity is anchored in the imported patients-per-nurse workload signal.'
+      ),
     },
     {
       id: 'live-readmission',
@@ -455,7 +534,12 @@ function buildLiveDomains(metrics: MetricRecord[], metricPoints: MetricPointReco
         ? `Readmission risk is above target at ${formatMetricValue(readmission.current, readmission.metric?.unit)} and should be reviewed.`
         : 'Readmission risk is currently within the expected threshold.',
       alerts_count: readmissionHealth.status === 'critical' ? 2 : readmissionHealth.status === 'elevated' ? 1 : 0,
-      updated_at: now,
+      ...buildTrustMeta(
+        latestTimestamp(readmission.latestAt, discharges.latestAt),
+        ['Readmission Risk', 'Discharges Pending'],
+        'Derived',
+        'Readmission pressure is driven by the risk metric and tempered by current discharge workload.'
+      ),
     },
     {
       id: 'live-discharge',
@@ -477,7 +561,12 @@ function buildLiveDomains(metrics: MetricRecord[], metricPoints: MetricPointReco
         ? `${Math.round(discharges.current)} patients are pending discharge completion, creating operational drag.`
         : 'Discharge operations are moving within target levels.',
       alerts_count: dischargeHealth.status === 'critical' ? 2 : dischargeHealth.status === 'elevated' ? 1 : 0,
-      updated_at: now,
+      ...buildTrustMeta(
+        latestTimestamp(discharges.latestAt),
+        ['Discharges Pending'],
+        'Source-backed',
+        'The discharge domain is anchored in the imported pending-discharges feed.'
+      ),
     },
   ];
 }
@@ -512,7 +601,7 @@ export function useCPIData(): UseCPIDataReturn {
     if (organizationId) {
       const { data: metricRows, error: metricsError } = await supabase
         .from('metrics')
-        .select('id, name, unit, current_value, target_value')
+        .select('id, name, unit, current_value, target_value, data_source_id')
         .eq('organization_id', organizationId)
         .in('name', LIVE_METRIC_PRIORITY);
 
@@ -520,7 +609,7 @@ export function useCPIData(): UseCPIDataReturn {
         const metricIds = metricRows.map((metric) => metric.id);
         const { data: pointRows, error: pointsError } = await supabase
           .from('metric_data')
-          .select('metric_id, value, timestamp')
+          .select('metric_id, value, timestamp, source')
           .in('metric_id', metricIds)
           .order('timestamp', { ascending: false })
           .limit(500);

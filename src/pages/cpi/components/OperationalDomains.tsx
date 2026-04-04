@@ -112,6 +112,12 @@ const riskColors = {
   },
 };
 
+const freshnessTone = {
+  live: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  delayed: 'bg-amber-50 text-amber-700 border-amber-200',
+  stale: 'bg-rose-50 text-rose-700 border-rose-200',
+};
+
 function getRiskLevel(score: number): keyof typeof riskColors {
   if (score >= 75) return 'critical';
   if (score >= 55) return 'high';
@@ -127,6 +133,8 @@ function DomainCard({ domain, config, onTakeAction }: { domain: CPIDomainSnapsho
   const updatedAt = new Date(domain.updated_at);
   const minutesAgo = Math.max(0, Math.floor((Date.now() - updatedAt.getTime()) / 60000));
   const timeLabel = minutesAgo === 0 ? 'Just now' : `${minutesAgo}m ago`;
+  const freshnessState = domain.freshness_state || 'stale';
+  const freshnessClasses = freshnessTone[freshnessState];
 
   return (
     <div
@@ -171,6 +179,24 @@ function DomainCard({ domain, config, onTakeAction }: { domain: CPIDomainSnapsho
           <p className="text-xs text-slate-600 leading-relaxed">{domain.predictive_insight}</p>
         </div>
 
+        <div className="mt-3 flex flex-wrap gap-2">
+          <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold ${freshnessClasses}`}>
+            {domain.freshness_label || `Updated ${timeLabel}`}
+          </span>
+          {domain.source_label && (
+            <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600">
+              {domain.source_label}
+            </span>
+          )}
+        </div>
+
+        {expanded && domain.evidence_summary && (
+          <div className="mt-3 rounded-lg border border-slate-200 bg-white/70 p-3">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Evidence</p>
+            <p className="mt-1 text-xs leading-relaxed text-slate-600">{domain.evidence_summary}</p>
+          </div>
+        )}
+
         {expanded && (
           <div className="mt-4 pt-4 border-t border-slate-100">
             <div className="grid grid-cols-3 gap-3">
@@ -193,7 +219,7 @@ function DomainCard({ domain, config, onTakeAction }: { domain: CPIDomainSnapsho
               })}
             </div>
             <div className="mt-3 flex items-center justify-between">
-              <span className="text-xs text-slate-400">Live data · Updated {timeLabel}</span>
+              <span className="text-xs text-slate-400">{domain.freshness_label || `Live data · Updated ${timeLabel}`}</span>
               <button
                 onClick={(e) => { e.stopPropagation(); onTakeAction(); }}
                 className="flex items-center space-x-1.5 px-3 py-1.5 bg-teal-600 text-white text-xs font-semibold rounded-lg hover:bg-teal-700 transition-colors cursor-pointer whitespace-nowrap">
