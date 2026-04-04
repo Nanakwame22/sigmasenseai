@@ -442,44 +442,50 @@ export default function RecommendationsSection() {
           icon="ri-radar-line"
           accentClass="from-amber-500 to-orange-600"
         >
-          <div className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr),minmax(320px,0.85fr)]">
+          <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr),minmax(320px,0.8fr)]">
             <div className="space-y-4">
-              <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-4">
-                {[
-                  {
-                    label: 'Watch Signals',
-                    value: readinessSummary.watchSignals,
-                    detail: 'Active signals AIM is holding below the action threshold.',
-                    accent: 'text-slate-950',
-                  },
-                  {
-                    label: 'Needs Review',
-                    value: readinessSummary.needsReview,
-                    detail: 'Higher-pressure signals that warrant operator review.',
-                    accent: 'text-amber-600',
-                  },
-                  {
-                    label: 'Evidence Coverage',
-                    value: `${readinessSummary.evidenceCoverage}/5`,
-                    detail: 'Breadth of live signal classes feeding readiness.',
-                    accent: 'text-teal-600',
-                  },
-                  {
-                    label: 'Current State',
-                    value: readinessSummary.recommendationState,
-                    detail: 'Directional guidance only until the evidence strengthens.',
-                    accent: 'text-sky-600',
-                  },
-                ].map((item) => (
-                  <div
-                    key={item.label}
-                    className="rounded-[22px] border border-slate-200/90 bg-[linear-gradient(180deg,_rgba(255,255,255,0.96),_rgba(248,250,252,0.94))] p-4 shadow-[0_12px_30px_rgba(15,23,42,0.05)]"
-                  >
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">{item.label}</div>
-                    <div className={`mt-3 text-[1.85rem] leading-none font-bold tracking-tight ${item.accent}`}>{item.value}</div>
-                    <p className="mt-3 text-[13px] leading-5 text-slate-600">{item.detail}</p>
+              <div className="rounded-[26px] border border-slate-200 bg-[linear-gradient(180deg,_rgba(255,255,255,0.98),_rgba(247,250,252,0.95))] p-4 shadow-[0_14px_34px_rgba(15,23,42,0.04)]">
+                <div className="grid gap-3 md:grid-cols-[repeat(3,minmax(0,1fr)),minmax(220px,1.1fr)]">
+                  {[
+                    {
+                      label: 'Watch Signals',
+                      value: readinessSummary.watchSignals,
+                      detail: 'Signals still below the action threshold.',
+                      accent: 'text-slate-950',
+                    },
+                    {
+                      label: 'Needs Review',
+                      value: readinessSummary.needsReview,
+                      detail: 'Higher-pressure signals to inspect first.',
+                      accent: 'text-amber-600',
+                    },
+                    {
+                      label: 'Evidence Coverage',
+                      value: `${readinessSummary.evidenceCoverage}/5`,
+                      detail: 'Live signal classes feeding readiness.',
+                      accent: 'text-teal-600',
+                    },
+                  ].map((item) => (
+                    <div
+                      key={item.label}
+                      className="rounded-[20px] border border-slate-200/90 bg-white p-4"
+                    >
+                      <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">{item.label}</div>
+                      <div className={`mt-2 text-[1.65rem] leading-none font-bold tracking-tight ${item.accent}`}>{item.value}</div>
+                      <p className="mt-2 text-[12px] leading-5 text-slate-600">{item.detail}</p>
+                    </div>
+                  ))}
+
+                  <div className="rounded-[22px] border border-sky-200 bg-[linear-gradient(180deg,_rgba(240,249,255,0.92),_rgba(255,255,255,0.98))] p-4">
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Current State</div>
+                    <div className="mt-2 text-[1.35rem] leading-tight font-bold tracking-tight text-sky-700">
+                      {readinessSummary.recommendationState}
+                    </div>
+                    <p className="mt-2 text-[12px] leading-5 text-slate-600">
+                      AIM can guide direction, but it is not yet action-ready.
+                    </p>
                   </div>
-                ))}
+                </div>
               </div>
 
               <div className="rounded-[26px] border border-slate-200 bg-[linear-gradient(180deg,_rgba(248,250,252,0.95),_rgba(255,255,255,0.98))] p-6 shadow-[0_14px_34px_rgba(15,23,42,0.04)]">
@@ -508,12 +514,12 @@ export default function RecommendationsSection() {
               {watchSignals.slice(0, 2).map((signal) => (
                 <div key={signal.id} className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-[0_14px_30px_rgba(15,23,42,0.04)]">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h3 className="text-[15px] font-semibold leading-6 text-slate-900">{signal.title}</h3>
+                    <h3 className="text-[14px] font-semibold leading-6 text-slate-900">{signal.title}</h3>
                     <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${getWatchSignalTone(signal.severity)}`}>
                       {signal.severity}
                     </span>
                   </div>
-                  <p className="mt-3 text-sm leading-6 text-slate-600">{signal.reason}</p>
+                  <p className="mt-3 text-[13px] leading-6 text-slate-600">{signal.reason}</p>
                   <div className="mt-3 flex flex-wrap gap-2">
                     <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
                       Freshness: {signal.freshness}
