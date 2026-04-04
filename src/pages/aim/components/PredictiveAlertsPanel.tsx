@@ -96,6 +96,16 @@ const dedupeAlerts = (alerts: Alert[]) => {
   return Array.from(bySignature.values());
 };
 
+const getAlertReadiness = (alert: Alert) => {
+  if ((alert.confidence || 0) >= 85 && alert.severity === 'critical') {
+    return { label: 'Action-ready', tone: 'bg-emerald-100 text-emerald-700 border-emerald-200' };
+  }
+  if ((alert.confidence || 0) >= 70 || alert.severity === 'high') {
+    return { label: 'Needs review', tone: 'bg-amber-100 text-amber-700 border-amber-200' };
+  }
+  return { label: 'Directional', tone: 'bg-sky-100 text-sky-700 border-sky-200' };
+};
+
 export default function PredictiveAlertsPanel() {
   const { organization, organizationId } = useAuth();
 
@@ -328,15 +338,26 @@ export default function PredictiveAlertsPanel() {
     dismissed: 'bg-slate-100 text-slate-700',
   } as const;
 
-  const getAlertReadiness = (alert: Alert) => {
-    if ((alert.confidence || 0) >= 85 && alert.severity === 'critical') {
-      return { label: 'Action-ready', tone: 'bg-emerald-100 text-emerald-700 border-emerald-200' };
+  const dedupedAlerts = dedupeAlerts(alerts);
+
+  const streamStats = dedupedAlerts.reduce(
+    (acc, alert) => {
+      const readiness = getAlertReadiness(alert).label;
+      if (readiness === 'Action-ready') acc.actionReady += 1;
+      if (readiness === 'Needs review') acc.needsReview += 1;
+      if (alert.status === 'new') acc.unacknowledged += 1;
+      if (alert.status === 'resolved') acc.resolved += 1;
+      if (alert.status !== 'resolved' && alert.status !== 'dismissed') acc.active += 1;
+      return acc;
+    },
+    {
+      actionReady: 0,
+      needsReview: 0,
+      unacknowledged: 0,
+      resolved: 0,
+      active: 0,
     }
-    if ((alert.confidence || 0) >= 70 || alert.severity === 'high') {
-      return { label: 'Needs review', tone: 'bg-amber-100 text-amber-700 border-amber-200' };
-    }
-    return { label: 'Directional', tone: 'bg-sky-100 text-sky-700 border-sky-200' };
-  };
+  );
 
   const hasLeadTime = (alert: Alert) => typeof alert.days_until === 'number' && Number.isFinite(alert.days_until);
 
@@ -383,10 +404,10 @@ export default function PredictiveAlertsPanel() {
 
       <AIMMetricTiles
         items={[
-          { label: 'Critical Alerts', value: stats.critical, detail: 'Require immediate action', accent: 'text-red-600' },
-          { label: 'High Priority', value: stats.high, detail: 'Plan preventive action', accent: 'text-orange-600' },
-          { label: 'Unacknowledged', value: stats.new, detail: 'Still waiting for review', accent: 'text-blue-600' },
-          { label: 'Resolved', value: stats.resolved, detail: 'Closed successfully', accent: 'text-emerald-600' },
+          { label: 'Active Alert Groups', value: streamStats.active, detail: `${dedupedAlerts.length} grouped signals in the visible queue`, accent: 'text-red-600' },
+          { label: 'Needs Review', value: streamStats.needsReview, detail: 'Signals that should be reviewed before response', accent: 'text-orange-600' },
+          { label: 'Unacknowledged', value: streamStats.unacknowledged, detail: 'Still waiting for review', accent: 'text-blue-600' },
+          { label: 'Resolved', value: streamStats.resolved, detail: 'Closed successfully', accent: 'text-emerald-600' },
         ]}
       />
 
