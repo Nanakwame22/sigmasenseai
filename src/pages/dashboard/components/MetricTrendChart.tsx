@@ -220,7 +220,7 @@ export default function MetricTrendChart({ series }: MetricTrendChartProps) {
   }
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full min-h-[320px] flex-col">
       <div className="mb-5 flex items-start justify-between gap-4">
         <div className="space-y-3">
           <div>
@@ -311,8 +311,9 @@ export default function MetricTrendChart({ series }: MetricTrendChartProps) {
         })}
       </div>
 
-      <div className="min-h-0 flex-1 rounded-[28px] border border-slate-200 bg-gradient-to-b from-slate-50 via-white to-white p-5 shadow-[0_18px_40px_-32px_rgba(15,23,42,0.45)]">
-        <ResponsiveContainer width="100%" height="100%">
+      <div className="rounded-[28px] border border-slate-200 bg-gradient-to-b from-slate-50 via-white to-white p-5 shadow-[0_18px_40px_-32px_rgba(15,23,42,0.45)]">
+        <div className="h-[240px] w-full">
+          <ResponsiveContainer width="100%" height="100%">
           <LineChart data={chartData} margin={{ top: 14, right: 10, left: 2, bottom: 6 }}>
             <CartesianGrid stroke="#E2E8F0" strokeDasharray="3 6" vertical={false} />
             <XAxis
@@ -362,7 +363,8 @@ export default function MetricTrendChart({ series }: MetricTrendChartProps) {
               )
             )}
           </LineChart>
-        </ResponsiveContainer>
+          </ResponsiveContainer>
+        </div>
       </div>
     </div>
   );
