@@ -65,7 +65,7 @@ async function getOrganizationId(userId: string): Promise<string | null> {
 }
 
 const ActionCenterSection: React.FC = () => {
-  const { user } = useAuth();
+  const { user, organization } = useAuth();
   const navigate = useNavigate();
   const [filterType, setFilterType] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
@@ -81,7 +81,7 @@ const ActionCenterSection: React.FC = () => {
       loadActions();
       loadTeamMembers();
     }
-  }, [user]);
+  }, [user, organization?.id]);
 
   const loadActions = async () => {
     if (!user) return;
@@ -89,7 +89,7 @@ const ActionCenterSection: React.FC = () => {
     try {
       setLoading(true);
       
-      const orgId = await getOrganizationId(user.id);
+      const orgId = organization?.id ?? await getOrganizationId(user.id);
       if (!orgId) {
         setLoading(false);
         return;
@@ -224,7 +224,7 @@ const ActionCenterSection: React.FC = () => {
     if (!user) return;
     
     try {
-      const orgId = await getOrganizationId(user.id);
+      const orgId = organization?.id ?? await getOrganizationId(user.id);
       if (!orgId) return;
 
       const { data } = await supabase
