@@ -67,6 +67,35 @@ const normalizeAlert = (alert: Alert): Alert => ({
     : [],
 });
 
+const dedupeAlerts = (alerts: Alert[]) => {
+  const bySignature = new Map<string, Alert>();
+
+  for (const alert of alerts) {
+    const signature = [
+      alert.title || 'untitled',
+      alert.category || 'uncategorized',
+      alert.severity,
+      alert.status,
+      alert.metric_id || 'metricless',
+    ].join('::');
+
+    const existing = bySignature.get(signature);
+    if (!existing) {
+      bySignature.set(signature, alert);
+      continue;
+    }
+
+    const existingTimestamp = new Date((existing as any).updated_at || existing.created_at).getTime();
+    const nextTimestamp = new Date((alert as any).updated_at || alert.created_at).getTime();
+
+    if (nextTimestamp > existingTimestamp) {
+      bySignature.set(signature, alert);
+    }
+  }
+
+  return Array.from(bySignature.values());
+};
+
 export default function PredictiveAlertsPanel() {
   const { organization, organizationId } = useAuth();
 
@@ -130,7 +159,7 @@ export default function PredictiveAlertsPanel() {
       });
       const fetchedStats = await getAlertStats(orgId);
 
-      setAlerts((fetchedAlerts || []).map(normalizeAlert));
+      setAlerts(dedupeAlerts((fetchedAlerts || []).map(normalizeAlert)));
       setStats(fetchedStats);
       setLoading(false);
 
@@ -160,7 +189,7 @@ export default function PredictiveAlertsPanel() {
           getAlertStats(orgId),
         ]);
 
-        setAlerts((refreshedAlerts || []).map(normalizeAlert));
+        setAlerts(dedupeAlerts((refreshedAlerts || []).map(normalizeAlert)));
         setStats(refreshedStats);
       }
     } catch (error) {
@@ -276,7 +305,7 @@ export default function PredictiveAlertsPanel() {
     }
   };
 
-  const filteredAlerts = alerts.filter(a => {
+  const filteredAlerts = dedupeAlerts(alerts).filter(a => {
     const matchesStatus = filter === 'all' || a.status === filter;
     const matchesSeverity = severityFilter === 'all' || a.severity === severityFilter;
     return matchesStatus && matchesSeverity;
@@ -307,6 +336,22 @@ export default function PredictiveAlertsPanel() {
       return { label: 'Needs review', tone: 'bg-amber-100 text-amber-700 border-amber-200' };
     }
     return { label: 'Directional', tone: 'bg-sky-100 text-sky-700 border-sky-200' };
+  };
+
+  const hasLeadTime = (alert: Alert) => typeof alert.days_until === 'number' && Number.isFinite(alert.days_until);
+
+  const getLeadWindow = (alert: Alert) => hasLeadTime(alert) ? `${alert.days_until} days` : 'Monitoring';
+
+  const getEvidenceSummary = (alert: Alert) => {
+    const parts = [
+      alert.confidence ? `${Math.round(alert.confidence)}% confidence` : null,
+      hasLeadTime(alert) ? `${alert.days_until} day lead time` : null,
+      alert.actions?.length ? `${alert.actions.length} recommended actions` : null,
+    ].filter(Boolean);
+
+    return parts.length > 0
+      ? parts.join(' • ')
+      : 'Confidence and lead-time evidence will strengthen as more operational history accumulates.';
   };
 
   return (
@@ -453,8 +498,8 @@ export default function PredictiveAlertsPanel() {
                         </div>
                       </div>
 
-                      {(alert.predicted_date || alert.days_until !== undefined || alert.confidence) && (
-                        <div className="mt-4 grid gap-3 md:grid-cols-3">
+                      {(alert.predicted_date || hasLeadTime(alert) || alert.confidence) && (
+                        <div className={`mt-4 grid gap-3 ${alert.predicted_date && hasLeadTime(alert) && alert.confidence ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
                           {alert.predicted_date && (
                             <div className="rounded-2xl border border-slate-200 bg-white p-3">
                               <div className="text-xs text-slate-600 mb-1">Predicted Date</div>
@@ -463,10 +508,10 @@ export default function PredictiveAlertsPanel() {
                               </div>
                             </div>
                           )}
-                          {alert.days_until !== undefined && (
+                          {hasLeadTime(alert) && (
                             <div className="rounded-2xl border border-slate-200 bg-white p-3">
                               <div className="text-xs text-slate-600 mb-1">Days Until</div>
-                              <div className="text-sm font-bold text-red-600">{alert.days_until} days</div>
+                              <div className="text-sm font-bold text-red-600">{getLeadWindow(alert)}</div>
                             </div>
                           )}
                           {alert.confidence && (
@@ -505,11 +550,7 @@ export default function PredictiveAlertsPanel() {
                           </button>
                         </div>
                         <p className="mt-2 text-[11px] leading-5 text-slate-500">
-                          Evidence: {[
-                            alert.confidence ? `${Math.round(alert.confidence)}% confidence` : null,
-                            alert.days_until !== undefined ? `${alert.days_until} day lead time` : null,
-                            alert.actions?.length ? `${alert.actions.length} recommended actions` : null,
-                          ].filter(Boolean).join(' • ') || 'Lead time and evidence will strengthen as alert history accumulates.'}
+                          Evidence: {getEvidenceSummary(alert)}
                         </p>
                         <p className="mt-1 text-[11px] leading-5 text-slate-400">
                           Lineage: {alertLineage[alert.severity] || 'Metric monitoring → alert engine → response queue'}
@@ -526,7 +567,7 @@ export default function PredictiveAlertsPanel() {
                               Confidence basis: {Math.round(alert.confidence || 0)}%
                             </span>
                             <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-600">
-                              Lead window: {alert.days_until !== undefined ? `${alert.days_until} days` : 'Not modeled'}
+                              Lead window: {getLeadWindow(alert)}
                             </span>
                           </div>
                           <div className="grid gap-4 lg:grid-cols-3">
