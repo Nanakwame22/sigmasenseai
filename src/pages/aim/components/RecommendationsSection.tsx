@@ -48,6 +48,50 @@ function getRecommendationReadiness(rec: Recommendation) {
   return { label: 'Directional', tone: 'bg-sky-100 text-sky-700 border-sky-200' };
 }
 
+function getRecommendationRationale(rec: Recommendation) {
+  const impact = rec.impact_score || 0;
+  const effort = rec.effort_score || 0;
+  const confidence = rec.confidence_score || 0;
+  const netAdvantage = impact - effort;
+
+  const whyNow =
+    impact >= 80
+      ? 'AIM sees a high-value improvement opportunity with enough signal pressure to justify attention now.'
+      : impact >= 60
+        ? 'AIM sees a meaningful operating opportunity, but this should be sequenced against current team load.'
+        : 'AIM is surfacing this as directional guidance while the likely upside continues to develop.';
+
+  const tradeoff =
+    effort >= 75
+      ? 'Execution load is heavy. This move likely needs staffing cover, phased rollout, or explicit sponsorship.'
+      : effort >= 50
+        ? 'Execution load is moderate. Benefits look real, but timing and owner capacity matter.'
+        : 'Execution load is relatively light. This is a candidate for quicker operational follow-through.';
+
+  const decisionStance =
+    confidence >= 80 && netAdvantage >= 15
+      ? 'AIM leans toward execution because expected upside clearly outweighs the current effort burden.'
+      : confidence >= 65
+        ? 'AIM sees enough evidence to support a guided review before this moves into tracked work.'
+        : 'AIM is not fully decision-ready yet. Use this as directional input while more evidence accumulates.';
+
+  const nextBestMove =
+    confidence >= 80 && impact >= 70
+      ? 'Assign an owner, confirm timeline, and move the strongest actions into tracked execution.'
+      : confidence >= 65
+        ? 'Validate the local constraints, confirm the source signal still holds, and then decide whether to start.'
+        : 'Keep this on the watchlist, collect another refresh cycle, and reassess once the evidence strengthens.';
+
+  const missingEvidence =
+    confidence >= 80
+      ? 'Confidence is already strong; the main proof now is outcome capture after execution.'
+      : confidence >= 65
+        ? 'A stronger evidence base would come from another fresh metric cycle, related alert persistence, or early pilot results.'
+        : 'AIM still needs fresher metric movement, stronger corroborating signals, or outcome history from similar work.';
+
+  return { whyNow, tradeoff, decisionStance, nextBestMove, missingEvidence };
+}
+
 export default function RecommendationsSection() {
   const { user, organization } = useAuth();
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
@@ -504,6 +548,7 @@ export default function RecommendationsSection() {
             const isPushing = pushingId === rec.id;
             const readiness = getRecommendationReadiness(rec);
             const isExpanded = expandedId === rec.id;
+            const rationale = getRecommendationRationale(rec);
 
             return (
               <div
@@ -597,7 +642,7 @@ export default function RecommendationsSection() {
                               <div className="rounded-2xl border border-white/70 bg-white/90 p-4">
                                 <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Why AIM surfaced this</div>
                                 <p className="mt-2 text-sm leading-6 text-slate-700">
-                                  AIM ranked this recommendation using current category pressure, modeled impact, effort tolerance, and live operational freshness.
+                                  {rationale.whyNow}
                                 </p>
                               </div>
                               <div className="rounded-2xl border border-white/70 bg-white/90 p-4">
@@ -609,11 +654,27 @@ export default function RecommendationsSection() {
                               <div className="rounded-2xl border border-white/70 bg-white/90 p-4">
                                 <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Operator guidance</div>
                                 <p className="mt-2 text-sm leading-6 text-slate-700">
-                                  {readiness.label === 'Action-ready'
-                                    ? 'This recommendation is strong enough to move into execution with a normal operational review.'
-                                    : readiness.label === 'Needs review'
-                                      ? 'Review the supporting signals and local context before committing this into tracked work.'
-                                      : 'Use this as directional guidance while AIM accumulates more evidence or a stronger threshold breach.'}
+                                  {rationale.nextBestMove}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="grid gap-4 lg:grid-cols-3">
+                              <div className="rounded-2xl border border-slate-200 bg-white/90 p-4">
+                                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Decision stance</div>
+                                <p className="mt-2 text-sm leading-6 text-slate-700">
+                                  {rationale.decisionStance}
+                                </p>
+                              </div>
+                              <div className="rounded-2xl border border-slate-200 bg-white/90 p-4">
+                                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Execution tradeoff</div>
+                                <p className="mt-2 text-sm leading-6 text-slate-700">
+                                  {rationale.tradeoff}
+                                </p>
+                              </div>
+                              <div className="rounded-2xl border border-slate-200 bg-white/90 p-4">
+                                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">What would strengthen this</div>
+                                <p className="mt-2 text-sm leading-6 text-slate-700">
+                                  {rationale.missingEvidence}
                                 </p>
                               </div>
                             </div>
