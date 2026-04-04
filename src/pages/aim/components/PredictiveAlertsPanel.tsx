@@ -36,6 +36,37 @@ const alertLineage: Record<string, string> = {
   low: 'Informational monitoring signal → alert engine → response queue',
 };
 
+const safeSeverity = (severity: unknown): Alert['severity'] => {
+  return severity === 'critical' || severity === 'high' || severity === 'medium' || severity === 'low'
+    ? severity
+    : 'medium';
+};
+
+const safeAlertType = (alertType: unknown): Alert['alert_type'] => {
+  return alertType === 'critical' || alertType === 'warning' || alertType === 'info'
+    ? alertType
+    : 'info';
+};
+
+const safeStatus = (status: unknown): Alert['status'] => {
+  return status === 'new' || status === 'acknowledged' || status === 'snoozed' || status === 'resolved' || status === 'dismissed'
+    ? status
+    : 'new';
+};
+
+const normalizeAlert = (alert: Alert): Alert => ({
+  ...alert,
+  title: alert.title || 'Operational alert',
+  description: alert.description || 'AIM detected an alert signal that needs review.',
+  severity: safeSeverity(alert.severity),
+  alert_type: safeAlertType(alert.alert_type),
+  status: safeStatus(alert.status),
+  category: alert.category || 'Operational Monitoring',
+  actions: Array.isArray(alert.actions)
+    ? alert.actions.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+    : [],
+});
+
 export default function PredictiveAlertsPanel() {
   const { organization, organizationId } = useAuth();
 
@@ -98,7 +129,7 @@ export default function PredictiveAlertsPanel() {
       });
       const fetchedStats = await getAlertStats(orgId);
 
-      setAlerts(fetchedAlerts);
+      setAlerts((fetchedAlerts || []).map(normalizeAlert));
       setStats(fetchedStats);
       setLoading(false);
 
@@ -128,7 +159,7 @@ export default function PredictiveAlertsPanel() {
           getAlertStats(orgId),
         ]);
 
-        setAlerts(refreshedAlerts);
+        setAlerts((refreshedAlerts || []).map(normalizeAlert));
         setStats(refreshedStats);
       }
     } catch (error) {
