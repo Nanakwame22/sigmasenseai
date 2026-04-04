@@ -50,9 +50,9 @@ export const useAIMData = () => {
         { count: dataSourcesCount },
         { data: latestMetricData },
         { count: recommendationsCount },
-        { count: actionItemsCount },
-        { count: dmaicProjectsCount },
-        { count: kaizenItemsCount },
+        { data: actionItemsData },
+        { data: dmaicProjectsData },
+        { data: kaizenItemsData },
         { count: alertsCount },
         { data: recommendationsData },
         { data: impactRecommendations },
@@ -79,19 +79,19 @@ export const useAIMData = () => {
           .in('status', ['pending', 'in_progress']),
         supabase
           .from('action_items')
-          .select('*', { count: 'exact', head: true })
+          .select('id, status')
           .eq('organization_id', orgId)
-          .in('status', ['pending', 'in_progress']),
+          .in('status', ['open', 'pending', 'in_progress', 'not_started', 'completed', 'on_hold']),
         supabase
           .from('dmaic_projects')
-          .select('*', { count: 'exact', head: true })
+          .select('id, status')
           .eq('organization_id', orgId)
-          .in('status', ['active', 'in_progress']),
+          .in('status', ['active', 'in_progress', 'define', 'measure', 'analyze', 'improve', 'control', 'completed', 'on_hold']),
         supabase
           .from('kaizen_items')
-          .select('*', { count: 'exact', head: true })
+          .select('id, status')
           .eq('organization_id', orgId)
-          .eq('status', 'open'),
+          .in('status', ['open', 'approved', 'in_progress', 'completed', 'rejected']),
         supabase
           .from('alerts')
           .select('*', { count: 'exact', head: true })
@@ -128,7 +128,7 @@ export const useAIMData = () => {
       ]);
 
       const totalActionCount =
-        (actionItemsCount || 0) + (dmaicProjectsCount || 0) + (kaizenItemsCount || 0);
+        (actionItemsData?.length || 0) + (dmaicProjectsData?.length || 0) + (kaizenItemsData?.length || 0);
 
       const avgRecommendationConfidence =
         recommendationsData && recommendationsData.length > 0
