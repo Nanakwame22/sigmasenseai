@@ -161,6 +161,20 @@ export default function MetricTrendChart({ series }: MetricTrendChartProps) {
   const leadLatestPoint = leadSeries?.data.at(-1)?.value ?? 0;
   const leadPreviousPoint = leadSeries && leadSeries.data.length > 1 ? leadSeries.data.at(-2)?.value ?? leadLatestPoint : leadLatestPoint;
   const leadDelta = leadLatestPoint - leadPreviousPoint;
+  const yAxisDomain = useMemo(() => {
+    const values = visibleSeries.flatMap((item) => item.data.map((point) => point.value));
+    if (Number.isFinite(avgTarget)) values.push(avgTarget);
+    if (!values.length) return [0, 100] as [number, number];
+
+    const minValue = Math.min(...values);
+    const maxValue = Math.max(...values);
+    const spread = Math.max(maxValue - minValue, Math.abs(maxValue) * 0.08, 1);
+    const padding = spread * 0.35;
+    const lowerBound = Math.max(0, minValue - padding);
+    const upperBound = maxValue + padding;
+
+    return [lowerBound, upperBound] as [number, number];
+  }, [avgTarget, visibleSeries]);
 
   useEffect(() => {
     if (!series.length) {
@@ -310,6 +324,7 @@ export default function MetricTrendChart({ series }: MetricTrendChartProps) {
               interval="preserveStartEnd"
             />
             <YAxis
+              domain={yAxisDomain}
               width={38}
               tick={{ fontSize: 11, fill: '#94A3B8' }}
               tickLine={false}
