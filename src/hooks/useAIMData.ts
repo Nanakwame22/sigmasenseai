@@ -9,6 +9,9 @@ interface AIMStats {
   actionCenterCount: number;
   predictiveAlertsCount: number;
   aiConfidence: number;
+  evidenceCoverage: number;
+  evidenceSignals: number;
+  decisionReadiness: 'Monitor only' | 'Directional' | 'Needs review' | 'Action-ready';
   predictedImpact: number;
   alertLeadTime: number;
   loading: boolean;
@@ -28,6 +31,9 @@ export const useAIMData = () => {
     actionCenterCount: 0,
     predictiveAlertsCount: 0,
     aiConfidence: 0,
+    evidenceCoverage: 0,
+    evidenceSignals: 0,
+    decisionReadiness: 'Monitor only',
     predictedImpact: 0,
     alertLeadTime: 0,
     loading: true,
@@ -155,6 +161,29 @@ export const useAIMData = () => {
           ? alertsData.reduce((sum, a) => sum + (a.days_until || 0), 0) / alertsData.length
           : 0;
 
+      const hasFreshMetrics = Boolean(latestMetricData?.timestamp);
+      const liveSignalCount = [
+        (dataSourcesCount || 0) > 0,
+        hasFreshMetrics,
+        (recommendationsCount || 0) > 0,
+        totalActionCount > 0,
+        (alertsCount || 0) > 0,
+      ].filter(Boolean).length;
+
+      const evidenceCoverage = Math.round((liveSignalCount / 5) * 100);
+      const freshnessAgeHours = latestMetricData?.timestamp
+        ? (Date.now() - new Date(latestMetricData.timestamp).getTime()) / 3600000
+        : Number.POSITIVE_INFINITY;
+
+      const decisionReadiness: AIMStats['decisionReadiness'] =
+        avgConfidence >= 80 && freshnessAgeHours <= 24 && ((recommendationsCount || 0) > 0 || (alertsCount || 0) > 0)
+          ? 'Action-ready'
+          : avgConfidence >= 65 && ((recommendationsCount || 0) > 0 || (alertsCount || 0) > 0)
+            ? 'Needs review'
+            : liveSignalCount >= 3
+              ? 'Directional'
+              : 'Monitor only';
+
       setStats(prev => ({
         ...prev,
         dataSourcesCount: dataSourcesCount || 0,
@@ -165,6 +194,9 @@ export const useAIMData = () => {
         actionCenterCount: totalActionCount,
         predictiveAlertsCount: alertsCount || 0,
         aiConfidence: Math.round(avgConfidence),
+        evidenceCoverage,
+        evidenceSignals: liveSignalCount,
+        decisionReadiness,
         predictedImpact: Math.round(totalPredictedImpact),
         alertLeadTime: Math.round(avgLeadTime),
         loading: false,

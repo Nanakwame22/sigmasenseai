@@ -83,6 +83,24 @@ const AIMPage: React.FC = () => {
       ? 'Average lead time across predictive alerts'
       : 'Lead time appears once active alerts include future breach windows';
 
+  const readinessTone =
+    aimStats.decisionReadiness === 'Action-ready'
+      ? 'emerald'
+      : aimStats.decisionReadiness === 'Needs review'
+        ? 'amber'
+        : aimStats.decisionReadiness === 'Directional'
+          ? 'teal'
+          : 'slate';
+
+  const readinessNote =
+    aimStats.decisionReadiness === 'Action-ready'
+      ? 'AIM has enough current evidence to support operational follow-through.'
+      : aimStats.decisionReadiness === 'Needs review'
+        ? 'Signals are meaningful, but a human review should confirm the next move.'
+        : aimStats.decisionReadiness === 'Directional'
+          ? 'AIM can frame the situation, but the signal mix is still building toward a stronger recommendation.'
+          : 'AIM is connected, but more live evidence is needed before decision-grade guidance is available.';
+
   const renderSection = () => {
     switch (activeSection) {
       case 'overview':
@@ -300,9 +318,11 @@ const AIMPage: React.FC = () => {
                     chips={[
                       { label: 'Last Refresh', value: formatLastRefresh(aimStats.lastRefreshTime), tone: 'teal' },
                       { label: 'Sources', value: `${aimStats.dataSourcesCount} active`, tone: 'emerald' },
+                      { label: 'Decision Readiness', value: aimStats.decisionReadiness, tone: readinessTone as any },
+                      { label: 'Evidence Coverage', value: `${aimStats.evidenceSignals}/5 live signals`, tone: aimStats.evidenceCoverage >= 80 ? 'emerald' : aimStats.evidenceCoverage >= 60 ? 'teal' : 'amber' },
                       { label: 'Confidence', value: confidenceState, tone: aimStats.aiConfidence >= 70 ? 'emerald' : 'amber' },
                     ]}
-                    note="Evidence for AIM comes from live recommendations, metric refreshes, predictive alerts, and tracked actions. When confidence is lower, use the supporting evidence chips and Decision Support to verify whether a recommendation is decision-ready or still directional."
+                    note={`${readinessNote} Evidence for AIM comes from live recommendations, metric refreshes, predictive alerts, and tracked actions. When confidence is lower, use the supporting evidence chips and Decision Support to verify whether a recommendation is decision-ready or still directional.`}
                     className="border-white/10 bg-white/95"
                   />
                 </div>
