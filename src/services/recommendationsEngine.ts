@@ -37,8 +37,9 @@ export class RecommendationsEngine {
   private userId: string;
   private organizationId: string | null = null;
 
-  constructor(userId: string) {
+  constructor(userId: string, organizationId?: string | null) {
     this.userId = userId;
+    this.organizationId = organizationId ?? null;
   }
 
   private async getOrganizationId(): Promise<string | null> {
@@ -50,7 +51,19 @@ export class RecommendationsEngine {
       .eq('id', this.userId)
       .maybeSingle();
 
-    this.organizationId = data?.organization_id || null;
+    if (data?.organization_id) {
+      this.organizationId = data.organization_id;
+      return this.organizationId;
+    }
+
+    const { data: membership } = await supabase
+      .from('user_organizations')
+      .select('organization_id')
+      .eq('user_id', this.userId)
+      .limit(1)
+      .maybeSingle();
+
+    this.organizationId = membership?.organization_id || null;
     return this.organizationId;
   }
 

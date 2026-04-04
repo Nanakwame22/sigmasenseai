@@ -39,7 +39,7 @@ function getRecommendationEvidence(rec: Recommendation) {
 }
 
 export default function RecommendationsSection() {
-  const { user } = useAuth();
+  const { user, organization } = useAuth();
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
@@ -70,7 +70,7 @@ export default function RecommendationsSection() {
     if (user) {
       loadOrganization();
     }
-  }, [user]);
+  }, [user, organization?.id]);
 
   useEffect(() => {
     if (user && organizationId !== undefined) {
@@ -82,6 +82,11 @@ export default function RecommendationsSection() {
 
   const loadOrganization = async () => {
     if (!user) return;
+    if (organization?.id) {
+      setOrganizationId(organization.id);
+      return;
+    }
+
     const { data } = await supabase
       .from('user_profiles')
       .select('organization_id')
@@ -94,7 +99,7 @@ export default function RecommendationsSection() {
     if (!user) return;
     setLoading(true);
     try {
-      const engine = new RecommendationsEngine(user.id);
+      const engine = new RecommendationsEngine(user.id, organization?.id ?? organizationId ?? null);
       const filters: any = {};
       if (selectedStatus !== 'all') filters.status = selectedStatus;
       if (selectedCategory !== 'all') filters.category = selectedCategory;
@@ -130,7 +135,7 @@ export default function RecommendationsSection() {
   const loadStatistics = async () => {
     if (!user) return;
     try {
-      const engine = new RecommendationsEngine(user.id);
+      const engine = new RecommendationsEngine(user.id, organization?.id ?? organizationId ?? null);
       const stats = await engine.getStatistics();
       setStatistics(stats);
     } catch (error) {
@@ -138,13 +143,18 @@ export default function RecommendationsSection() {
     }
   };
 
-  const loadWatchSignals = async () => {
-    if (!organizationId) return;
+  const loadWatchSignals = async (orgOverride?: string | null) => {
+    const activeOrgId = orgOverride ?? organization?.id ?? organizationId ?? null;
+    if (!activeOrgId) {
+      setWatchSignals([]);
+      return [];
+    }
+
     try {
       const { data } = await supabase
         .from('alerts')
         .select('id, title, severity, category, message, created_at, status')
-        .eq('organization_id', organizationId)
+        .eq('organization_id', activeOrgId)
         .in('status', ['new', 'acknowledged'])
         .order('created_at', { ascending: false })
         .limit(5);
@@ -170,19 +180,22 @@ export default function RecommendationsSection() {
     if (!user) return;
     setGenerating(true);
     try {
-      const engine = new RecommendationsEngine(user.id);
+      const activeOrgId = organization?.id ?? organizationId ?? null;
+      const engine = new RecommendationsEngine(user.id, activeOrgId);
       const newRecs = await engine.generateRecommendations();
       if (newRecs.length > 0) {
         addToast(`Generated ${newRecs.length} new recommendations`, 'success');
         await loadRecommendations();
         await loadStatistics();
-        await loadWatchSignals();
+        await loadWatchSignals(activeOrgId);
       } else {
-        const signals = await loadWatchSignals();
+        const signals = await loadWatchSignals(activeOrgId);
         addToast(
           signals.length > 0
             ? 'No action-ready recommendations were generated. AIM surfaced active watch signals instead.'
-            : 'No new recommendations found. Your system is performing well!',
+            : activeOrgId
+              ? 'No new recommendations found. Your system is performing well!'
+              : 'AIM could not find an organization context for recommendation generation.',
           'info'
         );
       }
@@ -267,7 +280,7 @@ export default function RecommendationsSection() {
   const executeAction = async () => {
     if (!user || !actionModal.recommendation) return;
     try {
-      const engine = new RecommendationsEngine(user.id);
+      const engine = new RecommendationsEngine(user.id, organization?.id ?? organizationId ?? null);
       const { type, recommendation } = actionModal;
       let success = false;
 
