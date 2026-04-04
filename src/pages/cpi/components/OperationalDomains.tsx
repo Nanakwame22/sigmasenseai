@@ -118,6 +118,12 @@ const freshnessTone = {
   stale: 'bg-rose-50 text-rose-700 border-rose-200',
 };
 
+const sourceTone = {
+  'Source-backed': 'bg-teal-50 text-teal-700 border-teal-200',
+  Derived: 'bg-slate-100 text-slate-700 border-slate-200',
+  Inferred: 'bg-violet-50 text-violet-700 border-violet-200',
+};
+
 function getRiskLevel(score: number): keyof typeof riskColors {
   if (score >= 75) return 'critical';
   if (score >= 55) return 'high';
@@ -135,6 +141,7 @@ function DomainCard({ domain, config, onTakeAction }: { domain: CPIDomainSnapsho
   const timeLabel = minutesAgo === 0 ? 'Just now' : `${minutesAgo}m ago`;
   const freshnessState = domain.freshness_state || 'stale';
   const freshnessClasses = freshnessTone[freshnessState];
+  const sourceClasses = domain.source_label ? sourceTone[domain.source_label] : '';
 
   return (
     <div
@@ -184,7 +191,7 @@ function DomainCard({ domain, config, onTakeAction }: { domain: CPIDomainSnapsho
             {domain.freshness_label || `Updated ${timeLabel}`}
           </span>
           {domain.source_label && (
-            <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600">
+            <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold ${sourceClasses}`}>
               {domain.source_label}
             </span>
           )}

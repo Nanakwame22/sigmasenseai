@@ -131,15 +131,15 @@ function getFreshnessState(timestamp: string | null | undefined): 'live' | 'dela
 }
 
 function formatFreshnessLabel(timestamp: string | null | undefined) {
-  if (!timestamp) return 'No recent source update';
+  if (!timestamp) return 'Awaiting fresh source telemetry';
   const ageMs = Date.now() - new Date(timestamp).getTime();
-  if (!Number.isFinite(ageMs) || ageMs < 0) return 'Updated just now';
+  if (!Number.isFinite(ageMs) || ageMs < 0) return 'Source refreshed just now';
   const ageMinutes = Math.floor(ageMs / 60000);
-  if (ageMinutes < 1) return 'Updated just now';
-  if (ageMinutes < 60) return `Updated ${ageMinutes}m ago`;
+  if (ageMinutes < 1) return 'Source refreshed just now';
+  if (ageMinutes < 60) return `Last source update ${ageMinutes}m ago`;
   const ageHours = Math.floor(ageMinutes / 60);
-  if (ageHours < 24) return `Updated ${ageHours}h ago`;
-  return `Updated ${Math.floor(ageHours / 24)}d ago`;
+  if (ageHours < 24) return `Last source update ${ageHours}h ago`;
+  return `Last source update ${Math.floor(ageHours / 24)}d ago`;
 }
 
 function buildTrustMeta(
