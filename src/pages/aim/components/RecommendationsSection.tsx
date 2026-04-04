@@ -410,6 +410,13 @@ export default function RecommendationsSection() {
     }
   };
 
+  const readinessSummary = {
+    watchSignals: watchSignals.length,
+    needsReview: watchSignals.filter((signal) => signal.severity === 'critical' || signal.severity === 'high').length,
+    evidenceCoverage: watchSignals.length > 0 ? Math.max(1, Math.min(5, watchSignals.length)) : 0,
+    recommendationState: watchSignals.length > 0 ? 'Directional' : 'Monitor only',
+  };
+
   return (
     <div className="space-y-6">
       <AIMSectionIntro
@@ -427,6 +434,62 @@ export default function RecommendationsSection() {
           </button>
         }
       />
+
+      {!loading && recommendations.length === 0 && watchSignals.length > 0 && (
+        <AIMPanel
+          title="Recommendation Readiness"
+          description="AIM is seeing live signals, but none are strong enough yet to become a formal action-ready recommendation."
+          icon="ri-radar-line"
+          accentClass="from-amber-500 to-orange-600"
+        >
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1.1fr),minmax(0,0.9fr)]">
+            <div className="space-y-4">
+              <AIMMetricTiles
+                columns="grid-cols-1 md:grid-cols-2 xl:grid-cols-4"
+                items={[
+                  { label: 'Watch Signals', value: readinessSummary.watchSignals, detail: 'Active signals currently under AIM review', accent: 'text-slate-900' },
+                  { label: 'Needs Review', value: readinessSummary.needsReview, detail: 'Higher-pressure signals that need operator review', accent: 'text-amber-600' },
+                  { label: 'Evidence Coverage', value: `${readinessSummary.evidenceCoverage}/5`, detail: 'Breadth of live signals feeding recommendation readiness', accent: 'text-teal-600' },
+                  { label: 'Current State', value: readinessSummary.recommendationState, detail: 'AIM can guide direction, but is not yet action-ready', accent: 'text-sky-600' },
+                ]}
+              />
+              <div className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-5">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Why no recommendation yet</div>
+                <p className="mt-2 text-sm leading-6 text-slate-700">
+                  AIM still needs a stronger combination of persistent signal pressure, fresh corroborating evidence, and clearer execution confidence
+                  before it promotes a watch signal into a formal recommendation.
+                </p>
+                <p className="mt-3 text-sm leading-6 text-slate-600">
+                  Best next move: review the strongest watch signals below, validate whether the pressure is continuing, and then generate recommendations again
+                  after the next refresh cycle.
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              {watchSignals.slice(0, 2).map((signal) => (
+                <div key={signal.id} className="rounded-[24px] border border-slate-200 bg-white p-5">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="text-sm font-semibold text-slate-900">{signal.title}</h3>
+                    <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${getWatchSignalTone(signal.severity)}`}>
+                      {signal.severity}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-sm leading-6 text-slate-600">{signal.reason}</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
+                      Freshness: {signal.freshness}
+                    </span>
+                    <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
+                      Closest to recommendation threshold
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </AIMPanel>
+      )}
 
       {/* Statistics Cards */}
       {statistics && (
