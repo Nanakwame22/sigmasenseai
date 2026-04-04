@@ -48,7 +48,7 @@ function calculateSeriesStdDev(values: number[]): number {
 
 interface OrganizationForecastContext {
   orgId: string | null;
-  metrics: Array<{ name: string; current_value: number | null; target_value: number | null }>;
+  metrics: Array<{ id: string; name: string; current_value: number | null; target_value: number | null; unit: string | null }>;
   recommendations: Array<{ impact_score: number | null; status: string | null }>;
   projects: Array<{ phase: string | null; status: string | null }>;
   activeAlerts: Array<{ severity: string | null }>;
@@ -90,7 +90,7 @@ async function loadForecastContext(userId: string): Promise<OrganizationForecast
   const [metricsRes, recommendationsRes, projectsRes, alertsRes, actionsRes] = await Promise.all([
     supabase
       .from('metrics')
-      .select('name, current_value, target_value')
+      .select('id, name, current_value, target_value, unit')
       .eq('organization_id', orgId),
     supabase
       .from('recommendations')
@@ -159,35 +159,50 @@ function computeCategoryBaselines(metrics: OrganizationForecastContext['metrics'
 }
 
 function buildScenarioDefinitions(context: OrganizationForecastContext) {
-  const recommendationImpact = context.recommendations.reduce((sum, rec) => sum + (Number(rec.impact_score ?? 0) * 1200), 0);
+  const recommendationImpact = context.recommendations.reduce((sum, rec) => sum + (Number(rec.impact_score ?? 0) * 450), 0);
   const phaseImpactMap: Record<string, number> = {
-    define: 12000,
-    measure: 26000,
-    analyze: 48000,
-    improve: 72000,
-    control: 96000,
+    define: 6000,
+    measure: 12000,
+    analyze: 18000,
+    improve: 26000,
+    control: 34000,
   };
   const projectImpact = context.projects.reduce((sum, project) => sum + (phaseImpactMap[(project.phase ?? '').toLowerCase()] ?? 18000), 0);
   const alertPressure = context.activeAlerts.reduce((sum, alert) => {
-    if (alert.severity === 'critical') return sum + 22000;
-    if (alert.severity === 'high') return sum + 12000;
-    return sum + 4000;
+    if (alert.severity === 'critical') return sum + 12000;
+    if (alert.severity === 'high') return sum + 7000;
+    return sum + 2500;
   }, 0);
-  const actionLoadImpact = context.openActions.length * 5000;
+  const actionLoadImpact = context.openActions.length * 2500;
 
   const metricsWithTargets = context.metrics.filter(metric =>
     Number.isFinite(Number(metric.current_value)) &&
     Number.isFinite(Number(metric.target_value)) &&
     Number(metric.target_value) > 0
   );
-  const attainment =
-    metricsWithTargets.length > 0
-      ? metricsWithTargets.reduce((sum, metric) => sum + (Number(metric.current_value) / Number(metric.target_value)), 0) / metricsWithTargets.length
-      : 0.82;
-
-  const readinessPenalty = Math.max(0.75, Math.min(1.15, attainment));
-  const totalImpact = Math.max(160000, Math.round((recommendationImpact + projectImpact + alertPressure + actionLoadImpact) * readinessPenalty));
-  const totalInvestment = Math.max(70000, Math.round(totalImpact * 0.34));
+  const targetAlignmentGap = metricsWithTargets.reduce((sum, metric) => {
+    const current = Number(metric.current_value ?? 0);
+    const target = Number(metric.target_value ?? 0);
+    if (!Number.isFinite(current) || !Number.isFinite(target) || target <= 0) return sum;
+    return sum + Math.min(1.5, Math.abs(current - target) / target);
+  }, 0);
+  const telemetryBreadth = context.metrics.length * 1400;
+  const readinessPenalty = Math.max(
+    0.82,
+    Math.min(1.12, 1 + (context.activeAlerts.length * 0.015) - (context.recommendations.length * 0.01))
+  );
+  const totalImpact = Math.round(
+    Math.max(
+      18000,
+      (targetAlignmentGap * 14000 + recommendationImpact + projectImpact + alertPressure + actionLoadImpact + telemetryBreadth) * readinessPenalty
+    )
+  );
+  const totalInvestment = Math.round(
+    Math.max(
+      12000,
+      totalImpact * (0.2 + context.projects.length * 0.012 + context.activeAlerts.length * 0.004)
+    )
+  );
 
   return [
     {
@@ -284,59 +299,84 @@ export async function generateImpactScenarios(userId: string): Promise<ImpactSce
 export async function generateKPIForecast(
   userId: string,
   timeHorizon: number = 12,
-  scenarioId: string = 'balanced'
+  scenarioId: string = 'balanced',
+  metricId?: string
 ): Promise<ForecastData[]> {
   try {
-    const orgId = await resolveOrganizationId(userId);
+    const context = await loadForecastContext(userId);
+    const targetMetric =
+      (metricId ? context.metrics.find((metric) => metric.id === metricId) : undefined) ??
+      context.metrics.find((metric) =>
+        Number.isFinite(Number(metric.current_value)) &&
+        Number.isFinite(Number(metric.target_value))
+      ) ??
+      context.metrics[0];
 
-    let baseline = 2400;
     let recentValues: number[] = [];
+    let baseline = Number(targetMetric?.current_value ?? 0);
+    let targetValue = Number(targetMetric?.target_value ?? baseline);
 
-    if (orgId) {
+    if (context.orgId && targetMetric?.id) {
       const { data: metricData } = await supabase
         .from('metric_data')
-        .select('value')
-        .eq('organization_id', orgId)
-        .order('timestamp', { ascending: false })
-        .limit(30);
+        .select('value, timestamp')
+        .eq('organization_id', context.orgId)
+        .eq('metric_id', targetMetric.id)
+        .order('timestamp', { ascending: true })
+        .limit(36);
 
       if (metricData && metricData.length > 0) {
         recentValues = metricData
           .map(d => Number(d.value))
           .filter(value => Number.isFinite(value));
-        baseline = recentValues.reduce((a, b) => a + b, 0) / recentValues.length;
+        baseline = Number(recentValues[recentValues.length - 1] ?? baseline);
       }
+    }
+
+    if (!Number.isFinite(baseline) || baseline === 0) {
+      baseline = Number(targetMetric?.target_value ?? 1);
+    }
+    if (!Number.isFinite(targetValue) || targetValue === 0) {
+      targetValue = baseline;
     }
 
     const scenarios = await generateImpactScenarios(userId);
     const selectedScenario = scenarios.find(s => s.id === scenarioId) || scenarios[1] || scenarios[0];
     if (!selectedScenario) return [];
 
-    const monthlyImpact = selectedScenario.annualImpact / 12;
+    const scenarioCaptureMap: Record<string, number> = {
+      stabilize: 0.35,
+      balanced: 0.55,
+      capacity: 0.72,
+      transformation: 0.88,
+    };
+    const scenarioCapture = scenarioCaptureMap[scenarioId] ?? 0.55;
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     const forecasts: ForecastData[] = [];
     const trailingStdDev = calculateSeriesStdDev(recentValues);
-    const safeStdDev = trailingStdDev > 0 ? trailingStdDev : baseline * 0.015;
+    const safeStdDev = trailingStdDev > 0 ? trailingStdDev : Math.max(Math.abs(baseline) * 0.03, 1);
     const recentTrend = recentValues.length >= 2
-      ? (recentValues[0] - recentValues[recentValues.length - 1]) / Math.max(recentValues.length - 1, 1)
+      ? (recentValues[recentValues.length - 1] - recentValues[0]) / Math.max(recentValues.length - 1, 1)
       : 0;
+    const targetGap = targetValue - baseline;
 
     for (let i = 0; i < timeHorizon; i++) {
       const monthIndex = (new Date().getMonth() + i) % 12;
       const improvementFactor = (i + 1) / timeHorizon;
-      const cumulativeImpact = monthlyImpact * improvementFactor;
       const seasonalityPhase = ((monthIndex + 1) / 12) * Math.PI * 2;
       const seasonalOffset = Math.sin(seasonalityPhase) * safeStdDev * 0.35;
       const trendOffset = recentTrend * (i + 1);
       const projectedBaseline = baseline + trendOffset + seasonalOffset;
-      const spread = Math.max(safeStdDev * (1 + i * 0.03), baseline * 0.01);
+      const actionLift = targetGap * improvementFactor * scenarioCapture;
+      const optimisticLift = targetGap * improvementFactor * Math.min(1.05, scenarioCapture + 0.18);
+      const pessimisticLift = targetGap * improvementFactor * Math.max(0.18, scenarioCapture - 0.2);
 
       forecasts.push({
         month: months[monthIndex],
-        baseline: Math.round(projectedBaseline),
-        withActions: Math.round(projectedBaseline + cumulativeImpact),
-        optimistic: Math.round(projectedBaseline + cumulativeImpact + spread * 0.8),
-        pessimistic: Math.round(projectedBaseline + cumulativeImpact - spread * 0.8)
+        baseline: Number(projectedBaseline.toFixed(1)),
+        withActions: Number((projectedBaseline + actionLift).toFixed(1)),
+        optimistic: Number((projectedBaseline + optimisticLift).toFixed(1)),
+        pessimistic: Number((projectedBaseline + pessimisticLift).toFixed(1))
       });
     }
 
@@ -359,34 +399,50 @@ export async function calculateImpactBreakdown(
     const scenarios = await generateImpactScenarios(userId);
     const scenario = scenarios.find(s => s.id === scenarioId) || scenarios[1] || scenarios[0];
     if (!scenario) return [];
-    const baselines = computeCategoryBaselines(context.metrics);
+    const alertFactor = Math.min(0.24, 0.08 + context.activeAlerts.length * 0.015);
+    const actionFactor = Math.min(0.2, 0.06 + context.openActions.length * 0.01);
+    const recommendationFactor = Math.min(0.18, 0.05 + context.recommendations.length * 0.01);
+
+    const withActions = {
+      processEfficiency: scenario.breakdown.processEfficiency,
+      qualityImprovement: scenario.breakdown.qualityImprovement,
+      resourceOptimization: scenario.breakdown.resourceOptimization,
+      wasteReduction: scenario.breakdown.wasteReduction,
+    };
+
+    const baselineValues = {
+      processEfficiency: Math.round(withActions.processEfficiency * (1 - alertFactor)),
+      qualityImprovement: Math.round(withActions.qualityImprovement * (1 - recommendationFactor)),
+      resourceOptimization: Math.round(withActions.resourceOptimization * (1 - actionFactor)),
+      wasteReduction: Math.round(withActions.wasteReduction * (1 - Math.max(0.05, recommendationFactor - 0.02))),
+    };
 
     const breakdown: ImpactBreakdown[] = [
       {
         category: 'Process Efficiency',
-        baseline: baselines.processEfficiency,
-        withActions: baselines.processEfficiency + scenario.breakdown.processEfficiency / 1000,
+        baseline: baselineValues.processEfficiency,
+        withActions: withActions.processEfficiency,
         change: '',
         changePercent: 0
       },
       {
         category: 'Quality Improvement',
-        baseline: baselines.qualityImprovement,
-        withActions: baselines.qualityImprovement + scenario.breakdown.qualityImprovement / 1000,
+        baseline: baselineValues.qualityImprovement,
+        withActions: withActions.qualityImprovement,
         change: '',
         changePercent: 0
       },
       {
         category: 'Resource Optimization',
-        baseline: baselines.resourceOptimization,
-        withActions: baselines.resourceOptimization + scenario.breakdown.resourceOptimization / 1000,
+        baseline: baselineValues.resourceOptimization,
+        withActions: withActions.resourceOptimization,
         change: '',
         changePercent: 0
       },
       {
         category: 'Waste Reduction',
-        baseline: baselines.wasteReduction,
-        withActions: baselines.wasteReduction + scenario.breakdown.wasteReduction / 1000,
+        baseline: baselineValues.wasteReduction,
+        withActions: withActions.wasteReduction,
         change: '',
         changePercent: 0
       }

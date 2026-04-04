@@ -19,6 +19,7 @@ interface Metric {
   name: string;
   current_value: number;
   target_value: number;
+  unit?: string | null;
 }
 
 const SCENARIO_THEME: Record<string, {
@@ -89,7 +90,7 @@ const ImpactForecastsSection: React.FC = () => {
       updateROIMetrics();
       generateForecasts();
     }
-  }, [timeHorizon, selectedScenario, user]);
+  }, [timeHorizon, selectedScenario, selectedMetric, user]);
 
   useEffect(() => {
     if (user) {
@@ -127,7 +128,7 @@ const ImpactForecastsSection: React.FC = () => {
 
       const { data, error } = await supabase
         .from('metrics')
-        .select('id, name, current_value, target_value')
+        .select('id, name, current_value, target_value, unit')
         .eq('organization_id', orgData.organization_id)
         .order('name');
 
@@ -202,7 +203,7 @@ const ImpactForecastsSection: React.FC = () => {
     try {
       setLoading(true);
 
-      const forecasts = await generateKPIForecast(user.id, timeHorizon, selectedScenario);
+      const forecasts = await generateKPIForecast(user.id, timeHorizon, selectedScenario, selectedMetric);
       setForecastData(forecasts);
 
     } catch (error) {
@@ -268,6 +269,21 @@ const ImpactForecastsSection: React.FC = () => {
 
   const activeScenario = scenarioCards.find((card) => card.id === selectedScenario) ?? scenarioCards[0];
   const activeTheme = SCENARIO_THEME[activeScenario?.id] || SCENARIO_THEME.balanced;
+  const selectedMetricDetails = metrics.find((metric) => metric.id === selectedMetric) ?? null;
+  const formatMetricValue = (value: number) => {
+    const numeric = Number(value ?? 0);
+    if (!Number.isFinite(numeric)) return '--';
+    const unit = (selectedMetricDetails?.unit ?? '').toLowerCase();
+
+    if (unit.includes('%') || unit.includes('percent')) return `${numeric.toFixed(1)}%`;
+    if (unit.includes('hour')) return `${numeric.toFixed(1)} h`;
+    if (unit.includes('minute') || unit === 'min') return `${numeric.toFixed(1)} min`;
+    if (unit.includes('ratio')) return `${numeric.toFixed(1)} ratio`;
+    if (unit.includes('score')) return `${numeric.toFixed(0)} score`;
+    if (unit.includes('bed')) return `${numeric.toFixed(0)} beds`;
+    if (unit.includes('count')) return `${numeric.toFixed(0)} count`;
+    return numeric.toFixed(Math.abs(numeric) >= 10 ? 0 : 1);
+  };
   const visibleSeries = forecastData.flatMap((point) => [
     point.baseline,
     point.withActions,
@@ -284,6 +300,10 @@ const ImpactForecastsSection: React.FC = () => {
   const leadSeriesAverage =
     forecastData.length > 0
       ? forecastData.reduce((sum, point) => sum + point.withActions, 0) / forecastData.length
+      : 0;
+  const endStateDelta =
+    forecastData.length > 0
+      ? forecastData[forecastData.length - 1].withActions - forecastData[forecastData.length - 1].baseline
       : 0;
 
   if (loading && forecastData.length === 0) {
@@ -368,7 +388,7 @@ const ImpactForecastsSection: React.FC = () => {
           },
           {
             label: 'Net Annual Benefit',
-            value: formatMoney(calculateNetImpact() * 1000),
+            value: formatMoney(calculateNetImpact()),
             detail: 'Across current recommended actions',
             accent: calculateNetImpact() >= 0 ? 'text-teal-600' : 'text-red-600',
           },
@@ -756,7 +776,7 @@ const ImpactForecastsSection: React.FC = () => {
             <div className="grid gap-3 sm:grid-cols-3 lg:w-[520px]">
               <div className="rounded-2xl bg-slate-50 px-4 py-4">
                 <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Annual net benefit</div>
-                <div className="mt-2 text-3xl font-bold text-teal-600">{formatMoney(calculateNetImpact() * 1000)}</div>
+                <div className="mt-2 text-3xl font-bold text-teal-600">{formatMoney(calculateNetImpact())}</div>
               </div>
               <div className="rounded-2xl bg-slate-50 px-4 py-4">
                 <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Focus scenario</div>
@@ -778,12 +798,12 @@ const ImpactForecastsSection: React.FC = () => {
                 <div className="grid grid-cols-[1fr,auto,1fr] items-end gap-3 mb-3">
                   <div>
                     <div className="text-sm text-slate-600">Baseline</div>
-                    <div className="text-lg font-bold text-slate-900">{formatMoney(item.baseline * 1000)}</div>
+                    <div className="text-lg font-bold text-slate-900">{formatMoney(item.baseline)}</div>
                   </div>
                   <i className="ri-arrow-right-line text-slate-400"></i>
                   <div>
                     <div className="text-sm text-slate-600">With Actions</div>
-                    <div className="text-lg font-bold text-teal-600">{formatMoney(item.withActions * 1000)}</div>
+                    <div className="text-lg font-bold text-teal-600">{formatMoney(item.withActions)}</div>
                   </div>
                 </div>
                 <div className="rounded-full bg-teal-100 px-3 py-2 text-center text-xs font-bold text-teal-700">
@@ -805,7 +825,9 @@ const ImpactForecastsSection: React.FC = () => {
         <div className="flex items-center justify-between mb-6">
           <div>
             <h2 className="text-xl font-bold text-slate-900 mb-2">KPI Projection Chart</h2>
-            <p className="text-sm text-slate-600">{timeHorizon}-month forecast with scenario comparison</p>
+            <p className="text-sm text-slate-600">
+              {selectedMetricDetails?.name ?? 'Selected metric'} · {timeHorizon}-month forecast with scenario comparison
+            </p>
           </div>
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2">
@@ -864,7 +886,7 @@ const ImpactForecastsSection: React.FC = () => {
                 tickLine={false}
                 axisLine={false}
                 tick={{ fill: '#64748B', fontSize: 12 }}
-                tickFormatter={(value) => formatMoney(value)}
+                tickFormatter={(value) => formatMetricValue(Number(value))}
                 domain={chartDomain}
                 width={70}
               />
@@ -883,7 +905,7 @@ const ImpactForecastsSection: React.FC = () => {
                     withActions: 'With Actions',
                     optimistic: 'Optimistic',
                   };
-                  return [formatMoney(Number(value ?? 0)), labelMap[name] ?? name];
+                  return [formatMetricValue(Number(value ?? 0)), labelMap[name] ?? name];
                 }}
               />
               <Line
@@ -922,7 +944,7 @@ const ImpactForecastsSection: React.FC = () => {
             </div>
             <div className="text-right">
               <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Average modeled level</div>
-              <div className="mt-1 text-lg font-bold text-teal-600">{formatMoney(leadSeriesAverage)}</div>
+              <div className="mt-1 text-lg font-bold text-teal-600">{formatMetricValue(leadSeriesAverage)}</div>
             </div>
           </div>
         </div>
@@ -932,25 +954,27 @@ const ImpactForecastsSection: React.FC = () => {
           <div className="p-4 bg-gradient-to-br from-teal-50 to-cyan-50 rounded-lg">
             <div className="text-sm text-slate-600 mb-1">Average Monthly Gain</div>
             <div className="text-2xl font-bold text-teal-600">
-              {formatMoney(forecastData.reduce((sum, d) => sum + (d.withActions - d.baseline), 0) / Math.max(forecastData.length, 1))}
+              {formatMetricValue(
+                forecastData.reduce((sum, d) => sum + (d.withActions - d.baseline), 0) / Math.max(forecastData.length, 1)
+              )}
             </div>
             <div className="text-xs text-slate-500 mt-1">vs. baseline trajectory</div>
           </div>
           <div className="p-4 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg">
-            <div className="text-sm text-slate-600 mb-1">Peak Performance Month</div>
+            <div className="text-sm text-slate-600 mb-1">Projected Endpoint</div>
             <div className="text-2xl font-bold text-blue-600">
               {forecastData.length > 0 ? forecastData[forecastData.length - 1].month : 'N/A'}
             </div>
             <div className="text-xs text-slate-500 mt-1">
-              {forecastData.length > 0 ? formatMoney(forecastData[forecastData.length - 1].withActions) : '$0'} projected
+              {forecastData.length > 0 ? formatMetricValue(forecastData[forecastData.length - 1].withActions) : '--'} projected
             </div>
           </div>
           <div className="p-4 bg-gradient-to-br from-emerald-50 to-teal-50 rounded-lg">
-            <div className="text-sm text-slate-600 mb-1">Cumulative Impact</div>
+            <div className="text-sm text-slate-600 mb-1">Projected Change</div>
             <div className="text-2xl font-bold text-emerald-600">
-              {formatMoney(forecastData.reduce((sum, d) => sum + (d.withActions - d.baseline), 0))}
+              {formatMetricValue(endStateDelta)}
             </div>
-            <div className="text-xs text-slate-500 mt-1">over {timeHorizon} months</div>
+            <div className="text-xs text-slate-500 mt-1">at the {timeHorizon}-month horizon</div>
           </div>
         </div>
       </AIMPanel>
@@ -1027,12 +1051,12 @@ const ImpactForecastsSection: React.FC = () => {
             <div className="space-y-3">
               <div className="p-4 bg-gradient-to-br from-emerald-50 to-teal-50 rounded-lg">
                 <div className="text-sm text-slate-600 mb-1">Total Investment Required</div>
-                <div className="text-3xl font-bold text-slate-900">{formatMoney(roiMetrics.investment * 1000)}</div>
+                <div className="text-3xl font-bold text-slate-900">{formatMoney(roiMetrics.investment)}</div>
               </div>
               <div className="p-4 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg">
                 <div className="text-sm text-slate-600 mb-1">Expected Annual Savings</div>
                 <div className="text-3xl font-bold text-blue-600">
-                  {formatMoney(roiMetrics.annualSavings * 1000)}
+                  {formatMoney(roiMetrics.annualSavings)}
                 </div>
               </div>
               <div className="p-4 bg-gradient-to-br from-purple-50 to-pink-50 rounded-lg">
