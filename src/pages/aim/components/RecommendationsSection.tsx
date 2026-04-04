@@ -47,6 +47,14 @@ export default function RecommendationsSection() {
   const [selectedPriority, setSelectedPriority] = useState<string>('all');
   const [selectedStatus, setSelectedStatus] = useState<string>('pending');
   const [statistics, setStatistics] = useState<any>(null);
+  const [watchSignals, setWatchSignals] = useState<Array<{
+    id: string;
+    title: string;
+    severity: string;
+    category: string;
+    reason: string;
+    freshness: string;
+  }>>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [pushedIds, setPushedIds] = useState<Set<string>>(new Set());
   const [pushingId, setPushingId] = useState<string | null>(null);
@@ -68,6 +76,7 @@ export default function RecommendationsSection() {
     if (user && organizationId !== undefined) {
       loadRecommendations();
       loadStatistics();
+      loadWatchSignals();
     }
   }, [organizationId, selectedCategory, selectedPriority, selectedStatus, user]);
 
@@ -129,6 +138,34 @@ export default function RecommendationsSection() {
     }
   };
 
+  const loadWatchSignals = async () => {
+    if (!organizationId) return;
+    try {
+      const { data } = await supabase
+        .from('alerts')
+        .select('id, title, severity, category, message, created_at, status')
+        .eq('organization_id', organizationId)
+        .in('status', ['new', 'acknowledged'])
+        .order('created_at', { ascending: false })
+        .limit(5);
+
+      const signals = (data || []).map((alert: any) => ({
+        id: alert.id,
+        title: alert.title || 'Operational signal',
+        severity: alert.severity || 'info',
+        category: alert.category || 'risk',
+        reason: alert.message || 'AIM is monitoring this alert, but it has not yet crossed the threshold for a formal recommendation.',
+        freshness: formatRelativeTime(alert.created_at),
+      }));
+      setWatchSignals(signals);
+      return signals;
+    } catch (error) {
+      console.error('Error loading watch signals:', error);
+      setWatchSignals([]);
+      return [];
+    }
+  };
+
   const handleGenerateRecommendations = async () => {
     if (!user) return;
     setGenerating(true);
@@ -139,8 +176,15 @@ export default function RecommendationsSection() {
         addToast(`Generated ${newRecs.length} new recommendations`, 'success');
         await loadRecommendations();
         await loadStatistics();
+        await loadWatchSignals();
       } else {
-        addToast('No new recommendations found. Your system is performing well!', 'info');
+        const signals = await loadWatchSignals();
+        addToast(
+          signals.length > 0
+            ? 'No action-ready recommendations were generated. AIM surfaced active watch signals instead.'
+            : 'No new recommendations found. Your system is performing well!',
+          'info'
+        );
       }
     } catch (error) {
       console.error('Error generating recommendations:', error);
@@ -290,6 +334,15 @@ export default function RecommendationsSection() {
   const formatStatus = (status: string) =>
     status.split('_').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 
+  const getWatchSignalTone = (severity: string) => {
+    switch (severity) {
+      case 'critical': return 'bg-red-50 text-red-700 border-red-200';
+      case 'high': return 'bg-orange-50 text-orange-700 border-orange-200';
+      case 'medium': return 'bg-amber-50 text-amber-700 border-amber-200';
+      default: return 'bg-slate-100 text-slate-700 border-slate-200';
+    }
+  };
+
   return (
     <div className="space-y-6">
       <AIMSectionIntro
@@ -379,11 +432,49 @@ export default function RecommendationsSection() {
             <p className="text-gray-600 mt-4">Loading recommendations...</p>
           </div>
         ) : recommendations.length === 0 ? (
-          <AIMEmptyState
-            icon="ri-lightbulb-line"
-            title="No recommendations available"
-            description='Generate a fresh recommendation set to analyze your current operational data.'
-          />
+          watchSignals.length > 0 ? (
+            <AIMPanel
+              title="Watchlist Signals"
+              description="AIM found active signals to monitor, but none have crossed the threshold for a formal recommendation yet."
+              icon="ri-radar-line"
+              accentClass="from-amber-500 to-orange-600"
+            >
+              <div className="space-y-4">
+                {watchSignals.map((signal) => (
+                  <div key={signal.id} className="rounded-[24px] border border-slate-200 bg-white p-5">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2 mb-2">
+                          <h3 className="text-base font-semibold text-slate-900">{signal.title}</h3>
+                          <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${getWatchSignalTone(signal.severity)}`}>
+                            {signal.severity}
+                          </span>
+                          <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
+                            {signal.category}
+                          </span>
+                        </div>
+                        <p className="text-sm text-slate-600">{signal.reason}</p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
+                            Freshness: {signal.freshness}
+                          </span>
+                          <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
+                            Watch only
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </AIMPanel>
+          ) : (
+            <AIMEmptyState
+              icon="ri-lightbulb-line"
+              title="No recommendations available"
+              description='Generate a fresh recommendation set to analyze your current operational data.'
+            />
+          )
         ) : (
           recommendations.map((rec) => {
             const isPushed = pushedIds.has(rec.id);
