@@ -254,8 +254,8 @@ const AIMPage: React.FC = () => {
         <div className={`mx-auto grid gap-8 p-8 lg:p-10 ${workspaceGridClass}`}>
           <div className="min-w-0">
             <div className="mb-8 rounded-[36px] border border-ai-200/30 bg-[radial-gradient(circle_at_top_left,_rgba(45,212,191,0.18),_transparent_28%),radial-gradient(circle_at_top_right,_rgba(56,189,248,0.14),_transparent_20%),linear-gradient(135deg,_rgba(15,23,42,0.985),_rgba(17,24,39,0.94))] px-8 py-8 text-white shadow-[0_34px_90px_rgba(15,23,42,0.22)]">
-              <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-                <div className="max-w-3xl">
+              <div className="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(360px,0.9fr)] xl:items-start">
+                <div className="min-w-0">
                   <div className="mb-3 flex items-center gap-3">
                     <span className="rounded-full border border-ai-300/30 bg-ai-400/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-ai-200">
                       AIM Workspace
@@ -275,38 +275,38 @@ const AIMPage: React.FC = () => {
                     <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-brand-100">Closed-loop actions</span>
                   </div>
                 </div>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 lg:w-[520px]">
-                  <div className="rounded-[24px] border border-white/10 bg-white/6 p-4 backdrop-blur-sm">
-                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-200">Recommendations</div>
-                    <div className="mt-2 text-3xl font-bold">{aimStats.recommendationsCount}</div>
-                    <div className="mt-1 text-xs text-brand-200">Open intelligence opportunities</div>
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    <div className="rounded-[24px] border border-white/10 bg-white/6 p-4 backdrop-blur-sm">
+                      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-200">Recommendations</div>
+                      <div className="mt-2 text-3xl font-bold">{aimStats.recommendationsCount}</div>
+                      <div className="mt-1 text-xs text-brand-200">Open intelligence opportunities</div>
+                    </div>
+                    <div className="rounded-[24px] border border-white/10 bg-white/6 p-4 backdrop-blur-sm">
+                      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-200">Tracked Work</div>
+                      <div className="mt-2 text-3xl font-bold">{aimStats.actionCenterCount}</div>
+                      <div className="mt-1 text-xs text-brand-200">Linked execution work AIM is monitoring</div>
+                    </div>
+                    <div className="rounded-[24px] border border-white/10 bg-white/6 p-4 backdrop-blur-sm">
+                      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-200">Predictive Alerts</div>
+                      <div className="mt-2 text-3xl font-bold">{aimStats.predictiveAlertsCount}</div>
+                      <div className="mt-1 text-xs text-brand-200">Signals awaiting review or action</div>
+                    </div>
                   </div>
-                  <div className="rounded-[24px] border border-white/10 bg-white/6 p-4 backdrop-blur-sm">
-                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-200">Tracked Work</div>
-                    <div className="mt-2 text-3xl font-bold">{aimStats.actionCenterCount}</div>
-                    <div className="mt-1 text-xs text-brand-200">Linked execution work AIM is monitoring</div>
-                  </div>
-                  <div className="rounded-[24px] border border-white/10 bg-white/6 p-4 backdrop-blur-sm">
-                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-200">Predictive Alerts</div>
-                    <div className="mt-2 text-3xl font-bold">{aimStats.predictiveAlertsCount}</div>
-                    <div className="mt-1 text-xs text-brand-200">Signals awaiting review or action</div>
-              </div>
-            </div>
 
-            <div className="mt-6">
-              <OperationalTrustPanel
-                title="AIM is grounded in live operational evidence"
-                subtitle="Confidence and impact here are derived from connected sources, current recommendations, forecasts, and action-state data rather than static briefing content."
-                chips={[
-                  { label: 'Last Refresh', value: formatLastRefresh(aimStats.lastRefreshTime), tone: 'teal' },
-                  { label: 'Sources', value: `${aimStats.dataSourcesCount} active`, tone: 'emerald' },
-                  { label: 'Confidence', value: confidenceState, tone: aimStats.aiConfidence >= 70 ? 'emerald' : 'amber' },
-                ]}
-                note="Evidence for AIM comes from live recommendations, metric refreshes, predictive alerts, and tracked actions. When confidence is lower, use the supporting evidence chips and Decision Support to verify whether a recommendation is decision-ready or still directional."
-                className="border-white/10 bg-white/95"
-              />
-            </div>
-          </div>
+                  <OperationalTrustPanel
+                    title="AIM is grounded in live operational evidence"
+                    subtitle="Confidence and impact here are derived from connected sources, current recommendations, forecasts, and action-state data rather than static briefing content."
+                    chips={[
+                      { label: 'Last Refresh', value: formatLastRefresh(aimStats.lastRefreshTime), tone: 'teal' },
+                      { label: 'Sources', value: `${aimStats.dataSourcesCount} active`, tone: 'emerald' },
+                      { label: 'Confidence', value: confidenceState, tone: aimStats.aiConfidence >= 70 ? 'emerald' : 'amber' },
+                    ]}
+                    note="Evidence for AIM comes from live recommendations, metric refreshes, predictive alerts, and tracked actions. When confidence is lower, use the supporting evidence chips and Decision Support to verify whether a recommendation is decision-ready or still directional."
+                    className="border-white/10 bg-white/95"
+                  />
+                </div>
+              </div>
             </div>
 
             {renderSection()}
