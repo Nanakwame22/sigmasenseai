@@ -11,6 +11,7 @@ import DecisionSupportSection from './components/DecisionSupportSection';
 import ActionCenterSection from './components/ActionCenterSection';
 import InsightHistorySection from './components/InsightHistorySection';
 import ReportsSection from './components/ReportsSection';
+import OperationalTrustPanel from '../../components/common/OperationalTrustPanel';
 
 type Section =
   | 'overview'
@@ -131,7 +132,7 @@ const AIMPage: React.FC = () => {
       id: 'action',
       icon: 'ri-task-line',
       label: 'Action Center',
-      badge: aimStats.actionCenterCount > 0 ? aimStats.actionCenterCount.toString() : null,
+      badge: null,
       pulse: aimStats.actionPulse,
     },
     {
@@ -281,17 +282,31 @@ const AIMPage: React.FC = () => {
                     <div className="mt-1 text-xs text-brand-200">Open intelligence opportunities</div>
                   </div>
                   <div className="rounded-[24px] border border-white/10 bg-white/6 p-4 backdrop-blur-sm">
-                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-200">Tracked Actions</div>
+                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-200">Tracked Work</div>
                     <div className="mt-2 text-3xl font-bold">{aimStats.actionCenterCount}</div>
-                    <div className="mt-1 text-xs text-brand-200">Execution items flowing through AIM</div>
+                    <div className="mt-1 text-xs text-brand-200">Linked execution work AIM is monitoring</div>
                   </div>
                   <div className="rounded-[24px] border border-white/10 bg-white/6 p-4 backdrop-blur-sm">
                     <div className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-200">Predictive Alerts</div>
                     <div className="mt-2 text-3xl font-bold">{aimStats.predictiveAlertsCount}</div>
                     <div className="mt-1 text-xs text-brand-200">Signals awaiting review or action</div>
-                  </div>
-                </div>
               </div>
+            </div>
+
+            <div className="mt-6">
+              <OperationalTrustPanel
+                title="AIM is grounded in live operational evidence"
+                subtitle="Confidence and impact here are derived from connected sources, current recommendations, forecasts, and action-state data rather than static briefing content."
+                chips={[
+                  { label: 'Last Refresh', value: formatLastRefresh(aimStats.lastRefreshTime), tone: 'teal' },
+                  { label: 'Sources', value: `${aimStats.dataSourcesCount} active`, tone: 'emerald' },
+                  { label: 'Confidence', value: confidenceState, tone: aimStats.aiConfidence >= 70 ? 'emerald' : 'amber' },
+                ]}
+                note="Evidence for AIM comes from live recommendations, metric refreshes, predictive alerts, and tracked actions. When confidence is lower, use the supporting evidence chips and Decision Support to verify whether a recommendation is decision-ready or still directional."
+                className="border-white/10 bg-white/95"
+              />
+            </div>
+          </div>
             </div>
 
             {renderSection()}
