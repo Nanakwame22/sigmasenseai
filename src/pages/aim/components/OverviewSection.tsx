@@ -254,6 +254,14 @@ export default function OverviewSection() {
     }
   };
 
+  const hasSignalData =
+    stats.activeOpportunities > 0 ||
+    stats.predictedImpact > 0 ||
+    stats.alertCount > 0 ||
+    stats.recommendationCount > 0 ||
+    keyDrivers.length > 0 ||
+    recentQueries.length > 0;
+
   if (loading) {
     return (
       <div className="space-y-6">
@@ -270,7 +278,7 @@ export default function OverviewSection() {
   }
 
   // Empty state
-  if (stats.overallPerformance === 0 && stats.activeOpportunities === 0 && keyDrivers.length === 0) {
+  if (stats.overallPerformance === 0 && !hasSignalData) {
     return (
       <AIMEmptyState
         icon="ri-bar-chart-box-line"
@@ -337,8 +345,10 @@ export default function OverviewSection() {
           <div className="grid gap-5 lg:grid-cols-[1fr_220px]">
             <div>
               <p className="text-gray-700 leading-7 text-[15px]">
-                {stats.alertCount === 0 && stats.recommendationCount === 0
-                  ? 'Your system is being monitored. AI will generate insights as data becomes available.'
+                {stats.alertCount === 0 && stats.recommendationCount === 0 && stats.overallPerformance === 0
+                  ? 'AIM is connected and monitoring live sources. KPI scoring is still filling in, but the workspace can already surface alerts, actions, and query history.'
+                  : stats.alertCount === 0 && stats.recommendationCount === 0
+                    ? 'Your system is being monitored. AI will generate deeper recommendations as more performance evidence becomes available.'
                   : stats.alertCount > 0
                     ? `The AI has identified ${stats.alertCount} active alert${stats.alertCount !== 1 ? 's' : ''} requiring attention and generated ${stats.recommendationCount} recommendation${stats.recommendationCount !== 1 ? 's' : ''} to optimize performance. ${stats.riskLevel === 'critical' || stats.riskLevel === 'high' ? 'Immediate action is recommended for high-priority items.' : 'Continue monitoring key metrics and implementing suggested improvements.'}`
                     : `The AI has generated ${stats.recommendationCount} recommendation${stats.recommendationCount !== 1 ? 's' : ''} to help you achieve your performance targets. No critical alerts detected — your operations are running smoothly.`}
@@ -389,7 +399,32 @@ export default function OverviewSection() {
               ))}
             </div>
           </AIMPanel>
-        ) : null}
+        ) : (
+          <AIMPanel
+            title="Signal Readiness"
+            description="AIM already has enough signal to monitor alerts, actions, and recent activity even before a full KPI briefing is available."
+            icon="ri-pulse-line"
+            accentClass="from-violet-500 to-indigo-600"
+          >
+            <div className="grid gap-4 md:grid-cols-3">
+              <div className="rounded-[24px] border border-slate-200 bg-white p-5">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Alert coverage</div>
+                <div className="mt-2 text-2xl font-bold text-slate-900">{stats.alertCount}</div>
+                <p className="mt-2 text-sm text-slate-600">Current predictive or operational alerts already visible to AIM.</p>
+              </div>
+              <div className="rounded-[24px] border border-slate-200 bg-white p-5">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Recommendation load</div>
+                <div className="mt-2 text-2xl font-bold text-slate-900">{stats.recommendationCount}</div>
+                <p className="mt-2 text-sm text-slate-600">Recommendations or actions are already flowing into the workspace.</p>
+              </div>
+              <div className="rounded-[24px] border border-slate-200 bg-white p-5">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Recent queries</div>
+                <div className="mt-2 text-2xl font-bold text-slate-900">{recentQueries.length}</div>
+                <p className="mt-2 text-sm text-slate-600">Ask AIM activity is ready to populate the briefing as usage grows.</p>
+              </div>
+            </div>
+          </AIMPanel>
+        )}
       </div>
 
       {/* ── Clinical Intelligence Panel ── */}
@@ -402,7 +437,7 @@ export default function OverviewSection() {
           accentClass="from-teal-500 to-cyan-600"
           actions={
             <button
-              onClick={() => window.REACT_APP_NAVIGATE?.('/aim')}
+              onClick={() => window.REACT_APP_NAVIGATE?.('/dashboard/aim')}
               className="text-xs text-teal-600 hover:text-teal-800 flex items-center gap-1 cursor-pointer whitespace-nowrap"
             >
               View all <i className="ri-arrow-right-s-line"></i>
