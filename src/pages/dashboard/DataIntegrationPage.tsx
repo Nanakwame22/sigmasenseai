@@ -418,6 +418,12 @@ export default function DataIntegrationPage() {
     }
   };
 
+  const getReliabilityTone = (score?: number) => {
+    if ((score || 0) >= 85) return 'bg-emerald-50 text-emerald-700 border border-emerald-200';
+    if ((score || 0) >= 65) return 'bg-amber-50 text-amber-700 border border-amber-200';
+    return 'bg-rose-50 text-rose-700 border border-rose-200';
+  };
+
   const formatDateTime = (value?: string | null) => {
     if (!value) return 'Never';
     return new Date(value).toLocaleString();
@@ -1178,7 +1184,7 @@ export default function DataIntegrationPage() {
   }
 
   return (
-    <div className="p-6">
+    <div className="bg-slate-50/55 p-6">
       <ConfirmDialog
         isOpen={deleteConfirmOpen}
         title="Delete Data Source?"
@@ -1208,39 +1214,60 @@ export default function DataIntegrationPage() {
       />
 
       {/* Header */}
-      <div className="max-w-7xl mx-auto">
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-3xl font-bold text-slate-800 mb-2">Data Integration</h1>
-            <p className="text-slate-600">Connect and manage your data sources</p>
-          </div>
+      <div className="mx-auto max-w-7xl">
+        <div className="mb-8 rounded-[28px] border border-slate-200 bg-gradient-to-br from-white via-slate-50 to-cyan-50/60 p-7 shadow-[0_24px_60px_-40px_rgba(15,23,42,0.45)]">
+          <div className="flex items-start justify-between gap-6">
+            <div className="max-w-3xl">
+              <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-cyan-700">
+                <span className="h-2 w-2 rounded-full bg-cyan-500"></span>
+                Data Integration Control
+              </div>
+              <h1 className="text-3xl font-bold tracking-tight text-slate-900 mb-2">Data Integration</h1>
+              <p className="max-w-2xl text-slate-600">
+                Connect, monitor, and operationalize source systems with clear health signals, schema awareness, and ETL-ready handoff into the rest of SigmaSense.
+              </p>
+              <div className="mt-5 flex flex-wrap gap-3">
+                <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Connected Sources</div>
+                  <div className="mt-1 text-lg font-bold text-slate-900">{healthSummary.total}</div>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Average Reliability</div>
+                  <div className="mt-1 text-lg font-bold text-slate-900">{averageReliability}%</div>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Events Last 7 Days</div>
+                  <div className="mt-1 text-lg font-bold text-slate-900">{healthSummary.events}</div>
+                </div>
+              </div>
+            </div>
           <button
             onClick={() => {
               setShowAddModal(true);
               setActiveTab('file');
               resetApiForm();
             }}
-            className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium flex items-center gap-2 whitespace-nowrap cursor-pointer"
+            className="whitespace-nowrap rounded-xl bg-slate-900 px-6 py-3 font-medium text-white shadow-sm transition-all hover:-translate-y-0.5 hover:bg-slate-800 cursor-pointer flex items-center gap-2"
           >
             <i className="ri-add-line text-xl"></i>
             Add Data Source
           </button>
         </div>
 
-        <div className="mb-6 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl">
+        <div className="mb-6 rounded-[24px] border border-blue-200 bg-gradient-to-r from-blue-50 via-indigo-50 to-cyan-50 p-5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-blue-600 rounded-lg flex items-center justify-center">
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-600 shadow-sm">
                 <i className="ri-bar-chart-grouped-line text-2xl text-white"></i>
               </div>
               <div>
-                <h3 className="font-bold text-slate-800">Auto-Aggregate KPIs From Raw Data</h3>
-                <p className="text-sm text-slate-600">Transform your uploaded data into actionable KPI time-series automatically</p>
+                <h3 className="font-bold text-slate-900">Auto-Aggregate KPIs From Raw Data</h3>
+                <p className="text-sm text-slate-600">Turn uploaded operational data into KPI time-series with mapping and ETL-ready structure already in place.</p>
               </div>
             </div>
             <a
               href="/dashboard/kpi-aggregation"
-              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium flex items-center gap-2 whitespace-nowrap"
+              className="whitespace-nowrap rounded-xl bg-blue-600 px-6 py-2.5 font-medium text-white transition-colors hover:bg-blue-700 flex items-center gap-2"
             >
               Get Started
               <i className="ri-arrow-right-line"></i>
@@ -1325,22 +1352,24 @@ export default function DataIntegrationPage() {
           </div>
 
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 mb-6">
-            <div className="xl:col-span-2 rounded-xl border border-slate-200 bg-white p-5">
+            <div className="xl:col-span-2 rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_18px_40px_-34px_rgba(15,23,42,0.35)]">
               <div className="flex items-center justify-between gap-4 mb-3">
                 <div>
                   <h3 className="text-sm font-semibold text-slate-900">AI Operations Summary</h3>
                   <p className="text-sm text-slate-600 mt-1">Plain-language assessment of connector health, auth posture, and reliability.</p>
                 </div>
-                <div className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold ${averageReliability >= 85 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : averageReliability >= 65 ? 'bg-amber-50 text-amber-700 border border-amber-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+                <div className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold ${getReliabilityTone(averageReliability)}`}>
                   {averageReliability}% avg reliability
                 </div>
               </div>
               <div className="space-y-3">
                 {dataSources.slice(0, 3).map((source) => (
-                  <div key={`summary-${source.id}`} className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+                  <div key={`summary-${source.id}`} className="rounded-xl border border-slate-200 bg-gradient-to-r from-slate-50 to-white px-4 py-3">
                     <div className="flex items-center justify-between gap-3 mb-1">
                       <p className="text-sm font-semibold text-slate-900">{source.name}</p>
-                      <span className="text-xs text-slate-500">{source.reliability_score || 0}% reliable</span>
+                      <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${getReliabilityTone(source.reliability_score)}`}>
+                        {source.reliability_score || 0}% reliable
+                      </span>
                     </div>
                     <p className="text-sm text-slate-700">{source.ai_health_summary}</p>
                   </div>
@@ -1348,22 +1377,22 @@ export default function DataIntegrationPage() {
               </div>
             </div>
 
-            <div className="rounded-xl border border-slate-200 bg-white p-5">
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_18px_40px_-34px_rgba(15,23,42,0.35)]">
               <h3 className="text-sm font-semibold text-slate-900">Connector Signals</h3>
               <div className="space-y-3 mt-4">
-                <div className="rounded-lg bg-slate-50 px-3 py-3">
+                <div className="rounded-xl bg-slate-50 px-3 py-3">
                   <p className="text-xs text-slate-500">Auth issues</p>
                   <p className="text-2xl font-bold text-slate-900 mt-1">
                     {dataSources.filter((source) => source.auth_health === 'missing').length}
                   </p>
                 </div>
-                <div className="rounded-lg bg-slate-50 px-3 py-3">
+                <div className="rounded-xl bg-slate-50 px-3 py-3">
                   <p className="text-xs text-slate-500">Degrading sources</p>
                   <p className="text-2xl font-bold text-slate-900 mt-1">
                     {dataSources.filter((source) => source.failure_trend === 'degrading').length}
                   </p>
                 </div>
-                <div className="rounded-lg bg-slate-50 px-3 py-3">
+                <div className="rounded-xl bg-slate-50 px-3 py-3">
                   <p className="text-xs text-slate-500">Stable schemas</p>
                   <p className="text-2xl font-bold text-slate-900 mt-1">
                     {dataSources.filter((source) => source.schema_drift_status === 'stable').length}
@@ -1390,10 +1419,10 @@ export default function DataIntegrationPage() {
       {/* Data Sources Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {dataSources.map((source) => (
-          <div key={source.id} className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+          <div key={source.id} className="group rounded-[24px] border border-slate-200 bg-white p-6 shadow-[0_20px_50px_-38px_rgba(15,23,42,0.42)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_28px_60px_-38px_rgba(15,23,42,0.5)]">
             <div className="flex items-start justify-between mb-4">
               <div className="flex items-center">
-                <div className={`w-12 h-12 ${source.type === 'api' ? 'bg-purple-100' : 'bg-teal-100'} rounded-lg flex items-center justify-center`}>
+                <div className={`w-12 h-12 ${source.type === 'api' ? 'bg-purple-100' : 'bg-teal-100'} rounded-xl flex items-center justify-center`}>
                   <i className={`${source.type === 'api' ? 'ri-cloud-line' : 'ri-file-text-line'} text-2xl ${source.type === 'api' ? 'text-purple-600' : 'text-teal-600'}`}></i>
                 </div>
                 <div className="ml-3">
@@ -1431,7 +1460,7 @@ export default function DataIntegrationPage() {
               <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold capitalize ${getHealthBadgeClasses(source.health_status)}`}>
                 {source.health_status || 'idle'}
               </span>
-              <span className="text-xs text-slate-500">
+              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
                 {source.linked_pipelines || 0} linked pipeline{source.linked_pipelines === 1 ? '' : 's'}
               </span>
             </div>
@@ -1468,19 +1497,19 @@ export default function DataIntegrationPage() {
             </div>
 
             <div className="grid grid-cols-3 gap-3 mb-4">
-              <div className="rounded-lg bg-slate-50 px-3 py-3">
+              <div className="rounded-xl bg-slate-50 px-3 py-3">
                 <p className="text-xs text-slate-500">Reliability</p>
                 <p className="mt-1 text-sm font-semibold text-slate-900">
                   {source.reliability_score || 0}%
                 </p>
               </div>
-              <div className="rounded-lg bg-slate-50 px-3 py-3">
+              <div className="rounded-xl bg-slate-50 px-3 py-3">
                 <p className="text-xs text-slate-500">Auth</p>
                 <p className={`mt-1 text-sm font-semibold capitalize ${source.auth_health === 'missing' ? 'text-red-600' : 'text-slate-900'}`}>
                   {source.auth_health === 'configured' ? 'configured' : source.auth_health === 'missing' ? 'missing' : 'not required'}
                 </p>
               </div>
-              <div className="rounded-lg bg-slate-50 px-3 py-3">
+              <div className="rounded-xl bg-slate-50 px-3 py-3">
                 <p className="text-xs text-slate-500">Trend</p>
                 <p className={`mt-1 text-sm font-semibold capitalize ${source.failure_trend === 'degrading' ? 'text-red-600' : source.failure_trend === 'improving' ? 'text-emerald-600' : 'text-slate-900'}`}>
                   {source.failure_trend || 'unknown'}
@@ -1751,18 +1780,26 @@ export default function DataIntegrationPage() {
 
       {/* Add Data Source Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg max-w-3xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white border-b border-gray-200 p-6 z-10">
-              <h2 className="text-xl font-bold text-gray-900">Add Data Source</h2>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm">
+          <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-[28px] border border-slate-200 bg-white shadow-[0_40px_120px_-48px_rgba(15,23,42,0.65)]">
+            <div className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 p-6 backdrop-blur">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                    New Connector
+                  </div>
+                  <h2 className="text-xl font-bold text-gray-900">Add Data Source</h2>
+                  <p className="mt-1 text-sm text-slate-500">Bring in uploaded files or connect an API endpoint for downstream mapping and ETL.</p>
+                </div>
+              </div>
               
               {/* Tabs */}
-              <div className="flex gap-4 mt-4">
+              <div className="mt-4 flex gap-3">
                 <button
                   onClick={() => setActiveTab('file')}
-                  className={`px-4 py-2 rounded-lg font-medium transition-colors whitespace-nowrap cursor-pointer ${
+                  className={`rounded-xl px-4 py-2.5 font-medium transition-colors whitespace-nowrap cursor-pointer ${
                     activeTab === 'file'
-                      ? 'bg-teal-100 text-teal-700'
+                      ? 'bg-teal-100 text-teal-700 shadow-sm'
                       : 'text-gray-600 hover:bg-gray-100'
                   }`}
                 >
@@ -1771,9 +1808,9 @@ export default function DataIntegrationPage() {
                 </button>
                 <button
                   onClick={() => setActiveTab('api')}
-                  className={`px-4 py-2 rounded-lg font-medium transition-colors whitespace-nowrap cursor-pointer ${
+                  className={`rounded-xl px-4 py-2.5 font-medium transition-colors whitespace-nowrap cursor-pointer ${
                     activeTab === 'api'
-                      ? 'bg-purple-100 text-purple-700'
+                      ? 'bg-purple-100 text-purple-700 shadow-sm'
                       : 'text-gray-600 hover:bg-gray-100'
                   }`}
                 >
