@@ -38,6 +38,16 @@ function getRecommendationEvidence(rec: Recommendation) {
   return signals.join(' • ');
 }
 
+function getRecommendationReadiness(rec: Recommendation) {
+  if ((rec.confidence_score || 0) >= 80 && (rec.impact_score || 0) >= 60) {
+    return { label: 'Action-ready', tone: 'bg-emerald-100 text-emerald-700 border-emerald-200' };
+  }
+  if ((rec.confidence_score || 0) >= 65) {
+    return { label: 'Needs review', tone: 'bg-amber-100 text-amber-700 border-amber-200' };
+  }
+  return { label: 'Directional', tone: 'bg-sky-100 text-sky-700 border-sky-200' };
+}
+
 export default function RecommendationsSection() {
   const { user, organization } = useAuth();
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
@@ -492,6 +502,8 @@ export default function RecommendationsSection() {
           recommendations.map((rec) => {
             const isPushed = pushedIds.has(rec.id);
             const isPushing = pushingId === rec.id;
+            const readiness = getRecommendationReadiness(rec);
+            const isExpanded = expandedId === rec.id;
 
             return (
               <div
@@ -543,13 +555,22 @@ export default function RecommendationsSection() {
                         </div>
 
                         <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/90 p-4">
-                          <div className="flex flex-wrap gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
                             <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-600">
                               Freshness: {formatRelativeTime(rec.updated_at || rec.created_at)}
+                            </span>
+                            <span className={`rounded-full border px-3 py-1 text-[11px] font-semibold ${readiness.tone}`}>
+                              {readiness.label}
                             </span>
                             <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-600">
                               Evidence: {rec.category}
                             </span>
+                            <button
+                              onClick={() => setExpandedId(isExpanded ? null : rec.id)}
+                              className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-100 transition-colors"
+                            >
+                              {isExpanded ? 'Hide evidence' : 'Open evidence'}
+                            </button>
                           </div>
                           <p className="mt-2 text-[11px] leading-5 text-slate-500">
                             {getRecommendationEvidence(rec) || 'Confidence and action evidence will strengthen as AIM accumulates more live operational context.'}
@@ -559,8 +580,43 @@ export default function RecommendationsSection() {
                           </p>
                         </div>
 
-                        {expandedId === rec.id && (
-                          <div className="mt-6 space-y-4">
+                        {isExpanded && (
+                          <div className="mt-6 rounded-[24px] border border-teal-100 bg-gradient-to-br from-teal-50 via-white to-cyan-50 p-5 space-y-4">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className={`rounded-full border px-3 py-1 text-[11px] font-semibold ${readiness.tone}`}>
+                                Decision Readiness: {readiness.label}
+                              </span>
+                              <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-600">
+                                Confidence basis: {rec.confidence_score || 0}% signal confidence
+                              </span>
+                              <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-600">
+                                Effort load: {rec.effort_score || 0}%
+                              </span>
+                            </div>
+                            <div className="grid gap-4 lg:grid-cols-3">
+                              <div className="rounded-2xl border border-white/70 bg-white/90 p-4">
+                                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Why AIM surfaced this</div>
+                                <p className="mt-2 text-sm leading-6 text-slate-700">
+                                  AIM ranked this recommendation using current category pressure, modeled impact, effort tolerance, and live operational freshness.
+                                </p>
+                              </div>
+                              <div className="rounded-2xl border border-white/70 bg-white/90 p-4">
+                                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Evidence window</div>
+                                <p className="mt-2 text-sm leading-6 text-slate-700">
+                                  Latest signal refresh: {formatRelativeTime(rec.updated_at || rec.created_at)}. Stronger evidence appears as more recommendations, alerts, and tracked outcomes accumulate.
+                                </p>
+                              </div>
+                              <div className="rounded-2xl border border-white/70 bg-white/90 p-4">
+                                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Operator guidance</div>
+                                <p className="mt-2 text-sm leading-6 text-slate-700">
+                                  {readiness.label === 'Action-ready'
+                                    ? 'This recommendation is strong enough to move into execution with a normal operational review.'
+                                    : readiness.label === 'Needs review'
+                                      ? 'Review the supporting signals and local context before committing this into tracked work.'
+                                      : 'Use this as directional guidance while AIM accumulates more evidence or a stronger threshold breach.'}
+                                </p>
+                              </div>
+                            </div>
                             {rec.recommended_actions && rec.recommended_actions.length > 0 && (
                               <div>
                                 <h4 className="text-sm font-semibold text-gray-900 mb-2">Recommended Actions:</h4>

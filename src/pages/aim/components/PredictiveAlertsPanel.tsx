@@ -100,6 +100,7 @@ export default function PredictiveAlertsPanel() {
     critical_always: true
   });
   const [selectedAlert, setSelectedAlert] = useState<Alert | null>(null);
+  const [evidenceAlertId, setEvidenceAlertId] = useState<string | null>(null);
 
   useEffect(() => {
     if (orgId) {
@@ -298,6 +299,16 @@ export default function PredictiveAlertsPanel() {
     dismissed: 'bg-slate-100 text-slate-700',
   } as const;
 
+  const getAlertReadiness = (alert: Alert) => {
+    if ((alert.confidence || 0) >= 85 && alert.severity === 'critical') {
+      return { label: 'Action-ready', tone: 'bg-emerald-100 text-emerald-700 border-emerald-200' };
+    }
+    if ((alert.confidence || 0) >= 70 || alert.severity === 'high') {
+      return { label: 'Needs review', tone: 'bg-amber-100 text-amber-700 border-amber-200' };
+    }
+    return { label: 'Directional', tone: 'bg-sky-100 text-sky-700 border-sky-200' };
+  };
+
   return (
     <div className="space-y-6">
       <AIMSectionIntro
@@ -409,6 +420,10 @@ export default function PredictiveAlertsPanel() {
                   key={alert.id}
                   className={`bg-gradient-to-br ${getAlertBg(alert.alert_type)} rounded-[24px] border p-6 shadow-sm transition-all hover:shadow-md`}
                 >
+                  {(() => {
+                    const readiness = getAlertReadiness(alert);
+                    const showEvidence = evidenceAlertId === alert.id;
+                    return (
                   <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr),220px]">
                     <div className="min-w-0">
                       <div className="flex items-start gap-4">
@@ -472,13 +487,22 @@ export default function PredictiveAlertsPanel() {
                       )}
 
                       <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
-                        <div className="flex flex-wrap gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
                           <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold text-slate-600">
                             Freshness: {formatRelativeTime((alert as any).updated_at || alert.created_at)}
+                          </span>
+                          <span className={`rounded-full border px-3 py-1 text-[11px] font-semibold ${readiness.tone}`}>
+                            {readiness.label}
                           </span>
                           <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold text-slate-600">
                             Trigger: {alert.category || alert.severity}
                           </span>
+                          <button
+                            onClick={() => setEvidenceAlertId(showEvidence ? null : alert.id)}
+                            className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-100 transition-colors"
+                          >
+                            {showEvidence ? 'Hide evidence' : 'Open evidence'}
+                          </button>
                         </div>
                         <p className="mt-2 text-[11px] leading-5 text-slate-500">
                           Evidence: {[
@@ -491,6 +515,46 @@ export default function PredictiveAlertsPanel() {
                           Lineage: {alertLineage[alert.severity] || 'Metric monitoring → alert engine → response queue'}
                         </p>
                       </div>
+
+                      {showEvidence && (
+                        <div className="mt-4 rounded-[24px] border border-sky-100 bg-gradient-to-br from-sky-50 via-white to-cyan-50 p-5 space-y-4">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className={`rounded-full border px-3 py-1 text-[11px] font-semibold ${readiness.tone}`}>
+                              Decision Readiness: {readiness.label}
+                            </span>
+                            <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-600">
+                              Confidence basis: {Math.round(alert.confidence || 0)}%
+                            </span>
+                            <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-600">
+                              Lead window: {alert.days_until !== undefined ? `${alert.days_until} days` : 'Not modeled'}
+                            </span>
+                          </div>
+                          <div className="grid gap-4 lg:grid-cols-3">
+                            <div className="rounded-2xl border border-white/70 bg-white/90 p-4">
+                              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Why AIM raised this</div>
+                              <p className="mt-2 text-sm leading-6 text-slate-700">
+                                AIM detected a threshold or directional signal change that suggests this condition may worsen if the current trend continues.
+                              </p>
+                            </div>
+                            <div className="rounded-2xl border border-white/70 bg-white/90 p-4">
+                              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Evidence window</div>
+                              <p className="mt-2 text-sm leading-6 text-slate-700">
+                                Latest alert evidence refreshed {formatRelativeTime((alert as any).updated_at || alert.created_at)} with lineage from the alert engine, monitored metric movement, and response-state tracking.
+                              </p>
+                            </div>
+                            <div className="rounded-2xl border border-white/70 bg-white/90 p-4">
+                              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Operator guidance</div>
+                              <p className="mt-2 text-sm leading-6 text-slate-700">
+                                {readiness.label === 'Action-ready'
+                                  ? 'This signal is strong enough to move into response actions immediately.'
+                                  : readiness.label === 'Needs review'
+                                    ? 'Review the local operating context and acknowledge or route this signal before acting.'
+                                    : 'Use this as an early warning while AIM gathers more confirming evidence.'}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
 
                       {alert.actions && alert.actions.length > 0 && (
                         <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
@@ -550,6 +614,8 @@ export default function PredictiveAlertsPanel() {
                       </div>
                     </div>
                   </div>
+                    );
+                  })()}
                 </div>
               ))}
             </div>
