@@ -24,13 +24,16 @@ type Section =
   | 'history'
   | 'reports';
 
+type BriefingLens = 'executive' | 'operations' | 'quality';
+
 const AIMPage: React.FC = () => {
   const navigate = useNavigate();
-  const { signOut } = useAuth();
+  const { signOut, userRole } = useAuth();
   const aimStats = useAIMData();
   const [activeSection, setActiveSection] = useState<Section>('overview');
   const [isQuickAskOpen, setIsQuickAskOpen] = useState(false);
   const [isRailMinimized, setIsRailMinimized] = useState(true);
+  const [briefingLens, setBriefingLens] = useState<BriefingLens>('operations');
 
   useEffect(() => {
     const saved = localStorage.getItem('aim_quick_ask_minimized');
@@ -44,6 +47,16 @@ const AIMPage: React.FC = () => {
   useEffect(() => {
     localStorage.setItem('aim_quick_ask_minimized', String(isRailMinimized));
   }, [isRailMinimized]);
+
+  useEffect(() => {
+    const defaultLens: BriefingLens =
+      userRole === 'admin' || userRole === 'org_leader'
+        ? 'executive'
+        : userRole === 'process_owner'
+          ? 'operations'
+          : 'quality';
+    setBriefingLens(defaultLens);
+  }, [userRole]);
 
   const formatLastRefresh = (date: Date | null) => {
     if (!date) return 'Never';
@@ -100,6 +113,63 @@ const AIMPage: React.FC = () => {
         : aimStats.decisionReadiness === 'Directional'
           ? 'AIM can frame the situation, but the signal mix is still building toward a stronger recommendation.'
           : 'AIM is connected, but more live evidence is needed before decision-grade guidance is available.';
+
+  const briefingByLens: Record<
+    BriefingLens,
+    {
+      label: string;
+      audience: string;
+      headline: string;
+      summary: string;
+      nextMove: string;
+      chips: string[];
+    }
+  > = {
+    executive: {
+      label: 'Executive',
+      audience: 'Board, COO, service-line leadership',
+      headline: 'Focus on exposure, readiness, and where intervention is worth executive attention.',
+      summary:
+        aimStats.predictiveAlertsCount > 0
+          ? `${aimStats.predictiveAlertsCount} live signals are under AIM review. Confidence is currently ${confidenceState.toLowerCase()}, so leadership should use AIM to prioritize where escalation or sponsorship is needed most.`
+          : 'AIM is monitoring the operation without a concentrated escalation signal right now. Use the workspace to confirm whether exposure is stable or still building.',
+      nextMove:
+        aimStats.decisionReadiness === 'Action-ready'
+          ? 'Review the top recommendation and confirm executive sponsorship, staffing support, or budget clearance.'
+          : 'Use Decision Support and Predictive Alerts to confirm where leadership attention will unblock the most value.',
+      chips: ['Executive risk view', 'Escalation readiness', 'Value at stake'],
+    },
+    operations: {
+      label: 'Operations',
+      audience: 'Process owners and operating managers',
+      headline: 'Focus on what is changing, what is actionable, and what needs a local operator review.',
+      summary:
+        aimStats.actionCenterCount > 0
+          ? `${aimStats.actionCenterCount} tracked work items are already connected to AIM. Use this lens to decide what should move into execution, what needs verification, and where signal pressure is still directional.`
+          : 'AIM is monitoring signals and surfacing watch conditions, but execution work is still thin. This lens helps operators decide what should be watched, reviewed, or converted into tracked work.',
+      nextMove:
+        aimStats.recommendationsCount > 0
+          ? 'Validate the strongest recommendation against local capacity, then push the best next move into tracked execution.'
+          : 'Review the recommendation readiness and predictive alerts sections to see which signals are closest to becoming action-ready.',
+      chips: ['Operator queue', 'Execution posture', 'Next best move'],
+    },
+    quality: {
+      label: 'Quality',
+      audience: 'Quality, safety, and compliance leaders',
+      headline: 'Focus on evidence strength, risk concentration, and where more validation is needed before action.',
+      summary:
+        aimStats.evidenceCoverage >= 60
+          ? `AIM currently has ${aimStats.evidenceSignals}/5 live evidence classes feeding the workspace. Use this lens to test whether the signal is strong enough for intervention or still needs corroboration.`
+          : 'AIM is connected, but the evidence stack is still developing. This lens helps quality leaders distinguish directional guidance from stronger recommendation-grade evidence.',
+      nextMove:
+        aimStats.aiConfidence >= 70
+          ? 'Inspect the supporting evidence and close the loop by validating whether completed work produced the expected outcome.'
+          : 'Stay in monitor-and-review mode until confidence improves or fresh corroborating data arrives.',
+      chips: ['Evidence coverage', 'Validation posture', 'Outcome proof'],
+    },
+  };
+
+  const activeBriefing = briefingByLens[briefingLens];
 
   const renderSection = () => {
     switch (activeSection) {
@@ -287,8 +357,53 @@ const AIMPage: React.FC = () => {
                   <p className="mt-3 max-w-2xl text-sm leading-6 text-brand-100 md:text-[15px]">
                     SigmaSense&apos;s decision studio for monitoring risk, modeling outcomes, and converting AI guidance into tracked operational work.
                   </p>
+                  <div className="mt-6 rounded-[28px] border border-white/10 bg-white/5 p-5 shadow-[0_18px_44px_rgba(15,23,42,0.16)] backdrop-blur-sm">
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="max-w-2xl">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-200">Role-Based Briefing</div>
+                        <h2 className="mt-3 text-lg font-semibold tracking-tight text-white">{activeBriefing.headline}</h2>
+                        <p className="mt-3 text-sm leading-6 text-brand-100">{activeBriefing.summary}</p>
+                        <p className="mt-3 text-sm leading-6 text-ai-100">
+                          <span className="font-semibold text-white">Next move:</span> {activeBriefing.nextMove}
+                        </p>
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          {activeBriefing.chips.map((chip) => (
+                            <span key={chip} className="rounded-full border border-white/10 bg-white/6 px-3 py-1 text-xs font-medium text-brand-100">
+                              {chip}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-2 lg:max-w-[260px] lg:justify-end">
+                        {(
+                          [
+                            { id: 'executive', label: 'Executive' },
+                            { id: 'operations', label: 'Operations' },
+                            { id: 'quality', label: 'Quality' },
+                          ] as const
+                        ).map((lens) => (
+                          <button
+                            key={lens.id}
+                            onClick={() => setBriefingLens(lens.id)}
+                            className={`rounded-full border px-3 py-2 text-xs font-semibold transition-colors ${
+                              briefingLens === lens.id
+                                ? 'border-ai-300/40 bg-ai-400/15 text-white'
+                                : 'border-white/10 bg-white/5 text-brand-200 hover:bg-white/10'
+                            }`}
+                          >
+                            {lens.label}
+                          </button>
+                        ))}
+                        <div className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-left">
+                          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-brand-300">Audience</div>
+                          <div className="mt-2 text-sm font-medium text-white">{activeBriefing.audience}</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
                   <div className="mt-5 flex flex-wrap gap-2">
-                    <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-brand-100">Executive briefing</span>
+                    <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-brand-100">Role-aware briefings</span>
                     <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-brand-100">Decision-grade AI guidance</span>
                     <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-brand-100">Closed-loop actions</span>
                   </div>
