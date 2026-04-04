@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { summarizeAIMAlerts, dedupeAIMAlerts } from '../services/aimAlertSummary';
 
 interface AIMStats {
   dataSourcesCount: number;
@@ -59,7 +60,6 @@ export const useAIMData = () => {
         { data: actionItemsData },
         { data: dmaicProjectsData },
         { data: kaizenItemsData },
-        { count: alertsCount },
         { data: recommendationsData },
         { data: impactRecommendations },
         { data: projectSavings },
@@ -98,12 +98,6 @@ export const useAIMData = () => {
           .select('id, status')
           .eq('organization_id', orgId)
           .in('status', ['open', 'approved', 'in_progress', 'completed', 'rejected']),
-        supabase
-          .from('alerts')
-          .select('*', { count: 'exact', head: true })
-          .eq('organization_id', orgId)
-          .in('status', ['new', 'acknowledged'])
-          .is('resolved_at', null),
         supabase
           .from('recommendations')
           .select('confidence_score')
@@ -156,9 +150,19 @@ export const useAIMData = () => {
         projectSavings?.reduce((sum, p) => sum + (p.expected_savings || 0), 0) || 0;
       const totalPredictedImpact = recommendationsImpact * 1000 + projectsImpact;
 
+      const alertSummary = summarizeAIMAlerts((alertsData as any[]) || []);
+      const groupedAlerts = dedupeAIMAlerts((alertsData as any[]) || []);
+      const activeLeadWindowAlerts = groupedAlerts.filter(
+        (alert) =>
+          alert.status !== 'resolved' &&
+          alert.status !== 'dismissed' &&
+          typeof alert.days_until === 'number' &&
+          Number.isFinite(alert.days_until)
+      );
+
       const avgLeadTime =
-        alertsData && alertsData.length > 0
-          ? alertsData.reduce((sum, a) => sum + (a.days_until || 0), 0) / alertsData.length
+        activeLeadWindowAlerts.length > 0
+          ? activeLeadWindowAlerts.reduce((sum, a) => sum + (a.days_until || 0), 0) / activeLeadWindowAlerts.length
           : 0;
 
       const hasFreshMetrics = Boolean(latestMetricData?.timestamp);
@@ -167,7 +171,7 @@ export const useAIMData = () => {
         hasFreshMetrics,
         (recommendationsCount || 0) > 0,
         totalActionCount > 0,
-        (alertsCount || 0) > 0,
+        alertSummary.active > 0,
       ].filter(Boolean).length;
 
       const evidenceCoverage = Math.round((liveSignalCount / 5) * 100);
@@ -176,9 +180,9 @@ export const useAIMData = () => {
         : Number.POSITIVE_INFINITY;
 
       const decisionReadiness: AIMStats['decisionReadiness'] =
-        avgConfidence >= 80 && freshnessAgeHours <= 24 && ((recommendationsCount || 0) > 0 || (alertsCount || 0) > 0)
+        avgConfidence >= 80 && freshnessAgeHours <= 24 && ((recommendationsCount || 0) > 0 || alertSummary.active > 0)
           ? 'Action-ready'
-          : avgConfidence >= 65 && ((recommendationsCount || 0) > 0 || (alertsCount || 0) > 0)
+          : avgConfidence >= 65 && ((recommendationsCount || 0) > 0 || alertSummary.active > 0)
             ? 'Needs review'
             : liveSignalCount >= 3
               ? 'Directional'
@@ -192,7 +196,7 @@ export const useAIMData = () => {
           : null,
         recommendationsCount: recommendationsCount || 0,
         actionCenterCount: totalActionCount,
-        predictiveAlertsCount: alertsCount || 0,
+        predictiveAlertsCount: alertSummary.active,
         aiConfidence: Math.round(avgConfidence),
         evidenceCoverage,
         evidenceSignals: liveSignalCount,

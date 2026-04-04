@@ -6,7 +6,6 @@ import {
   snoozeAlert,
   resolveAlert,
   dismissAlert,
-  getAlertStats,
   monitorMetricsForAlerts,
   saveAlerts,
   reactivateSnoozedAlerts,
@@ -14,6 +13,12 @@ import {
   saveAlertPreferences,
 } from '../../../services/alertMonitoring';
 import type { Alert, AlertPreferences } from '../../../services/alertMonitoring';
+import {
+  dedupeAIMAlerts,
+  getAIMAlertReadiness,
+  normalizeAIMAlert,
+  summarizeAIMAlerts,
+} from '../../../services/aimAlertSummary';
 import { addToast } from '../../../hooks/useToast';
 import { AIMEmptyState, AIMMetricTiles, AIMPanel, AIMSectionIntro } from './AIMSectionSystem';
 
@@ -36,74 +41,20 @@ const alertLineage: Record<string, string> = {
   low: 'Informational monitoring signal → alert engine → response queue',
 };
 
-const safeSeverity = (severity: unknown): Alert['severity'] => {
-  return severity === 'critical' || severity === 'high' || severity === 'medium' || severity === 'low'
-    ? severity
-    : 'medium';
-};
-
-const safeAlertType = (alertType: unknown): Alert['alert_type'] => {
-  return alertType === 'critical' || alertType === 'warning' || alertType === 'info'
-    ? alertType
-    : 'info';
-};
-
-const safeStatus = (status: unknown): Alert['status'] => {
-  return status === 'new' || status === 'acknowledged' || status === 'snoozed' || status === 'resolved' || status === 'dismissed'
-    ? status
-    : 'new';
-};
-
-const normalizeAlert = (alert: Alert): Alert => ({
-  ...alert,
-  title: alert.title || 'Operational alert',
-  description: alert.description || 'AIM detected an alert signal that needs review.',
-  severity: safeSeverity(alert.severity),
-  alert_type: safeAlertType(alert.alert_type),
-  status: safeStatus(alert.status),
-  category: alert.category || 'Operational Monitoring',
-  actions: Array.isArray(alert.actions)
-    ? alert.actions.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
-    : [],
-});
-
-const dedupeAlerts = (alerts: Alert[]) => {
-  const bySignature = new Map<string, Alert>();
-
-  for (const alert of alerts) {
-    const signature = [
-      alert.title || 'untitled',
-      alert.category || 'uncategorized',
-      alert.severity,
-      alert.status,
-      alert.metric_id || 'metricless',
-    ].join('::');
-
-    const existing = bySignature.get(signature);
-    if (!existing) {
-      bySignature.set(signature, alert);
-      continue;
-    }
-
-    const existingTimestamp = new Date((existing as any).updated_at || existing.created_at).getTime();
-    const nextTimestamp = new Date((alert as any).updated_at || alert.created_at).getTime();
-
-    if (nextTimestamp > existingTimestamp) {
-      bySignature.set(signature, alert);
-    }
-  }
-
-  return Array.from(bySignature.values());
-};
-
 const getAlertReadiness = (alert: Alert) => {
+  const readiness = getAIMAlertReadiness(alert);
   if ((alert.confidence || 0) >= 85 && alert.severity === 'critical') {
     return { label: 'Action-ready', tone: 'bg-emerald-100 text-emerald-700 border-emerald-200' };
   }
   if ((alert.confidence || 0) >= 70 || alert.severity === 'high') {
     return { label: 'Needs review', tone: 'bg-amber-100 text-amber-700 border-amber-200' };
   }
-  return { label: 'Directional', tone: 'bg-sky-100 text-sky-700 border-sky-200' };
+  return {
+    label: readiness,
+    tone: readiness === 'Needs review'
+      ? 'bg-amber-100 text-amber-700 border-amber-200'
+      : 'bg-sky-100 text-sky-700 border-sky-200',
+  };
 };
 
 export default function PredictiveAlertsPanel() {
@@ -125,7 +76,11 @@ export default function PredictiveAlertsPanel() {
     critical: 0,
     high: 0,
     medium: 0,
-    low: 0
+    low: 0,
+    actionReady: 0,
+    needsReview: 0,
+    unacknowledged: 0,
+    active: 0,
   });
   const [showPreferences, setShowPreferences] = useState(false);
   const [resolutionNotes, setResolutionNotes] = useState('');
@@ -163,14 +118,11 @@ export default function PredictiveAlertsPanel() {
     try {
       setLoading(true);
 
-      const fetchedAlerts = await getAlerts(orgId, {
-        status: filter !== 'all' ? filter : undefined,
-        severity: severityFilter !== 'all' ? severityFilter : undefined
-      });
-      const fetchedStats = await getAlertStats(orgId);
+      const fetchedAlerts = await getAlerts(orgId);
+      const canonicalAlerts = dedupeAIMAlerts((fetchedAlerts || []).map(normalizeAIMAlert));
 
-      setAlerts(dedupeAlerts((fetchedAlerts || []).map(normalizeAlert)));
-      setStats(fetchedStats);
+      setAlerts(canonicalAlerts);
+      setStats(summarizeAIMAlerts(canonicalAlerts));
       setLoading(false);
 
       void refreshAlertSignals();
@@ -191,16 +143,11 @@ export default function PredictiveAlertsPanel() {
       if (newAlerts.length > 0) {
         await saveAlerts(newAlerts);
 
-        const [refreshedAlerts, refreshedStats] = await Promise.all([
-          getAlerts(orgId, {
-            status: filter !== 'all' ? filter : undefined,
-            severity: severityFilter !== 'all' ? severityFilter : undefined,
-          }),
-          getAlertStats(orgId),
-        ]);
+        const refreshedAlerts = await getAlerts(orgId);
+        const canonicalAlerts = dedupeAIMAlerts((refreshedAlerts || []).map(normalizeAIMAlert));
 
-        setAlerts(dedupeAlerts((refreshedAlerts || []).map(normalizeAlert)));
-        setStats(refreshedStats);
+        setAlerts(canonicalAlerts);
+        setStats(summarizeAIMAlerts(canonicalAlerts));
       }
     } catch (error) {
       console.error('Error refreshing predictive alert signals:', error);
@@ -315,7 +262,7 @@ export default function PredictiveAlertsPanel() {
     }
   };
 
-  const filteredAlerts = dedupeAlerts(alerts).filter(a => {
+  const filteredAlerts = alerts.filter(a => {
     const matchesStatus = filter === 'all' || a.status === filter;
     const matchesSeverity = severityFilter === 'all' || a.severity === severityFilter;
     return matchesStatus && matchesSeverity;
@@ -337,27 +284,6 @@ export default function PredictiveAlertsPanel() {
     resolved: 'bg-emerald-100 text-emerald-700',
     dismissed: 'bg-slate-100 text-slate-700',
   } as const;
-
-  const dedupedAlerts = dedupeAlerts(alerts);
-
-  const streamStats = dedupedAlerts.reduce(
-    (acc, alert) => {
-      const readiness = getAlertReadiness(alert).label;
-      if (readiness === 'Action-ready') acc.actionReady += 1;
-      if (readiness === 'Needs review') acc.needsReview += 1;
-      if (alert.status === 'new') acc.unacknowledged += 1;
-      if (alert.status === 'resolved') acc.resolved += 1;
-      if (alert.status !== 'resolved' && alert.status !== 'dismissed') acc.active += 1;
-      return acc;
-    },
-    {
-      actionReady: 0,
-      needsReview: 0,
-      unacknowledged: 0,
-      resolved: 0,
-      active: 0,
-    }
-  );
 
   const hasLeadTime = (alert: Alert) => typeof alert.days_until === 'number' && Number.isFinite(alert.days_until);
 
@@ -404,10 +330,10 @@ export default function PredictiveAlertsPanel() {
 
       <AIMMetricTiles
         items={[
-          { label: 'Active Alert Groups', value: streamStats.active, detail: `${dedupedAlerts.length} grouped signals in the visible queue`, accent: 'text-red-600' },
-          { label: 'Needs Review', value: streamStats.needsReview, detail: 'Signals that should be reviewed before response', accent: 'text-orange-600' },
-          { label: 'Unacknowledged', value: streamStats.unacknowledged, detail: 'Still waiting for review', accent: 'text-blue-600' },
-          { label: 'Resolved', value: streamStats.resolved, detail: 'Closed successfully', accent: 'text-emerald-600' },
+          { label: 'Active Alert Groups', value: stats.active, detail: `${stats.total} grouped signals in the visible queue`, accent: 'text-red-600' },
+          { label: 'Needs Review', value: stats.needsReview, detail: 'Signals that should be reviewed before response', accent: 'text-orange-600' },
+          { label: 'Unacknowledged', value: stats.unacknowledged, detail: 'Still waiting for review', accent: 'text-blue-600' },
+          { label: 'Resolved', value: stats.resolved, detail: 'Closed successfully', accent: 'text-emerald-600' },
         ]}
       />
 
