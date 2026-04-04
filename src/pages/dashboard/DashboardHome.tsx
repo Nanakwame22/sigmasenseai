@@ -127,7 +127,7 @@ export default function DashboardHome() {
           </div>
         </div>
         <Link
-          to="/aim"
+          to="/dashboard/aim"
           className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-blue-600 to-teal-600 text-white font-bold rounded-xl hover:from-blue-700 hover:to-teal-700 transition-all duration-200 shadow-md hover:shadow-lg hover:-translate-y-0.5 whitespace-nowrap"
         >
           <i className="ri-brain-line text-lg"></i>
@@ -279,7 +279,7 @@ export default function DashboardHome() {
 
             <div className="pt-4 mt-2 border-t border-white/10">
               <Link
-                to="/aim"
+                to="/dashboard/aim"
                 className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-teal-500 to-teal-600 text-white font-semibold rounded-lg hover:from-teal-600 hover:to-teal-700 transition-all duration-200 text-sm shadow-md whitespace-nowrap"
               >
                 <i className="ri-arrow-right-line"></i>
