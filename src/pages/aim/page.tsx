@@ -353,28 +353,28 @@ const AIMPage: React.FC = () => {
                       Live intelligence loop
                     </span>
                   </div>
-                  <h1 className="text-4xl font-bold tracking-tight text-white lg:text-[2.85rem]">Actionable Intelligence Model</h1>
-                  <p className="mt-3 max-w-2xl text-sm leading-6 text-brand-100 md:text-[15px]">
+                  <h1 className="max-w-xl text-[2.2rem] font-bold tracking-[-0.03em] leading-[0.94] text-white lg:text-[2.55rem]">Actionable Intelligence Model</h1>
+                  <p className="mt-3 max-w-xl text-[13px] leading-5 text-brand-100 md:text-sm">
                     SigmaSense&apos;s decision studio for monitoring risk, modeling outcomes, and converting AI guidance into tracked operational work.
                   </p>
-                  <div className="mt-6 rounded-[28px] border border-white/10 bg-white/5 p-5 shadow-[0_18px_44px_rgba(15,23,42,0.16)] backdrop-blur-sm">
+                  <div className="mt-5 rounded-[28px] border border-white/10 bg-white/5 p-4 shadow-[0_18px_44px_rgba(15,23,42,0.16)] backdrop-blur-sm">
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                      <div className="max-w-2xl">
+                      <div className="max-w-xl">
                         <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-200">Role-Based Briefing</div>
-                        <h2 className="mt-3 text-lg font-semibold tracking-tight text-white">{activeBriefing.headline}</h2>
-                        <p className="mt-3 text-sm leading-6 text-brand-100">{activeBriefing.summary}</p>
-                        <p className="mt-3 text-sm leading-6 text-ai-100">
+                        <h2 className="mt-2.5 max-w-lg text-base font-semibold tracking-[-0.02em] leading-6 text-white">{activeBriefing.headline}</h2>
+                        <p className="mt-2.5 text-[13px] leading-5 text-brand-100">{activeBriefing.summary}</p>
+                        <p className="mt-2.5 text-[13px] leading-5 text-ai-100">
                           <span className="font-semibold text-white">Next move:</span> {activeBriefing.nextMove}
                         </p>
-                        <div className="mt-4 flex flex-wrap gap-2">
+                        <div className="mt-3 flex flex-wrap gap-2">
                           {activeBriefing.chips.map((chip) => (
-                            <span key={chip} className="rounded-full border border-white/10 bg-white/6 px-3 py-1 text-xs font-medium text-brand-100">
+                            <span key={chip} className="rounded-full border border-white/10 bg-white/6 px-2.5 py-1 text-[11px] font-medium text-brand-100">
                               {chip}
                             </span>
                           ))}
                         </div>
                       </div>
-                      <div className="flex flex-wrap gap-2 lg:max-w-[260px] lg:justify-end">
+                      <div className="flex flex-wrap gap-2 lg:max-w-[238px] lg:justify-end">
                         {(
                           [
                             { id: 'executive', label: 'Executive' },
@@ -385,7 +385,7 @@ const AIMPage: React.FC = () => {
                           <button
                             key={lens.id}
                             onClick={() => setBriefingLens(lens.id)}
-                            className={`rounded-full border px-3 py-2 text-xs font-semibold transition-colors ${
+                            className={`rounded-full border px-2.5 py-1.5 text-[11px] font-semibold transition-colors ${
                               briefingLens === lens.id
                                 ? 'border-ai-300/40 bg-ai-400/15 text-white'
                                 : 'border-white/10 bg-white/5 text-brand-200 hover:bg-white/10'
@@ -394,35 +394,35 @@ const AIMPage: React.FC = () => {
                             {lens.label}
                           </button>
                         ))}
-                        <div className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-left">
+                        <div className="w-full rounded-2xl border border-white/10 bg-white/5 px-3.5 py-3 text-left">
                           <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-brand-300">Audience</div>
-                          <div className="mt-2 text-sm font-medium text-white">{activeBriefing.audience}</div>
+                          <div className="mt-1.5 text-[12px] leading-5 font-medium text-white">{activeBriefing.audience}</div>
                         </div>
                       </div>
                     </div>
                   </div>
 
                   <div className="mt-5 flex flex-wrap gap-2">
-                    <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-brand-100">Role-aware briefings</span>
-                    <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-brand-100">Decision-grade AI guidance</span>
-                    <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-brand-100">Closed-loop actions</span>
+                    <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-medium text-brand-100">Role-aware briefings</span>
+                    <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-medium text-brand-100">Decision-grade AI guidance</span>
+                    <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-medium text-brand-100">Closed-loop actions</span>
                   </div>
                 </div>
                 <div className="space-y-4">
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                     <div className="rounded-[24px] border border-white/10 bg-white/6 p-4 backdrop-blur-sm">
                       <div className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-200">Recommendations</div>
-                      <div className="mt-2 text-3xl font-bold">{aimStats.recommendationsCount}</div>
+                      <div className="mt-2 text-[2rem] font-bold leading-none">{aimStats.recommendationsCount}</div>
                       <div className="mt-1 text-xs text-brand-200">Open intelligence opportunities</div>
                     </div>
                     <div className="rounded-[24px] border border-white/10 bg-white/6 p-4 backdrop-blur-sm">
                       <div className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-200">Tracked Work</div>
-                      <div className="mt-2 text-3xl font-bold">{aimStats.actionCenterCount}</div>
+                      <div className="mt-2 text-[2rem] font-bold leading-none">{aimStats.actionCenterCount}</div>
                       <div className="mt-1 text-xs text-brand-200">Linked execution work AIM is monitoring</div>
                     </div>
                     <div className="rounded-[24px] border border-white/10 bg-white/6 p-4 backdrop-blur-sm">
                       <div className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-200">Predictive Alerts</div>
-                      <div className="mt-2 text-3xl font-bold">{aimStats.predictiveAlertsCount}</div>
+                      <div className="mt-2 text-[2rem] font-bold leading-none">{aimStats.predictiveAlertsCount}</div>
                       <div className="mt-1 text-xs text-brand-200">Signals awaiting review or action</div>
                     </div>
                   </div>
