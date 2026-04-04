@@ -250,17 +250,6 @@ export default function PredictiveAlertsPanel() {
     return matchesStatus && matchesSeverity;
   });
 
-  if (loading && alerts.length === 0) {
-    return (
-      <div className="flex items-center justify-center h-96">
-        <div className="text-center">
-          <div className="w-16 h-16 border-4 border-teal-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-slate-600">Analyzing data and generating alerts...</p>
-        </div>
-      </div>
-    );
-  }
-
   const filterTheme = (value: typeof filter, activeClass: string) =>
     filter === value ? activeClass : 'bg-slate-100 text-slate-700 hover:bg-slate-200';
 
@@ -368,7 +357,15 @@ export default function PredictiveAlertsPanel() {
         </div>
 
         <div className="mt-6">
-          {filteredAlerts.length === 0 ? (
+          {loading && filteredAlerts.length === 0 ? (
+            <div className="rounded-[24px] border border-dashed border-slate-300 bg-white/90 p-10 text-center">
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full border-4 border-teal-500 border-t-transparent animate-spin"></div>
+              <div className="mt-5 text-base font-semibold text-slate-900">Analyzing data and generating alerts</div>
+              <p className="mt-2 text-sm text-slate-600">
+                AIM is checking live metrics, anomalies, and recent alert history. Existing alerts will appear here as soon as the stream is ready.
+              </p>
+            </div>
+          ) : filteredAlerts.length === 0 ? (
             <AIMEmptyState
               icon="ri-checkbox-circle-line"
               title="All clear"
