@@ -115,9 +115,9 @@ export const useAIMData = () => {
           .in('status', ['active', 'in_progress']),
         supabase
           .from('alerts')
-          .select('days_until')
+          .select('id, metric_id, title, description, severity, alert_type, status, category, actions, confidence, days_until, created_at')
           .eq('organization_id', orgId)
-          .not('days_until', 'is', null),
+          .in('status', ['new', 'acknowledged', 'resolved', 'dismissed', 'snoozed']),
         supabase
           .from('forecasts')
           .select('accuracy')
