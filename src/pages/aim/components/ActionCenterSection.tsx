@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { exportToCSV } from '../../../utils/exportUtils';
 import { addToast } from '../../../hooks/useToast';
 import { AIMEmptyState, AIMMetricTiles, AIMPanel, AIMSectionIntro } from './AIMSectionSystem';
+import { summarizeAIMTrackedWorkItems } from '../../../services/aimTrackedWorkSummary';
 
 interface Action {
   id: string;
@@ -446,13 +447,7 @@ const ActionCenterSection: React.FC = () => {
     exportToCSV(exportData, 'actions-export');
   };
 
-  const stats = {
-    total: actions.length,
-    inProgress: actions.filter(a => a.status === 'In Progress').length,
-    completed: actions.filter(a => a.status === 'Completed').length,
-    notStarted: actions.filter(a => a.status === 'Not Started').length,
-    totalImpact: actions.reduce((sum, a) => sum + a.impactValue, 0)
-  };
+  const stats = summarizeAIMTrackedWorkItems(actions);
   const hasTrackedExecution = stats.total > 0;
   const queueIsFilteredEmpty = hasTrackedExecution && filteredActions.length === 0;
   const readinessCounts = {

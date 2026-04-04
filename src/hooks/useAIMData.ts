@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { summarizeAIMAlerts, dedupeAIMAlerts } from '../services/aimAlertSummary';
+import { summarizeAIMTrackedWorkRecords } from '../services/aimTrackedWorkSummary';
 
 interface AIMStats {
   dataSourcesCount: number;
@@ -87,19 +88,16 @@ export const useAIMData = () => {
           .in('status', ['pending', 'in_progress']),
         supabase
           .from('action_items')
-          .select('id, status')
-          .eq('organization_id', orgId)
-          .in('status', ['open', 'pending', 'in_progress', 'not_started', 'completed', 'on_hold']),
+          .select('id, status, impact_score')
+          .eq('organization_id', orgId),
         supabase
           .from('dmaic_projects')
-          .select('id, status')
-          .eq('organization_id', orgId)
-          .in('status', ['active', 'in_progress', 'define', 'measure', 'analyze', 'improve', 'control', 'completed', 'on_hold']),
+          .select('id, status, expected_savings')
+          .eq('organization_id', orgId),
         supabase
           .from('kaizen_items')
-          .select('id, status')
-          .eq('organization_id', orgId)
-          .in('status', ['open', 'approved', 'in_progress', 'completed', 'rejected']),
+          .select('id, status, estimated_savings')
+          .eq('organization_id', orgId),
         supabase
           .from('recommendations')
           .select('confidence_score')
@@ -129,8 +127,11 @@ export const useAIMData = () => {
           .limit(12),
       ]);
 
-      const totalActionCount =
-        (actionItemsData?.length || 0) + (dmaicProjectsData?.length || 0) + (kaizenItemsData?.length || 0);
+      const trackedWorkSummary = summarizeAIMTrackedWorkRecords({
+        actionItems: actionItemsData || [],
+        dmaicProjects: dmaicProjectsData || [],
+        kaizenItems: kaizenItemsData || [],
+      });
 
       const avgRecommendationConfidence =
         recommendationsData && recommendationsData.length > 0
@@ -172,7 +173,7 @@ export const useAIMData = () => {
         (dataSourcesCount || 0) > 0,
         hasFreshMetrics,
         (recommendationsCount || 0) > 0,
-        totalActionCount > 0,
+        trackedWorkSummary.total > 0,
         alertSummary.active > 0,
       ].filter(Boolean).length;
 
@@ -197,7 +198,7 @@ export const useAIMData = () => {
           ? new Date(latestMetricData.timestamp)
           : null,
         recommendationsCount: recommendationsCount || 0,
-        actionCenterCount: totalActionCount,
+        actionCenterCount: trackedWorkSummary.total,
         predictiveAlertsCount: alertSummary.active,
         predictiveAlertsNewCount: alertSummary.new,
         aiConfidence: Math.round(avgConfidence),
