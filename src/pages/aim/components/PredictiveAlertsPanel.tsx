@@ -72,14 +72,14 @@ export default function PredictiveAlertsPanel() {
 
   useEffect(() => {
     if (orgId) {
-      loadData();
+      void loadData();
       loadPreferences();
 
       // Sync preferences org_id once resolved
       setPreferences(prev => ({ ...prev, organization_id: orgId }));
 
       const interval = setInterval(() => {
-        loadData();
+        void loadData();
       }, 5 * 60 * 1000);
 
       return () => clearInterval(interval);
@@ -92,26 +92,47 @@ export default function PredictiveAlertsPanel() {
     try {
       setLoading(true);
 
+      const fetchedAlerts = await getAlerts(orgId, {
+        status: filter !== 'all' ? filter : undefined,
+        severity: severityFilter !== 'all' ? severityFilter : undefined
+      });
+      const fetchedStats = await getAlertStats(orgId);
+
+      setAlerts(fetchedAlerts);
+      setStats(fetchedStats);
+      setLoading(false);
+
+      void refreshAlertSignals();
+    } catch (error) {
+      console.error('Error loading alerts:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const refreshAlertSignals = async () => {
+    if (!orgId) return;
+
+    try {
       await reactivateSnoozedAlerts(orgId);
 
       const newAlerts = await monitorMetricsForAlerts(orgId);
       if (newAlerts.length > 0) {
         await saveAlerts(newAlerts);
+
+        const [refreshedAlerts, refreshedStats] = await Promise.all([
+          getAlerts(orgId, {
+            status: filter !== 'all' ? filter : undefined,
+            severity: severityFilter !== 'all' ? severityFilter : undefined,
+          }),
+          getAlertStats(orgId),
+        ]);
+
+        setAlerts(refreshedAlerts);
+        setStats(refreshedStats);
       }
-
-      const fetchedAlerts = await getAlerts(orgId, {
-        status: filter !== 'all' ? filter : undefined,
-        severity: severityFilter !== 'all' ? severityFilter : undefined
-      });
-
-      setAlerts(fetchedAlerts);
-
-      const fetchedStats = await getAlertStats(orgId);
-      setStats(fetchedStats);
     } catch (error) {
-      console.error('Error loading alerts:', error);
-    } finally {
-      setLoading(false);
+      console.error('Error refreshing predictive alert signals:', error);
     }
   };
 
