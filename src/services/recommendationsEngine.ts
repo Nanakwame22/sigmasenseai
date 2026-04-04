@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { summarizeAIMRecommendations } from './aimWorkSummary';
 
 export interface Recommendation {
   id: string;
@@ -524,6 +525,7 @@ export class RecommendationsEngine {
 
   async getStatistics(): Promise<{
     total: number;
+    open: number;
     pending: number;
     inProgress: number;
     completed: number;
@@ -536,7 +538,7 @@ export class RecommendationsEngine {
     const orgId = await this.getOrganizationId();
     if (!orgId) {
       return {
-        total: 0, pending: 0, inProgress: 0, completed: 0, dismissed: 0,
+        total: 0, open: 0, pending: 0, inProgress: 0, completed: 0, dismissed: 0,
         byCategory: {}, byPriority: {}, avgImpactScore: 0, avgEffortScore: 0
       };
     }
@@ -548,32 +550,30 @@ export class RecommendationsEngine {
 
     if (!recommendations || recommendations.length === 0) {
       return {
-        total: 0, pending: 0, inProgress: 0, completed: 0, dismissed: 0,
+        total: 0, open: 0, pending: 0, inProgress: 0, completed: 0, dismissed: 0,
         byCategory: {}, byPriority: {}, avgImpactScore: 0, avgEffortScore: 0
       };
     }
 
+    const summary = summarizeAIMRecommendations(recommendations as Recommendation[]);
+
     const stats = {
-      total: recommendations.length,
-      pending: recommendations.filter(r => r.status === 'pending').length,
-      inProgress: recommendations.filter(r => r.status === 'in_progress').length,
-      completed: recommendations.filter(r => r.status === 'completed').length,
-      dismissed: recommendations.filter(r => r.status === 'dismissed').length,
+      total: summary.total,
+      open: summary.open,
+      pending: summary.pending,
+      inProgress: summary.inProgress,
+      completed: summary.completed,
+      dismissed: summary.dismissed,
       byCategory: {} as Record<string, number>,
       byPriority: {} as Record<string, number>,
-      avgImpactScore: 0,
-      avgEffortScore: 0
+      avgImpactScore: summary.avgImpactScore,
+      avgEffortScore: summary.avgEffortScore
     };
 
     recommendations.forEach(r => {
       stats.byCategory[r.category] = (stats.byCategory[r.category] || 0) + 1;
       stats.byPriority[r.priority] = (stats.byPriority[r.priority] || 0) + 1;
     });
-
-    const totalImpact = recommendations.reduce((sum, r) => sum + (r.impact_score || 0), 0);
-    const totalEffort = recommendations.reduce((sum, r) => sum + (r.effort_score || 0), 0);
-    stats.avgImpactScore = Math.round(totalImpact / recommendations.length);
-    stats.avgEffortScore = Math.round(totalEffort / recommendations.length);
 
     return stats;
   }

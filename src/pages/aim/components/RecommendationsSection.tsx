@@ -540,11 +540,11 @@ export default function RecommendationsSection() {
         <AIMMetricTiles
           columns="grid-cols-1 md:grid-cols-2 xl:grid-cols-5"
           items={[
-            { label: 'Total', value: statistics.total, color: 'text-gray-900' },
+            { label: 'Open', value: statistics.open, color: 'text-gray-900' },
             { label: 'Pending', value: statistics.pending, color: 'text-gray-600' },
             { label: 'In Progress', value: statistics.inProgress, color: 'text-teal-600' },
             { label: 'Completed', value: statistics.completed, color: 'text-green-600' },
-            { label: 'Avg Impact', value: `${statistics.avgImpactScore}%`, color: 'text-teal-600' },
+            { label: 'Avg Open Impact', value: `${statistics.avgImpactScore}%`, color: 'text-teal-600' },
           ].map((s) => ({ label: s.label, value: s.value, accent: s.color }))}
         />
       )}
