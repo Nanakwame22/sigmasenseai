@@ -158,12 +158,202 @@ export default function MetricsPage() {
   });
   const [availableColumns, setAvailableColumns] = useState<string[]>([]);
 
+  const activeMetrics = metrics.filter((metric) => (metric.data_points_count || 0) > 0 && (metric.recent_data?.length || 0) > 0);
+  const inactiveMetrics = metrics.filter((metric) => !((metric.data_points_count || 0) > 0 && (metric.recent_data?.length || 0) > 0));
+  const trackedMetrics = activeMetrics.filter((metric) => Boolean(metric.data_source_id));
+  const manualDefinitions = inactiveMetrics.filter((metric) => !metric.data_source_id);
+
   useEffect(() => {
     if (organizationId) {
       fetchMetrics();
       fetchDataSources();
     }
   }, [organizationId]);
+
+  const renderMetricCard = (metric: Metric) => {
+    const latestHistoryPoint = metric.recent_data?.[metric.recent_data.length - 1];
+    const hasSource = Boolean(metric.data_source_name);
+    const trustTone = getMetricTrustTone(metric.data_points_count || 0, hasSource);
+    const lineageLabel = hasSource
+      ? `Data Integration → ${metric.data_source_name} → Metrics`
+      : 'Manual metric capture → Metrics';
+    const provenanceLabel = latestHistoryPoint?.source
+      ? latestHistoryPoint.source.startsWith('etl:')
+        ? latestHistoryPoint.source
+            .replace('etl:', '')
+            .replace(/:source:[^:]+/, '')
+            .replace(':mapping:', ' · mapping ')
+            .replace(':run:', ' · run ')
+            .replace('pipeline:', 'pipeline ')
+        : latestHistoryPoint.source
+      : hasSource
+        ? 'Awaiting ETL provenance on newer points'
+        : 'Manual entry or legacy point';
+
+    return (
+      <div
+        key={metric.id}
+        className={`bg-white rounded-xl shadow-sm border p-6 hover:shadow-md transition-shadow ${
+          focusedMetricId === metric.id
+            ? 'border-teal-400 ring-2 ring-teal-100'
+            : 'border-slate-200'
+        }`}
+      >
+        <div className="flex items-start justify-between mb-4">
+          <div className="flex-1">
+            <div className="flex items-center gap-2 mb-1">
+              <h3 className="text-lg font-bold text-slate-800">{metric.name}</h3>
+              {metric.is_auto_aggregated && (
+                <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full font-medium">
+                  Auto-Aggregated
+                </span>
+              )}
+              <span className={`px-2 py-0.5 text-xs rounded-full font-medium ${
+                (metric.data_points_count || 0) >= 3
+                  ? 'bg-green-100 text-green-700'
+                  : 'bg-orange-100 text-orange-700'
+              }`}>
+                {metric.data_points_count || 0} {(metric.data_points_count || 0) === 1 ? 'point' : 'points'}
+              </span>
+            </div>
+            {metric.data_source_name && (
+              <div className="flex items-center gap-1 text-xs text-slate-600 mb-2">
+                <i className="ri-database-2-line"></i>
+                <span>From: {metric.data_source_name}</span>
+              </div>
+            )}
+            <p className="text-sm text-slate-600">{metric.description}</p>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => {
+                setSelectedMetric(metric);
+                setDataPoint({
+                  value: metric.current_value,
+                  timestamp: new Date().toISOString().split('T')[0]
+                });
+                setShowDataModal(true);
+              }}
+              className="w-8 h-8 flex items-center justify-center text-green-600 hover:bg-green-50 rounded-lg transition-colors cursor-pointer"
+              title="Add data point"
+            >
+              <i className="ri-add-circle-line text-lg"></i>
+            </button>
+            <button
+              onClick={() => handleDelete(metric.id)}
+              className="w-8 h-8 flex items-center justify-center text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+            >
+              <i className="ri-delete-bin-line text-lg"></i>
+            </button>
+          </div>
+        </div>
+
+        <div className="mb-4 rounded-xl border border-slate-100 bg-slate-50/80 p-3">
+          <div className="flex flex-wrap gap-2">
+            <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${trustTone}`}>
+              Freshness: {formatMetricFreshness(latestHistoryPoint?.timestamp)}
+            </span>
+            <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600">
+              History: {metric.data_points_count || 0} points
+            </span>
+          </div>
+          <p className="mt-2 text-[11px] leading-5 text-slate-500">
+            Evidence: {metric.recent_data && metric.recent_data.length > 0
+              ? `Recent trend is based on the latest ${metric.recent_data.length} stored points for this metric.`
+              : 'No recent trend history has been stored yet, so downstream analytics will remain cautious.'}
+          </p>
+          <p className="mt-1 text-[11px] leading-5 text-slate-400">
+            Lineage: {lineageLabel}
+          </p>
+          <p className="mt-1 text-[11px] leading-5 text-slate-400">
+            Provenance: {provenanceLabel}
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {hasSource ? (
+              <Link
+                to={`/dashboard/data-integration?source=${metric.data_source_id || ''}`}
+                className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:border-teal-200 hover:text-teal-700"
+              >
+                <i className="ri-links-line"></i>
+                Source
+              </Link>
+            ) : (
+              <Link
+                to="/dashboard/metrics"
+                className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:border-teal-200 hover:text-teal-700"
+              >
+                <i className="ri-edit-circle-line"></i>
+                Manual
+              </Link>
+            )}
+            <Link
+              to={`/dashboard/data-mapping?source=${metric.data_source_id || ''}&metric=${metric.id}&tab=mapping`}
+              className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:border-teal-200 hover:text-teal-700"
+            >
+              <i className="ri-map-pin-line"></i>
+              Mapping
+            </Link>
+            <Link
+              to={`/dashboard/etl-pipelines?source=${metric.data_source_id || ''}&metric=${metric.id}`}
+              className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:border-teal-200 hover:text-teal-700"
+            >
+              <i className="ri-git-branch-line"></i>
+              ETL
+            </Link>
+          </div>
+        </div>
+
+        {metric.recent_data && metric.recent_data.length > 0 && (
+          <div className="mb-4 h-12 -mx-2">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={metric.recent_data}>
+                <Line
+                  type="monotone"
+                  dataKey="value"
+                  stroke="#14B8A6"
+                  strokeWidth={2}
+                  dot={false}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+
+        <div className="space-y-3">
+          <div className="flex justify-between items-center">
+            <span className="text-sm text-gray-600">Current</span>
+            <span className="text-2xl font-bold text-gray-900">
+              {metric.current_value} {metric.unit}
+            </span>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-sm text-gray-600">Target</span>
+            <span className="text-lg font-semibold text-gray-700">
+              {metric.target_value} {metric.unit}
+            </span>
+          </div>
+          <div className="pt-3 border-t border-gray-100">
+            <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(metric.current_value, metric.target_value)}`}>
+              <i className="ri-pulse-line"></i>
+              {formatTargetAttainment(metric.current_value, metric.target_value)}
+            </div>
+          </div>
+
+          {(metric.data_points_count || 0) < 3 && (
+            <div className="mt-3 p-2 bg-orange-50 border border-orange-200 rounded-lg">
+              <div className="flex items-start gap-2">
+                <i className="ri-alert-line text-orange-600 text-sm mt-0.5"></i>
+                <div className="flex-1">
+                  <p className="text-xs text-orange-800 font-medium">Need more data</p>
+                  <p className="text-xs text-orange-700">Add at least 3 data points for analysis features</p>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   const fetchDataSources = async () => {
     if (!organizationId) return;
@@ -1207,194 +1397,65 @@ export default function MetricsPage() {
           </div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {metrics.map((metric) => {
-            const latestHistoryPoint = metric.recent_data?.[metric.recent_data.length - 1];
-            const hasSource = Boolean(metric.data_source_name);
-            const trustTone = getMetricTrustTone(metric.data_points_count || 0, hasSource);
-            const lineageLabel = hasSource
-              ? `Data Integration → ${metric.data_source_name} → Metrics`
-              : 'Manual metric capture → Metrics';
-            const provenanceLabel = latestHistoryPoint?.source
-              ? latestHistoryPoint.source.startsWith('etl:')
-                ? latestHistoryPoint.source
-                    .replace('etl:', '')
-                    .replace(/:source:[^:]+/, '')
-                    .replace(':mapping:', ' · mapping ')
-                    .replace(':run:', ' · run ')
-                    .replace('pipeline:', 'pipeline ')
-                : latestHistoryPoint.source
-              : hasSource
-                ? 'Awaiting ETL provenance on newer points'
-                : 'Manual entry or legacy point';
-
-            return (
-            <div
-              key={metric.id}
-              className={`bg-white rounded-xl shadow-sm border p-6 hover:shadow-md transition-shadow ${
-                focusedMetricId === metric.id
-                  ? 'border-teal-400 ring-2 ring-teal-100'
-                  : 'border-slate-200'
-              }`}
-            >
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-1">
-                    <h3 className="text-lg font-bold text-slate-800">{metric.name}</h3>
-                    {metric.is_auto_aggregated && (
-                      <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full font-medium">
-                        Auto-Aggregated
-                      </span>
-                    )}
-                    {/* Data Point Count Badge */}
-                    <span className={`px-2 py-0.5 text-xs rounded-full font-medium ${
-                      (metric.data_points_count || 0) >= 3 
-                        ? 'bg-green-100 text-green-700' 
-                        : 'bg-orange-100 text-orange-700'
-                    }`}>
-                      {metric.data_points_count || 0} {(metric.data_points_count || 0) === 1 ? 'point' : 'points'}
-                    </span>
-                  </div>
-                  {metric.data_source_name && (
-                    <div className="flex items-center gap-1 text-xs text-slate-600 mb-2">
-                      <i className="ri-database-2-line"></i>
-                      <span>From: {metric.data_source_name}</span>
-                    </div>
-                  )}
-                  <p className="text-sm text-slate-600">{metric.description}</p>
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => {
-                      setSelectedMetric(metric);
-                      setDataPoint({
-                        value: metric.current_value,
-                        timestamp: new Date().toISOString().split('T')[0]
-                      });
-                      setShowDataModal(true);
-                    }}
-                    className="w-8 h-8 flex items-center justify-center text-green-600 hover:bg-green-50 rounded-lg transition-colors cursor-pointer"
-                    title="Add data point"
-                  >
-                    <i className="ri-add-circle-line text-lg"></i>
-                  </button>
-                  <button
-                    onClick={() => handleDelete(metric.id)}
-                    className="w-8 h-8 flex items-center justify-center text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
-                  >
-                    <i className="ri-delete-bin-line text-lg"></i>
-                  </button>
-                </div>
+        <div className="space-y-8">
+          <div className="rounded-2xl border border-emerald-200 bg-gradient-to-r from-emerald-50 to-teal-50 p-5">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <p className="text-sm font-semibold text-emerald-900">Live Metric Layer</p>
+                <p className="mt-1 text-sm text-emerald-800">
+                  Active metrics with real stored history are shown first so dashboards, forecasting, and alerts stay grounded in operational data.
+                </p>
               </div>
-
-              <div className="mb-4 rounded-xl border border-slate-100 bg-slate-50/80 p-3">
-                <div className="flex flex-wrap gap-2">
-                  <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${trustTone}`}>
-                    Freshness: {formatMetricFreshness(latestHistoryPoint?.timestamp)}
-                  </span>
-                  <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600">
-                    History: {metric.data_points_count || 0} points
-                  </span>
+              <div className="flex flex-wrap gap-3 text-sm">
+                <div className="rounded-xl border border-emerald-200 bg-white/90 px-4 py-2">
+                  <span className="block text-[11px] font-semibold uppercase tracking-wide text-emerald-600">Active Metrics</span>
+                  <span className="text-lg font-bold text-slate-900">{activeMetrics.length}</span>
                 </div>
-                <p className="mt-2 text-[11px] leading-5 text-slate-500">
-                  Evidence: {metric.recent_data && metric.recent_data.length > 0
-                    ? `Recent trend is based on the latest ${metric.recent_data.length} stored points for this metric.`
-                    : 'No recent trend history has been stored yet, so downstream analytics will remain cautious.'}
-                </p>
-                <p className="mt-1 text-[11px] leading-5 text-slate-400">
-                  Lineage: {lineageLabel}
-                </p>
-                <p className="mt-1 text-[11px] leading-5 text-slate-400">
-                  Provenance: {provenanceLabel}
-                </p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {hasSource ? (
-                    <Link
-                      to={`/dashboard/data-integration?source=${metric.data_source_id || ''}`}
-                      className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:border-teal-200 hover:text-teal-700"
-                    >
-                      <i className="ri-links-line"></i>
-                      Source
-                    </Link>
-                  ) : (
-                    <Link
-                      to="/dashboard/metrics"
-                      className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:border-teal-200 hover:text-teal-700"
-                    >
-                      <i className="ri-edit-circle-line"></i>
-                      Manual
-                    </Link>
-                  )}
-                  <Link
-                    to={`/dashboard/data-mapping?source=${metric.data_source_id || ''}&metric=${metric.id}&tab=mapping`}
-                    className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:border-teal-200 hover:text-teal-700"
-                  >
-                    <i className="ri-map-pin-line"></i>
-                    Mapping
-                  </Link>
-                  <Link
-                    to={`/dashboard/etl-pipelines?source=${metric.data_source_id || ''}&metric=${metric.id}`}
-                    className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:border-teal-200 hover:text-teal-700"
-                  >
-                    <i className="ri-git-branch-line"></i>
-                    ETL
-                  </Link>
+                <div className="rounded-xl border border-emerald-200 bg-white/90 px-4 py-2">
+                  <span className="block text-[11px] font-semibold uppercase tracking-wide text-emerald-600">Tracked Sources</span>
+                  <span className="text-lg font-bold text-slate-900">{trackedMetrics.length}</span>
                 </div>
-              </div>
-
-              {/* Mini Sparkline */}
-              {metric.recent_data && metric.recent_data.length > 0 && (
-                <div className="mb-4 h-12 -mx-2">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={metric.recent_data}>
-                      <Line 
-                        type="monotone" 
-                        dataKey="value" 
-                        stroke="#14B8A6" 
-                        strokeWidth={2}
-                        dot={false}
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
+                <div className="rounded-xl border border-emerald-200 bg-white/90 px-4 py-2">
+                  <span className="block text-[11px] font-semibold uppercase tracking-wide text-emerald-600">Definitions Awaiting History</span>
+                  <span className="text-lg font-bold text-slate-900">{inactiveMetrics.length}</span>
                 </div>
-              )}
-
-              <div className="space-y-3">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-600">Current</span>
-                  <span className="text-2xl font-bold text-gray-900">
-                    {metric.current_value} {metric.unit}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-600">Target</span>
-                  <span className="text-lg font-semibold text-gray-700">
-                    {metric.target_value} {metric.unit}
-                  </span>
-                </div>
-                <div className="pt-3 border-t border-gray-100">
-                  <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(metric.current_value, metric.target_value)}`}>
-                    <i className="ri-pulse-line"></i>
-                    {formatTargetAttainment(metric.current_value, metric.target_value)}
-                  </div>
-                </div>
-
-                {/* Warning if insufficient data */}
-                {(metric.data_points_count || 0) < 3 && (
-                  <div className="mt-3 p-2 bg-orange-50 border border-orange-200 rounded-lg">
-                    <div className="flex items-start gap-2">
-                      <i className="ri-alert-line text-orange-600 text-sm mt-0.5"></i>
-                      <div className="flex-1">
-                        <p className="text-xs text-orange-800 font-medium">Need more data</p>
-                        <p className="text-xs text-orange-700">Add at least 3 data points for analysis features</p>
-                      </div>
-                    </div>
-                  </div>
-                )}
               </div>
             </div>
-            );
-          })}
+          </div>
+
+          <div>
+            <div className="mb-4 flex items-center justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-bold text-slate-900">Active Metrics</h2>
+                <p className="text-sm text-slate-600">Metrics with recent stored history and usable downstream evidence.</p>
+              </div>
+              <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                {activeMetrics.length} live card{activeMetrics.length === 1 ? '' : 's'}
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {activeMetrics.map(renderMetricCard)}
+            </div>
+          </div>
+
+          {inactiveMetrics.length > 0 && (
+            <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-5">
+              <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900">Metric Definitions Awaiting History</h2>
+                  <p className="text-sm text-slate-600">
+                    These metrics are configured, but they do not yet have enough stored points to support richer analytics.
+                  </p>
+                </div>
+                <div className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600">
+                  {manualDefinitions.length > 0 ? `${manualDefinitions.length} manual / dormant` : `${inactiveMetrics.length} awaiting first history`}
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {inactiveMetrics.map(renderMetricCard)}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
