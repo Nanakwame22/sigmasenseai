@@ -21,6 +21,11 @@ interface Action {
   impact: string;
   impactValue: number;
   createdFrom: string;
+  sourceSignalLabel: string;
+  sourceSignalDetail: string;
+  linkedRecommendationId: string | null;
+  outcomeState: 'Captured' | 'Awaiting Verification' | 'Monitoring' | 'At Risk' | 'Baseline Ready';
+  outcomeDetail: string;
 }
 
 const STATUS_THEME: Record<string, { badge: string; bar: string }> = {
@@ -40,6 +45,21 @@ const TYPE_THEME: Record<string, string> = {
   Task: 'bg-blue-100 text-blue-700',
   DMAIC: 'bg-violet-100 text-violet-700',
   Kaizen: 'bg-emerald-100 text-emerald-700',
+};
+
+const OUTCOME_THEME: Record<Action['outcomeState'], string> = {
+  Captured: 'bg-emerald-100 text-emerald-700',
+  'Awaiting Verification': 'bg-amber-100 text-amber-700',
+  Monitoring: 'bg-sky-100 text-sky-700',
+  'At Risk': 'bg-rose-100 text-rose-700',
+  'Baseline Ready': 'bg-slate-100 text-slate-700',
+};
+
+const formatShortDate = (value?: string | null) => {
+  if (!value) return 'No date';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return 'No date';
+  return parsed.toISOString().split('T')[0];
 };
 
 async function getOrganizationId(userId: string): Promise<string | null> {
@@ -95,6 +115,15 @@ const ActionCenterSection: React.FC = () => {
         return;
       }
 
+      const { data: recommendations } = await supabase
+        .from('recommendations')
+        .select('id, title, status, actual_impact, implementation_notes, updated_at, completed_at')
+        .eq('organization_id', orgId);
+
+      const recommendationMap = new Map(
+        (recommendations || []).map((recommendation: any) => [recommendation.id, recommendation])
+      );
+
       // Load action items
       const { data: actionItems } = await supabase
         .from('action_items')
@@ -125,6 +154,36 @@ const ActionCenterSection: React.FC = () => {
                           item.status === 'in_progress' ? 50 : 0;
           
           const impactValue = item.impact_score || 0;
+          const tags: string[] = Array.isArray(item.tags) ? item.tags : [];
+          const linkedRecommendationId =
+            tags.find((tag) => typeof tag === 'string' && tag.startsWith('rec:'))?.replace('rec:', '') || null;
+          const linkedRecommendation = linkedRecommendationId ? recommendationMap.get(linkedRecommendationId) : null;
+          const dueDateValue = item.due_date || null;
+          const isOverdue =
+            Boolean(dueDateValue) &&
+            item.status !== 'completed' &&
+            new Date(dueDateValue).getTime() < Date.now();
+
+          let outcomeState: Action['outcomeState'] = 'Baseline Ready';
+          let outcomeDetail = 'Execution has not started yet. Capture first movement to validate impact.';
+
+          if (linkedRecommendation?.actual_impact) {
+            outcomeState = 'Captured';
+            outcomeDetail = linkedRecommendation.actual_impact;
+          } else if (item.status === 'completed' || linkedRecommendation?.status === 'completed') {
+            outcomeState = 'Awaiting Verification';
+            outcomeDetail = linkedRecommendation?.implementation_notes
+              ? linkedRecommendation.implementation_notes
+              : 'Work is complete. Verify KPI movement or document realized impact to close the loop.';
+          } else if (isOverdue) {
+            outcomeState = 'At Risk';
+            outcomeDetail = `Past due since ${formatShortDate(dueDateValue)}. Reconfirm owner and next milestone.`;
+          } else if (item.status === 'in_progress') {
+            outcomeState = 'Monitoring';
+            outcomeDetail = linkedRecommendation
+              ? `Linked to "${linkedRecommendation.title}". Monitor execution progress against expected impact.`
+              : 'Execution is underway. Capture observed KPI movement as the work progresses.';
+          }
           
           allActions.push({
             id: `action-${item.id}`,
@@ -139,11 +198,18 @@ const ActionCenterSection: React.FC = () => {
                      item.priority === 'medium' ? 'Medium' : 'Low',
             owner: item.user_profiles?.full_name || 'Unassigned',
             ownerId: item.assigned_to,
-            dueDate: item.due_date ? new Date(item.due_date).toISOString().split('T')[0] : 'No date',
+            dueDate: formatShortDate(dueDateValue),
             progress,
             impact: impactValue > 0 ? `$${Math.round(impactValue / 1000)}K` : '$0K',
             impactValue,
-            createdFrom: 'Action Item'
+            createdFrom: 'Action Item',
+            sourceSignalLabel: linkedRecommendation ? 'Recommendation-linked' : 'Execution-only',
+            sourceSignalDetail: linkedRecommendation
+              ? linkedRecommendation.title
+              : 'Created directly in the action tracker without a linked AIM recommendation.',
+            linkedRecommendationId,
+            outcomeState,
+            outcomeDetail,
           });
         });
       }
@@ -159,6 +225,25 @@ const ActionCenterSection: React.FC = () => {
                           project.status === 'define' ? 10 : 0;
           
           const impactValue = project.expected_savings || 0;
+          const projectDueDate = project.target_completion_date || null;
+          const isOverdue =
+            Boolean(projectDueDate) &&
+            project.status !== 'completed' &&
+            new Date(projectDueDate).getTime() < Date.now();
+          const outcomeState: Action['outcomeState'] =
+            project.status === 'completed'
+              ? 'Awaiting Verification'
+              : isOverdue
+                ? 'At Risk'
+                : project.status === 'on_hold'
+                  ? 'At Risk'
+                  : 'Monitoring';
+          const outcomeDetail =
+            outcomeState === 'Awaiting Verification'
+              ? 'DMAIC work is complete. Validate realized savings or KPI improvement to confirm outcome.'
+              : outcomeState === 'At Risk'
+                ? `Project needs intervention before ${formatShortDate(projectDueDate)} to protect the expected gain.`
+                : `AIM is monitoring ${project.status} progress against the projected savings outlook.`;
           
           allActions.push({
             id: `dmaic-${project.id}`,
@@ -172,11 +257,16 @@ const ActionCenterSection: React.FC = () => {
                      project.priority === 'medium' ? 'Medium' : 'Low',
             owner: project.user_profiles?.full_name || 'Unassigned',
             ownerId: project.owner_id,
-            dueDate: project.target_completion_date ? new Date(project.target_completion_date).toISOString().split('T')[0] : 'No date',
+            dueDate: formatShortDate(projectDueDate),
             progress,
             impact: impactValue > 0 ? `$${Math.round(impactValue / 1000)}K` : '$0K',
             impactValue,
-            createdFrom: 'DMAIC Project'
+            createdFrom: 'DMAIC Project',
+            sourceSignalLabel: 'DMAIC delivery',
+            sourceSignalDetail: `Phase: ${project.status || 'active'}`,
+            linkedRecommendationId: null,
+            outcomeState,
+            outcomeDetail,
           });
         });
       }
@@ -189,6 +279,27 @@ const ActionCenterSection: React.FC = () => {
                           item.status === 'approved' ? 20 : 0;
           
           const impactValue = item.estimated_savings || 0;
+          const targetDate = item.target_date || null;
+          const isOverdue =
+            Boolean(targetDate) &&
+            item.status !== 'completed' &&
+            new Date(targetDate).getTime() < Date.now();
+          const outcomeState: Action['outcomeState'] =
+            item.status === 'completed'
+              ? 'Awaiting Verification'
+              : isOverdue
+                ? 'At Risk'
+                : item.status === 'in_progress'
+                  ? 'Monitoring'
+                  : 'Baseline Ready';
+          const outcomeDetail =
+            outcomeState === 'Awaiting Verification'
+              ? 'Kaizen work is complete. Capture observed savings or KPI improvement to confirm the result.'
+              : outcomeState === 'At Risk'
+                ? `Target date ${formatShortDate(targetDate)} is slipping. Reconfirm support and ownership.`
+                : outcomeState === 'Monitoring'
+                  ? 'Improvement is in motion. Track the first measurable shift to validate the idea.'
+                  : 'Ready to start. Capture a baseline before execution begins.';
           
           allActions.push({
             id: `kaizen-${item.id}`,
@@ -203,11 +314,16 @@ const ActionCenterSection: React.FC = () => {
                      item.priority === 'medium' ? 'Medium' : 'Low',
             owner: item.user_profiles?.full_name || 'Unassigned',
             ownerId: item.submitted_by,
-            dueDate: item.target_date ? new Date(item.target_date).toISOString().split('T')[0] : 'No date',
+            dueDate: formatShortDate(targetDate),
             progress,
             impact: impactValue > 0 ? `$${Math.round(impactValue / 1000)}K` : '$0K',
             impactValue,
-            createdFrom: 'Kaizen Initiative'
+            createdFrom: 'Kaizen Initiative',
+            sourceSignalLabel: 'Kaizen improvement',
+            sourceSignalDetail: `Status: ${item.status || 'open'}`,
+            linkedRecommendationId: null,
+            outcomeState,
+            outcomeDetail,
           });
         });
       }
@@ -344,6 +460,12 @@ const ActionCenterSection: React.FC = () => {
     dmaic: actions.filter((action) => action.type === 'DMAIC').length,
     kaizen: actions.filter((action) => action.type === 'Kaizen').length,
   };
+  const outcomeLoop = {
+    linked: actions.filter((action) => action.linkedRecommendationId).length,
+    captured: actions.filter((action) => action.outcomeState === 'Captured').length,
+    awaitingVerification: actions.filter((action) => action.outcomeState === 'Awaiting Verification').length,
+    atRisk: actions.filter((action) => action.outcomeState === 'At Risk').length,
+  };
 
   if (loading) {
     return (
@@ -397,6 +519,23 @@ const ActionCenterSection: React.FC = () => {
           },
         ]}
       />
+
+      <AIMPanel
+        title="Outcome Loop"
+        description="Connect execution back to recommendation sources and visible outcome capture so AIM can learn what actually worked."
+        icon="ri-git-merge-line"
+        accentClass="from-teal-500 to-cyan-600"
+      >
+        <AIMMetricTiles
+          columns="grid-cols-1 md:grid-cols-2 xl:grid-cols-4"
+          items={[
+            { label: 'Linked To AIM', value: outcomeLoop.linked, detail: 'Execution items with a direct recommendation link', accent: 'text-slate-900' },
+            { label: 'Outcome Captured', value: outcomeLoop.captured, detail: 'Completed work with realized impact already recorded', accent: 'text-emerald-600' },
+            { label: 'Awaiting Verification', value: outcomeLoop.awaitingVerification, detail: 'Work finished, but KPI impact still needs confirmation', accent: 'text-amber-600' },
+            { label: 'At Risk', value: outcomeLoop.atRisk, detail: 'Execution items that are overdue or blocked', accent: 'text-rose-600' },
+          ]}
+        />
+      </AIMPanel>
 
       {/* Filters */}
       <AIMPanel
@@ -565,6 +704,7 @@ const ActionCenterSection: React.FC = () => {
                   <th className="py-3 px-4 text-left text-sm font-semibold text-slate-700">Owner</th>
                   <th className="py-3 px-4 text-center text-sm font-semibold text-slate-700">Due Date</th>
                   <th className="py-3 px-4 text-center text-sm font-semibold text-slate-700">Progress</th>
+                  <th className="py-3 px-4 text-left text-sm font-semibold text-slate-700">Outcome Signal</th>
                   <th className="py-3 px-4 text-center text-sm font-semibold text-slate-700">Impact</th>
                 </tr>
               </thead>
@@ -588,6 +728,12 @@ const ActionCenterSection: React.FC = () => {
                       <div>
                         <div className="font-semibold text-slate-900 mb-1">{action.title}</div>
                         <div className="text-xs text-slate-500">From: {action.createdFrom}</div>
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-700">
+                            {action.sourceSignalLabel}
+                          </span>
+                          <span className="text-xs text-slate-500">{action.sourceSignalDetail}</span>
+                        </div>
                       </div>
                     </td>
                     <td className="py-4 px-4 text-center">
@@ -625,6 +771,14 @@ const ActionCenterSection: React.FC = () => {
                           ></div>
                         </div>
                         <span className="text-xs font-semibold text-slate-700 w-10">{action.progress}%</span>
+                      </div>
+                    </td>
+                    <td className="py-4 px-4">
+                      <div className="space-y-2">
+                        <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${OUTCOME_THEME[action.outcomeState]}`}>
+                          {action.outcomeState}
+                        </span>
+                        <div className="max-w-xs text-xs leading-5 text-slate-600">{action.outcomeDetail}</div>
                       </div>
                     </td>
                     <td className="py-4 px-4 text-center">
