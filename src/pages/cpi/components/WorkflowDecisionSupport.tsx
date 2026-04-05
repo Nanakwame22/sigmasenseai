@@ -27,6 +27,12 @@ interface DecisionCase {
   updated_at?: string | null;
 }
 
+interface LinkedActionMeta {
+  id: string;
+  status: 'open' | 'in_progress' | 'completed' | 'blocked' | 'cancelled';
+  progress: number;
+}
+
 interface MetricRecord {
   id: string;
   name: string;
@@ -141,6 +147,19 @@ function getCaseAuditMeta(caseItem: DecisionCase) {
     label: stateLabel,
     timestamp: lastTouched,
   };
+}
+
+function calculateLearningDelta(caseItem: DecisionCase, outcomePositive: boolean) {
+  const severityWeight = caseItem.signal_severity === 'critical' ? 0.2 : 0.12;
+  const automationWeight = caseItem.steps.filter((step) => step.automated).length * 0.02;
+  const complexityWeight = Math.min(caseItem.tags.length, 4) * 0.015;
+  const baseDelta = severityWeight + automationWeight + complexityWeight;
+
+  if (outcomePositive) {
+    return parseFloat(baseDelta.toFixed(2));
+  }
+
+  return parseFloat((-Math.max(0.04, baseDelta * 0.45)).toFixed(2));
 }
 
 function buildLiveCases(metrics: MetricRecord[], metricPoints: MetricPointRecord[]): DecisionCase[] {
@@ -352,13 +371,49 @@ function buildTrackedCaseFromLiveCase(caseItem: DecisionCase) {
   };
 }
 
+function buildActionTitleFromCase(caseItem: DecisionCase) {
+  return caseItem.action.length > 96 ? `${caseItem.action.slice(0, 93)}...` : caseItem.action;
+}
+
+function buildActionDescriptionFromCase(caseItem: DecisionCase) {
+  return [
+    `Signal: ${caseItem.signal}`,
+    `Decision: ${caseItem.decision}`,
+    `Action plan: ${caseItem.action}`,
+    `Expected owner: ${getCaseOwner(caseItem)}`,
+  ].join(' ');
+}
+
+function buildActionTagsFromCase(caseItem: DecisionCase, caseId: string, extraTags: string[] = []) {
+  const normalizedTags = caseItem.tags.map(tag => tag.trim()).filter(Boolean);
+  const unique = new Set([
+    `cpi-case:${caseId}`,
+    'cpi-source:decision-case',
+    'cpi-outcome:baseline_ready',
+    'cpi-verification:pending',
+    ...normalizedTags,
+    ...extraTags,
+  ]);
+  return Array.from(unique);
+}
+
+function replaceCpiLifecycleTags(existingTags: string[] = [], nextTags: string[]) {
+  return [
+    ...existingTags.filter(
+      tag => !tag.startsWith('cpi-outcome:') && !tag.startsWith('cpi-verification:')
+    ),
+    ...nextTags,
+  ];
+}
+
 // ─── Log Case Modal ────────────────────────────────────────────────────────────
 interface LogCaseModalProps {
   onClose: () => void;
   onSaved: () => void;
+  onTrackedCaseSaved?: (caseItem: DecisionCase) => Promise<void> | void;
 }
 
-function LogCaseModal({ onClose, onSaved }: LogCaseModalProps) {
+function LogCaseModal({ onClose, onSaved, onTrackedCaseSaved }: LogCaseModalProps) {
   const [roleType, setRoleType] = useState('nurse');
   const [role, setRole] = useState('');
   const [signal, setSignal] = useState('');
@@ -378,7 +433,7 @@ function LogCaseModal({ onClose, onSaved }: LogCaseModalProps) {
     setSaving(true);
     setError('');
     const preset = ROLE_PRESETS[roleType] || ROLE_PRESETS.other;
-    const { error: err } = await supabase.from('cpi_decision_cases').insert({
+    const { data, error: err } = await supabase.from('cpi_decision_cases').insert({
       role: role.trim(),
       role_icon: preset.icon,
       role_color: preset.color,
@@ -396,9 +451,12 @@ function LogCaseModal({ onClose, onSaved }: LogCaseModalProps) {
       status: 'active',
       tags: tags.split(',').map(t => t.trim()).filter(Boolean),
       updated_at: new Date().toISOString(),
-    });
+    }).select('*').maybeSingle();
     setSaving(false);
     if (err) { setError(err.message); return; }
+    if (data && onTrackedCaseSaved) {
+      await onTrackedCaseSaved(data as DecisionCase);
+    }
     onSaved();
     onClose();
   };
@@ -578,7 +636,7 @@ function getTargetModels(c: DecisionCase): string[] {
 interface ResolveModalProps {
   caseItem: DecisionCase;
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (outcomePositive: boolean) => void | Promise<void>;
   onFed: (modelNames: string[]) => void;
 }
 
@@ -595,10 +653,7 @@ function ResolveModal({ caseItem, onClose, onSaved, onFed }: ResolveModalProps) 
     if (!outcome.trim()) return;
     setSaving(true);
 
-    // Accuracy delta: positive outcome → bigger boost, negative → small correction
-    const delta = outcomePositive
-      ? parseFloat((0.15 + Math.random() * 0.2).toFixed(2))   // +0.15 – +0.35
-      : parseFloat((-0.08 + Math.random() * 0.13).toFixed(2)); // –0.08 – +0.05
+    const delta = calculateLearningDelta(caseItem, outcomePositive);
 
     // Updated Learn step description
     const updatedSteps = [...(caseItem.steps as DecisionStep[])];
@@ -629,7 +684,7 @@ function ResolveModal({ caseItem, onClose, onSaved, onFed }: ResolveModalProps) 
 
     setSaving(false);
     onFed(targetNames);
-    onSaved();
+    await onSaved(outcomePositive);
     onClose();
   };
 
@@ -764,7 +819,7 @@ function LearnFeedBanner({ modelNames, onDismiss }: LearnFeedBannerProps) {
 
 // ─── Main Component ────────────────────────────────────────────────────────────
 export default function WorkflowDecisionSupport() {
-  const { organizationId } = useAuth();
+  const { organizationId, user } = useAuth();
   const [cases, setCases] = useState<DecisionCase[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -774,6 +829,99 @@ export default function WorkflowDecisionSupport() {
   const [tick, setTick] = useState(0);
   const [learnFeed, setLearnFeed] = useState<string[] | null>(null);
   const [promotingLiveId, setPromotingLiveId] = useState<string | null>(null);
+  const [pushingCaseId, setPushingCaseId] = useState<string | null>(null);
+  const [linkedCaseActions, setLinkedCaseActions] = useState<Record<string, LinkedActionMeta>>({});
+
+  const syncCaseActionOutcome = useCallback(async (
+    caseId: string,
+    nextOutcomeTags: string[],
+    status: 'open' | 'in_progress' | 'completed' | 'blocked' | 'cancelled',
+    progress: number
+  ) => {
+    if (!organizationId) return;
+
+    const { data: linkedActions } = await supabase
+      .from('action_items')
+      .select('id, tags')
+      .eq('organization_id', organizationId)
+      .contains('tags', [`cpi-case:${caseId}`]);
+
+    if (!linkedActions || linkedActions.length === 0) return;
+
+    await Promise.all(
+      linkedActions.map((item: any) =>
+        supabase
+          .from('action_items')
+          .update({
+            status,
+            progress,
+            tags: replaceCpiLifecycleTags(item.tags || [], nextOutcomeTags),
+          })
+          .eq('id', item.id)
+      )
+    );
+  }, [organizationId]);
+
+  const ensureActionItemForCase = useCallback(async (caseItem: DecisionCase) => {
+    if (!organizationId || !user?.id) return null;
+
+    const caseId = caseItem.id;
+    const caseTags = buildActionTagsFromCase(caseItem, caseId, [
+      `cpi-owner:${getCaseOwner(caseItem).toLowerCase().replace(/\s+/g, '-')}`,
+    ]);
+
+    const { data: existingAction } = await supabase
+      .from('action_items')
+      .select('id, status, progress, tags')
+      .eq('organization_id', organizationId)
+      .contains('tags', [`cpi-case:${caseId}`])
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (existingAction) {
+      await supabase
+        .from('action_items')
+        .update({
+          title: buildActionTitleFromCase(caseItem),
+          description: buildActionDescriptionFromCase(caseItem),
+          priority: caseItem.signal_severity === 'critical' ? 'critical' : 'high',
+          due_date: new Date(Date.now() + (caseItem.signal_severity === 'critical' ? 0 : 24) * 60 * 60 * 1000).toISOString().slice(0, 10),
+          tags: Array.from(new Set([...(existingAction.tags || []), ...caseTags])),
+        })
+        .eq('id', existingAction.id);
+
+      return existingAction.id;
+    }
+
+    const dueDate = new Date(Date.now() + (caseItem.signal_severity === 'critical' ? 0 : 24) * 60 * 60 * 1000);
+    const { data: insertedAction, error } = await supabase
+      .from('action_items')
+      .insert({
+        organization_id: organizationId,
+        created_by: user.id,
+        title: buildActionTitleFromCase(caseItem),
+        description: buildActionDescriptionFromCase(caseItem),
+        assigned_to: null,
+        status: 'open',
+        priority: caseItem.signal_severity === 'critical' ? 'critical' : 'high',
+        category: 'CPI Workflow',
+        due_date: dueDate.toISOString().slice(0, 10),
+        progress: 0,
+        estimated_hours: 0,
+        actual_hours: 0,
+        tags: caseTags,
+      })
+      .select('id')
+      .maybeSingle();
+
+    if (error) {
+      console.error('Failed to create action item for CPI case:', error);
+      return null;
+    }
+
+    return insertedAction?.id ?? null;
+  }, [organizationId, user?.id]);
 
   const fetchCases = useCallback(async () => {
     const { data } = await supabase
@@ -808,6 +956,29 @@ export default function WorkflowDecisionSupport() {
     }
 
     setCases(mergedCases);
+
+    if (organizationId) {
+      const { data: actionRows } = await supabase
+        .from('action_items')
+        .select('id, status, progress, tags')
+        .eq('organization_id', organizationId);
+
+      const linkedMap: Record<string, LinkedActionMeta> = {};
+      (actionRows || []).forEach((row: any) => {
+        const caseTag = (row.tags || []).find((tag: string) => tag.startsWith('cpi-case:'));
+        if (!caseTag) return;
+        const caseId = caseTag.replace('cpi-case:', '');
+        linkedMap[caseId] = {
+          id: row.id,
+          status: row.status,
+          progress: typeof row.progress === 'number' ? row.progress : 0,
+        };
+      });
+      setLinkedCaseActions(linkedMap);
+    } else {
+      setLinkedCaseActions({});
+    }
+
     setLoading(false);
   }, [organizationId]);
 
@@ -840,15 +1011,32 @@ export default function WorkflowDecisionSupport() {
   const promoteLiveCase = useCallback(async (caseItem: DecisionCase) => {
     setPromotingLiveId(caseItem.id);
     try {
-      const { error } = await supabase.from('cpi_decision_cases').insert(buildTrackedCaseFromLiveCase(caseItem));
+      const { data, error } = await supabase
+        .from('cpi_decision_cases')
+        .insert(buildTrackedCaseFromLiveCase(caseItem))
+        .select('*')
+        .maybeSingle();
       if (error) throw error;
+      if (data) {
+        await ensureActionItemForCase(data as DecisionCase);
+      }
       await fetchCases();
     } catch (error) {
       console.error('Failed to promote live case:', error);
     } finally {
       setPromotingLiveId(null);
     }
-  }, [fetchCases]);
+  }, [ensureActionItemForCase, fetchCases]);
+
+  const pushTrackedCaseToActionTracker = useCallback(async (caseItem: DecisionCase) => {
+    setPushingCaseId(caseItem.id);
+    try {
+      await ensureActionItemForCase(caseItem);
+      await fetchCases();
+    } finally {
+      setPushingCaseId(null);
+    }
+  }, [ensureActionItemForCase, fetchCases]);
 
   return (
     <div>
@@ -1007,14 +1195,19 @@ export default function WorkflowDecisionSupport() {
                   )}
 
                   {/* Tags + timestamp */}
-                  <div className="flex items-center justify-between mt-3">
-                    <div className="flex items-center flex-wrap gap-1">
-                      {c.tags.slice(0, 3).map(tag => (
-                        <span key={tag} className="text-xs px-2 py-0.5 bg-slate-100 text-slate-500 rounded-full">{tag}</span>
-                      ))}
+                    <div className="flex items-center justify-between mt-3">
+                      <div className="flex items-center flex-wrap gap-1">
+                        {c.tags.slice(0, 3).map(tag => (
+                          <span key={tag} className="text-xs px-2 py-0.5 bg-slate-100 text-slate-500 rounded-full">{tag}</span>
+                        ))}
+                        {linkedCaseActions[c.id] && (
+                          <span className="text-xs px-2 py-0.5 bg-teal-50 text-teal-700 rounded-full font-medium border border-teal-100">
+                            In Action Tracker
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-xs text-slate-400 whitespace-nowrap">{timeAgo(c.created_at)}</span>
                     </div>
-                    <span className="text-xs text-slate-400 whitespace-nowrap">{timeAgo(c.created_at)}</span>
-                  </div>
 
                   <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-100">
                     <div className="flex items-center space-x-2 min-w-0">
@@ -1034,13 +1227,28 @@ export default function WorkflowDecisionSupport() {
                     <div className="flex items-center justify-between mb-3">
                       <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Intelligence Cycle</p>
                       {c.status === 'active' && !c.id.startsWith('live-case:') && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setResolveCase(c); }}
-                          className="flex items-center space-x-1.5 px-3 py-1.5 text-xs font-semibold bg-teal-600 text-white rounded-lg hover:bg-teal-700 cursor-pointer whitespace-nowrap"
-                        >
-                          <i className="ri-loop-left-line text-sm"></i>
-                          <span>Resolve &amp; Feed Models</span>
-                        </button>
+                        <div className="flex items-center space-x-2">
+                          {!linkedCaseActions[c.id] && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void pushTrackedCaseToActionTracker(c);
+                              }}
+                              disabled={pushingCaseId === c.id}
+                              className="flex items-center space-x-1.5 px-3 py-1.5 text-xs font-semibold bg-white border border-teal-200 text-teal-700 rounded-lg hover:bg-teal-50 disabled:opacity-60 cursor-pointer whitespace-nowrap"
+                            >
+                              <i className="ri-send-plane-line text-sm"></i>
+                              <span>{pushingCaseId === c.id ? 'Pushing...' : 'Push to Action Tracker'}</span>
+                            </button>
+                          )}
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setResolveCase(c); }}
+                            className="flex items-center space-x-1.5 px-3 py-1.5 text-xs font-semibold bg-teal-600 text-white rounded-lg hover:bg-teal-700 cursor-pointer whitespace-nowrap"
+                          >
+                            <i className="ri-loop-left-line text-sm"></i>
+                            <span>Resolve &amp; Feed Models</span>
+                          </button>
+                        </div>
                       )}
                       {c.status === 'active' && c.id.startsWith('live-case:') && (
                         <button
@@ -1118,13 +1326,31 @@ export default function WorkflowDecisionSupport() {
       )}
 
       {showLogModal && (
-        <LogCaseModal onClose={() => setShowLogModal(false)} onSaved={fetchCases} />
+        <LogCaseModal
+          onClose={() => setShowLogModal(false)}
+          onSaved={fetchCases}
+          onTrackedCaseSaved={async (caseItem) => {
+            await ensureActionItemForCase(caseItem);
+          }}
+        />
       )}
       {resolveCase && (
         <ResolveModal
           caseItem={resolveCase}
           onClose={() => setResolveCase(null)}
-          onSaved={fetchCases}
+          onSaved={async (outcomePositive) => {
+            await syncCaseActionOutcome(
+              resolveCase.id,
+              [
+                'cpi-source:decision-case',
+                outcomePositive ? 'cpi-outcome:captured' : 'cpi-outcome:at_risk',
+                'cpi-verification:complete',
+              ],
+              'completed',
+              100
+            );
+            await fetchCases();
+          }}
           onFed={(names) => setLearnFeed(names)}
         />
       )}
