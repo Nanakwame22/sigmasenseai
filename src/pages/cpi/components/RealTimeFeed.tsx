@@ -21,11 +21,11 @@ const severityConfig = {
     icon: 'text-amber-500',
   },
   info: {
-    bg: 'bg-teal-50',
-    border: 'border-l-teal-500',
-    badge: 'bg-teal-100 text-teal-700',
-    action: 'bg-teal-600 hover:bg-teal-700 text-white',
-    icon: 'text-teal-500',
+    bg: 'bg-ai-50',
+    border: 'border-l-ai-500',
+    badge: 'bg-ai-100 text-ai-700',
+    action: 'bg-ai-600 hover:bg-ai-700 text-white',
+    icon: 'text-ai-500',
   },
 };
 
@@ -75,15 +75,15 @@ const sourceConfig: Record<string, {
 function getSourceConfig(category: string) {
   return sourceConfig[category] ?? {
     label: category.charAt(0).toUpperCase() + category.slice(1),
-    color: 'bg-slate-100 text-slate-600 border border-slate-200',
-    dot: 'bg-slate-400',
-    iconBg: 'bg-slate-50',
-    badgeBg: 'bg-slate-50 border-slate-100',
-    borderColor: 'border-slate-200',
-    silenceHover: 'hover:bg-slate-100 text-slate-500',
-    divider: 'border-slate-200',
-    confirmText: 'text-slate-700',
-    confirmBtn: 'bg-slate-500 hover:bg-slate-600',
+    color: 'bg-brand-100 text-brand-600 border border-brand-200',
+    dot: 'bg-brand-400',
+    iconBg: 'bg-brand-50',
+    badgeBg: 'bg-brand-50 border-brand-100',
+    borderColor: 'border-brand-200',
+    silenceHover: 'hover:bg-brand-100 text-brand-500',
+    divider: 'border-brand-200',
+    confirmText: 'text-brand-700',
+    confirmBtn: 'bg-brand-500 hover:bg-brand-600',
   };
 }
 
@@ -174,7 +174,7 @@ function SilenceButton({ count, category, silencing, onSilence, compact = false 
         </button>
         <button
           onClick={handleCancel}
-          className="w-5 h-5 flex items-center justify-center bg-slate-200 hover:bg-slate-300 text-slate-600 rounded text-xs cursor-pointer transition-colors"
+          className="w-5 h-5 flex items-center justify-center bg-brand-200 hover:bg-brand-300 text-brand-600 rounded text-xs cursor-pointer transition-colors"
         >
           <i className="ri-close-line"></i>
         </button>
@@ -184,7 +184,7 @@ function SilenceButton({ count, category, silencing, onSilence, compact = false 
 
   if (silencing) {
     return (
-      <span className={`flex items-center space-x-1 text-xs text-slate-500 ${compact ? 'px-1.5' : 'px-2.5 py-1.5'}`}>
+      <span className={`flex items-center space-x-1 text-xs text-brand-500 ${compact ? 'px-1.5' : 'px-2.5 py-1.5'}`}>
         <i className="ri-loader-4-line text-xs animate-spin"></i>
         <span>Silencing…</span>
       </span>
@@ -275,7 +275,7 @@ function buildDecisionCaseFromFeedItem(item: CPIFeedItem) {
     lab: {
       role: 'Lab Supervisor — Central Lab',
       icon: 'ri-test-tube-line',
-      color: 'text-teal-600 bg-teal-50 border-teal-100',
+      color: 'text-ai-600 bg-ai-50 border-ai-100',
       tags: ['lab', 'escalation', 'critical-result'],
     },
   };
@@ -283,7 +283,7 @@ function buildDecisionCaseFromFeedItem(item: CPIFeedItem) {
   const roleMeta = roleMap[item.category] ?? {
     role: 'Operations Coordinator',
     icon: 'ri-user-settings-line',
-    color: 'text-slate-600 bg-slate-50 border-slate-100',
+    color: 'text-brand-600 bg-brand-50 border-brand-100',
     tags: ['operations', item.category],
   };
 
@@ -348,7 +348,7 @@ function QuickFireButton({ label, icon, color, firing, lastFired, lastResult, on
         )}
       </button>
       {lastFired && !showResult && (
-        <span className="text-xs text-slate-400">{timeAgo(lastFired)}</span>
+        <span className="text-xs text-brand-400">{timeAgo(lastFired)}</span>
       )}
       {showResult && lastResult && (
         <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
@@ -356,7 +356,7 @@ function QuickFireButton({ label, icon, color, firing, lastFired, lastResult, on
             ? 'bg-rose-100 text-rose-700'
             : lastResult.alert_fired
               ? lastResult.severity === 'critical' ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700'
-              : 'bg-teal-100 text-teal-700'
+              : 'bg-ai-100 text-ai-700'
         }`}>
           {!lastResult.success ? 'Error' : lastResult.alert_fired ? 'Alert fired!' : 'Monitoring active'}
         </span>
@@ -403,9 +403,9 @@ function FeedCard({ item, onAcknowledge, isNew }: {
   return (
     <div className={`px-5 py-4 border-l-4 transition-all duration-500 ${cfg.border} ${
       item.acknowledged ? 'bg-white opacity-55' : cfg.bg
-    } ${isNew ? 'ring-1 ring-teal-300/40' : ''}`}>
+    } ${isNew ? 'ring-1 ring-ai-300/40' : ''}`}>
       <div className="flex items-start space-x-3">
-        <div className={`w-8 h-8 flex items-center justify-center rounded-lg border border-slate-100 flex-shrink-0 ${cfg.icon} ${src.iconBg}`}>
+        <div className={`w-8 h-8 flex items-center justify-center rounded-lg border border-brand-100 flex-shrink-0 ${cfg.icon} ${src.iconBg}`}>
           <i className={`${item.icon} text-sm`}></i>
         </div>
         <div className="flex-1 min-w-0">
@@ -417,22 +417,22 @@ function FeedCard({ item, onAcknowledge, isNew }: {
               <span className={`w-1 h-1 rounded-full ${src.dot} inline-block`}></span>
               <span>{src.label}</span>
             </span>
-            <span className="text-xs text-slate-400 font-mono">{formatTime(item.created_at)}</span>
+            <span className="text-xs text-brand-400 font-mono">{formatTime(item.created_at)}</span>
             {item.acknowledged && (
-              <span className="text-xs text-slate-400 flex items-center space-x-0.5">
+              <span className="text-xs text-brand-400 flex items-center space-x-0.5">
                 <i className="ri-check-line text-xs"></i>
                 <span>Acknowledged</span>
               </span>
             )}
             {isNew && !item.acknowledged && (
-              <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-teal-100 text-teal-700 flex items-center space-x-0.5">
-                <span className="w-1 h-1 rounded-full bg-teal-500 animate-pulse inline-block"></span>
+              <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-ai-100 text-ai-700 flex items-center space-x-0.5">
+                <span className="w-1 h-1 rounded-full bg-ai-500 animate-pulse inline-block"></span>
                 <span>NEW</span>
               </span>
             )}
           </div>
-          <h4 className="text-sm font-semibold text-slate-900 mb-1">{item.title}</h4>
-          <p className="text-xs text-slate-600 leading-relaxed mb-2">{item.body}</p>
+          <h4 className="text-sm font-semibold text-brand-900 mb-1">{item.title}</h4>
+          <p className="text-xs text-brand-600 leading-relaxed mb-2">{item.body}</p>
           {!item.acknowledged && (
             <div className="flex items-center space-x-2">
               <button
@@ -446,7 +446,7 @@ function FeedCard({ item, onAcknowledge, isNew }: {
               <button
                 onClick={handleAck}
                 disabled={acknowledging || loggingCase}
-                className="px-3 py-1.5 text-xs font-medium text-slate-500 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer whitespace-nowrap disabled:opacity-60"
+                className="px-3 py-1.5 text-xs font-medium text-brand-500 hover:bg-brand-100 rounded-lg transition-colors cursor-pointer whitespace-nowrap disabled:opacity-60"
               >
                 {acknowledging ? 'Acknowledging...' : 'Acknowledge'}
               </button>
@@ -509,18 +509,18 @@ function GlobalSilenceButton({ count, silencing, onSilence }: GlobalSilenceButto
   if (confirmMode) {
     return (
       <div className="flex items-center space-x-1.5">
-        <span className="text-xs font-semibold text-slate-700 whitespace-nowrap">
+        <span className="text-xs font-semibold text-brand-700 whitespace-nowrap">
           Silence all {count}?
         </span>
         <button
           onClick={handleConfirm}
-          className="w-5 h-5 flex items-center justify-center bg-slate-700 hover:bg-slate-900 text-white rounded text-xs cursor-pointer transition-colors"
+          className="w-5 h-5 flex items-center justify-center bg-brand-700 hover:bg-brand-900 text-white rounded text-xs cursor-pointer transition-colors"
         >
           <i className="ri-check-line"></i>
         </button>
         <button
           onClick={handleCancel}
-          className="w-5 h-5 flex items-center justify-center bg-slate-200 hover:bg-slate-300 text-slate-600 rounded text-xs cursor-pointer transition-colors"
+          className="w-5 h-5 flex items-center justify-center bg-brand-200 hover:bg-brand-300 text-brand-600 rounded text-xs cursor-pointer transition-colors"
         >
           <i className="ri-close-line"></i>
         </button>
@@ -532,7 +532,7 @@ function GlobalSilenceButton({ count, silencing, onSilence }: GlobalSilenceButto
     <button
       onClick={handleFirstClick}
       disabled={silencing || count === 0}
-      className="flex items-center space-x-1.5 px-2.5 py-1 text-xs font-medium text-slate-500 hover:text-slate-700 hover:bg-slate-100 border border-slate-200 rounded-full transition-colors cursor-pointer whitespace-nowrap disabled:opacity-40"
+      className="flex items-center space-x-1.5 px-2.5 py-1 text-xs font-medium text-brand-500 hover:text-brand-700 hover:bg-brand-100 border border-brand-200 rounded-full transition-colors cursor-pointer whitespace-nowrap disabled:opacity-40"
     >
       {silencing ? (
         <>
@@ -559,7 +559,7 @@ const KNOWN_SOURCES: Array<{ id: SourceFilter; label: string; dot: string }> = [
   { id: 'ed', label: 'ED Surge', dot: 'bg-rose-500' },
   { id: 'readmission', label: 'Readmission', dot: 'bg-amber-500' },
   { id: 'lab', label: 'Lab', dot: 'bg-violet-500' },
-  { id: 'other', label: 'Other', dot: 'bg-slate-400' },
+  { id: 'other', label: 'Other', dot: 'bg-brand-400' },
 ];
 
 export default function RealTimeFeed() {
@@ -704,21 +704,21 @@ export default function RealTimeFeed() {
   // ── Loading skeleton ─────────────────────────────────────────────────────
   if (loadingFeed) {
     return (
-      <div className="bg-white rounded-xl border border-slate-100 overflow-hidden">
-        <div className="px-5 py-4 border-b border-slate-100">
-          <div className="h-4 bg-slate-100 rounded w-48 animate-pulse mb-1"></div>
-          <div className="h-3 bg-slate-100 rounded w-72 animate-pulse"></div>
+      <div className="bg-white rounded-xl border border-brand-100 overflow-hidden">
+        <div className="px-5 py-4 border-b border-brand-100">
+          <div className="h-4 bg-brand-100 rounded w-48 animate-pulse mb-1"></div>
+          <div className="h-3 bg-brand-100 rounded w-72 animate-pulse"></div>
         </div>
-        <div className="divide-y divide-slate-50">
+        <div className="divide-y divide-brand-50">
           {Array.from({ length: 4 }).map((_, i) => (
             <div key={i} className="px-5 py-4 animate-pulse">
               <div className="flex space-x-3">
-                <div className="w-8 h-8 bg-slate-100 rounded-lg flex-shrink-0"></div>
+                <div className="w-8 h-8 bg-brand-100 rounded-lg flex-shrink-0"></div>
                 <div className="flex-1">
-                  <div className="h-3 bg-slate-100 rounded w-32 mb-2"></div>
-                  <div className="h-4 bg-slate-100 rounded w-48 mb-2"></div>
-                  <div className="h-3 bg-slate-100 rounded w-full mb-1"></div>
-                  <div className="h-3 bg-slate-100 rounded w-4/5"></div>
+                  <div className="h-3 bg-brand-100 rounded w-32 mb-2"></div>
+                  <div className="h-4 bg-brand-100 rounded w-48 mb-2"></div>
+                  <div className="h-3 bg-brand-100 rounded w-full mb-1"></div>
+                  <div className="h-3 bg-brand-100 rounded w-4/5"></div>
                 </div>
               </div>
             </div>
@@ -729,20 +729,20 @@ export default function RealTimeFeed() {
   }
 
   return (
-    <div className="bg-white rounded-xl border border-slate-100 overflow-hidden flex flex-col">
+    <div className="bg-white rounded-xl border border-brand-100 overflow-hidden flex flex-col">
 
       {/* ── Header ── */}
-      <div className="px-5 py-4 border-b border-slate-100">
+      <div className="px-5 py-4 border-b border-brand-100">
 
         {/* Title row */}
         <div className="flex items-start justify-between mb-3">
           <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 flex items-center justify-center bg-slate-900 rounded-lg flex-shrink-0">
-              <i className="ri-rss-line text-teal-400 text-sm"></i>
+            <div className="w-8 h-8 flex items-center justify-center bg-brand-900 rounded-lg flex-shrink-0">
+              <i className="ri-rss-line text-ai-400 text-sm"></i>
             </div>
             <div>
-              <h3 className="text-sm font-bold text-slate-900">Real-Time Intelligence Feed</h3>
-              <p className="text-xs text-slate-500">Priority operational events and escalation alerts · {feed.length} events</p>
+              <h3 className="text-sm font-bold text-brand-900">Real-Time Intelligence Feed</h3>
+              <p className="text-xs text-brand-500">Priority operational events and escalation alerts · {feed.length} events</p>
             </div>
           </div>
           <div className="flex items-center space-x-2">
@@ -828,8 +828,8 @@ export default function RealTimeFeed() {
       </div>
 
       {/* ── Source filter tabs ── */}
-      <div className="px-5 py-2 border-b border-slate-100 bg-slate-50/60 flex items-center space-x-1 overflow-x-auto">
-        <span className="text-xs text-slate-400 font-medium mr-2 whitespace-nowrap">Source:</span>
+      <div className="px-5 py-2 border-b border-brand-100 bg-brand-50/60 flex items-center space-x-1 overflow-x-auto">
+        <span className="text-xs text-brand-400 font-medium mr-2 whitespace-nowrap">Source:</span>
         {KNOWN_SOURCES.map(({ id, label, dot }) => {
           const count =
             id === 'all' ? feed.length :
@@ -842,13 +842,13 @@ export default function RealTimeFeed() {
               onClick={() => setSourceFilter(id)}
               className={`flex items-center space-x-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
                 sourceFilter === id
-                  ? 'bg-slate-900 text-white'
-                  : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700'
+                  ? 'bg-brand-900 text-white'
+                  : 'text-brand-500 hover:bg-brand-100 hover:text-brand-700'
               }`}
             >
               {dot && <span className={`w-1.5 h-1.5 rounded-full ${dot} inline-block`}></span>}
               <span>{label}</span>
-              <span className={`px-1 rounded-full text-xs ${sourceFilter === id ? 'bg-white/20' : 'bg-slate-100 text-slate-500'}`}>
+              <span className={`px-1 rounded-full text-xs ${sourceFilter === id ? 'bg-white/20' : 'bg-brand-100 text-brand-500'}`}>
                 {count}
               </span>
             </button>
@@ -857,15 +857,15 @@ export default function RealTimeFeed() {
       </div>
 
       {/* ── Severity filter + contextual silence bar ── */}
-      <div className="px-5 py-2 border-b border-slate-100 flex items-center justify-between">
+      <div className="px-5 py-2 border-b border-brand-100 flex items-center justify-between">
         <div className="flex items-center space-x-1">
-          <span className="text-xs text-slate-400 font-medium mr-2">Severity:</span>
+          <span className="text-xs text-brand-400 font-medium mr-2">Severity:</span>
           {(['all', 'critical', 'warning', 'info'] as const).map(f => (
             <button
               key={f}
               onClick={() => setSeverityFilter(f)}
               className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
-                severityFilter === f ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700'
+                severityFilter === f ? 'bg-brand-900 text-white' : 'text-brand-500 hover:bg-brand-50 hover:text-brand-700'
               }`}
             >
               {f.charAt(0).toUpperCase() + f.slice(1)}
@@ -888,11 +888,11 @@ export default function RealTimeFeed() {
       </div>
 
       {/* ── Feed items ── */}
-      <div className="divide-y divide-slate-50 max-h-[460px] overflow-y-auto flex-1">
+      <div className="divide-y divide-brand-50 max-h-[460px] overflow-y-auto flex-1">
         {filtered.length === 0 ? (
           <div className="px-5 py-10 text-center">
             <i className="ri-check-double-line text-2xl text-emerald-400 mb-2 block"></i>
-            <p className="text-sm text-slate-500">
+            <p className="text-sm text-brand-500">
               No {sourceFilter !== 'all' ? (sourceConfig[sourceFilter]?.label ?? sourceFilter) : ''}{' '}
               {severityFilter !== 'all' ? severityFilter : ''} items require attention right now
             </p>
@@ -930,25 +930,25 @@ export default function RealTimeFeed() {
       </div>
 
       {/* ── Footer breakdown ── */}
-      <div className="px-5 py-3 border-t border-slate-100 bg-slate-50 flex items-center justify-between flex-shrink-0">
-        <div className="flex items-center space-x-3 text-xs text-slate-400 flex-wrap gap-y-1">
+      <div className="px-5 py-3 border-t border-brand-100 bg-brand-50 flex items-center justify-between flex-shrink-0">
+        <div className="flex items-center space-x-3 text-xs text-brand-400 flex-wrap gap-y-1">
           <span className="flex items-center space-x-1">
             <span className="w-1.5 h-1.5 rounded-full bg-rose-500 inline-block"></span>
             <span>ED: {edTotal}</span>
           </span>
-          <span className="text-slate-200">·</span>
+          <span className="text-brand-200">·</span>
           <span className="flex items-center space-x-1">
             <span className="w-1.5 h-1.5 rounded-full bg-amber-500 inline-block"></span>
             <span>Readmission: {readmissionTotal}</span>
           </span>
-          <span className="text-slate-200">·</span>
+          <span className="text-brand-200">·</span>
           <span className="flex items-center space-x-1">
             <span className="w-1.5 h-1.5 rounded-full bg-violet-500 inline-block"></span>
             <span>Lab: {labTotal}</span>
           </span>
-          <span className="text-slate-200">·</span>
+          <span className="text-brand-200">·</span>
           <span className="flex items-center space-x-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-slate-400 inline-block"></span>
+            <span className="w-1.5 h-1.5 rounded-full bg-brand-400 inline-block"></span>
             <span>Other: {otherTotal}</span>
           </span>
         </div>
