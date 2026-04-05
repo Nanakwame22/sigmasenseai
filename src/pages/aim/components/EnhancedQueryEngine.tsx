@@ -10,14 +10,16 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
 
-const COLORS = ['#14B8A6', '#8B5CF6', '#F59E0B', '#EF4444', '#3B82F6', '#10B981'];
-const AXIS_TICK = { fontSize: 11, fill: '#64748b' };
-const GRID_STROKE = '#e2e8f0';
+// ─── Chart constants ──────────────────────────────────────────────────────────
+const COLORS = ['#2CB1BC', '#8B5CF6', '#F59E0B', '#EF4444', '#0967D2', '#10B981'];
+const AXIS_TICK = { fontSize: 11, fill: '#829AB1' };
+const GRID_STROKE = '#D9E2EC';
 const TOOLTIP_STYLE = {
   backgroundColor: 'rgba(255,255,255,0.98)',
-  border: '1px solid #dbe4ea',
-  borderRadius: '16px',
+  border: '1px solid #BCCCDC',
+  borderRadius: '14px',
   boxShadow: '0 18px 45px rgba(15,23,42,0.12)',
+  fontSize: '12px',
 };
 
 interface Props {
@@ -74,7 +76,6 @@ export default function EnhancedQueryEngine({ compact = false }: Props) {
         addToast('Anthropic keys usually start with "sk-ant-". Please double-check the key.', 'warning');
         return;
       }
-
       nlQueryService.setApiKey(normalizedKey, provider);
       setHasApiKey(true);
       setShowApiKeyModal(false);
@@ -115,12 +116,10 @@ export default function EnhancedQueryEngine({ compact = false }: Props) {
         await nlQueryService.saveQueryHistory(queryToExecute, queryResult);
         loadHistory();
 
-        // Save to AIM insights feed
         if (user) {
           const orgId = await resolveOrgId();
           await nlQueryService.saveAsAIMInsight(queryToExecute, queryResult, orgId, user.id);
           setSavedToFeed(true);
-          // Notify InsightHistorySection to refresh
           window.dispatchEvent(new CustomEvent('aim-insight-added'));
         }
       }
@@ -156,10 +155,10 @@ export default function EnhancedQueryEngine({ compact = false }: Props) {
         return (
           <div className="flex items-center justify-center py-12">
             <div className="text-center">
-              <div className="text-5xl font-bold text-teal-600 mb-2">
+              <div className="text-5xl font-bold text-ai-600 mb-3 tabular-nums">
                 {typeof metricValue === 'number' ? (metricValue as number).toLocaleString() : String(metricValue)}
               </div>
-              <div className="text-gray-600 text-lg capitalize">
+              <div className="text-brand-500 text-sm font-medium capitalize">
                 {metricLabel.replace(/_/g, ' ')}
               </div>
             </div>
@@ -168,30 +167,31 @@ export default function EnhancedQueryEngine({ compact = false }: Props) {
       }
       case 'line':
         return (
-          <ResponsiveContainer width="100%" height={compact ? 220 : 400}>
+          <ResponsiveContainer width="100%" height={compact ? 220 : 380}>
             <LineChart data={data} margin={{ top: 12, right: 18, left: 4, bottom: 4 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} vertical={false} />
               <XAxis dataKey={Object.keys(data[0])[0]} tick={AXIS_TICK} axisLine={false} tickLine={false} />
               <YAxis tick={AXIS_TICK} axisLine={false} tickLine={false} />
-              <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ stroke: '#cbd5e1', strokeDasharray: '4 4' }} />
-              <Legend wrapperStyle={{ paddingTop: 8 }} />
+              <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ stroke: '#BCCCDC', strokeDasharray: '4 4' }} />
+              <Legend wrapperStyle={{ paddingTop: 8, fontSize: 12 }} />
               {Object.keys(data[0]).slice(1).map((key, index) => (
-                <Line key={key} type="monotone" dataKey={key} stroke={COLORS[index % COLORS.length]} strokeWidth={3} dot={false} activeDot={{ r: 5 }} />
+                <Line key={key} type="monotone" dataKey={key} stroke={COLORS[index % COLORS.length]}
+                  strokeWidth={2.5} dot={false} activeDot={{ r: 5, strokeWidth: 0 }} />
               ))}
             </LineChart>
           </ResponsiveContainer>
         );
       case 'bar':
         return (
-          <ResponsiveContainer width="100%" height={compact ? 220 : 400}>
+          <ResponsiveContainer width="100%" height={compact ? 220 : 380}>
             <BarChart data={data} margin={{ top: 12, right: 18, left: 4, bottom: 4 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} vertical={false} />
               <XAxis dataKey={Object.keys(data[0])[0]} tick={AXIS_TICK} axisLine={false} tickLine={false} />
               <YAxis tick={AXIS_TICK} axisLine={false} tickLine={false} />
-              <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: 'rgba(148,163,184,0.08)' }} />
-              <Legend wrapperStyle={{ paddingTop: 8 }} />
+              <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: 'rgba(188,204,220,0.15)' }} />
+              <Legend wrapperStyle={{ paddingTop: 8, fontSize: 12 }} />
               {Object.keys(data[0]).slice(1).map((key, index) => (
-                <Bar key={key} dataKey={key} fill={COLORS[index % COLORS.length]} radius={[4, 4, 0, 0]} />
+                <Bar key={key} dataKey={key} fill={COLORS[index % COLORS.length]} radius={[5, 5, 0, 0]} />
               ))}
             </BarChart>
           </ResponsiveContainer>
@@ -203,9 +203,10 @@ export default function EnhancedQueryEngine({ compact = false }: Props) {
           fill: COLORS[index % COLORS.length],
         }));
         return (
-          <ResponsiveContainer width="100%" height={compact ? 220 : 400}>
+          <ResponsiveContainer width="100%" height={compact ? 220 : 380}>
             <PieChart>
-              <Pie data={pieData} cx="50%" cy="50%" outerRadius={compact ? 80 : 120}
+              <Pie data={pieData} cx="50%" cy="50%" outerRadius={compact ? 80 : 130}
+                innerRadius={compact ? 40 : 60}
                 labelLine={false}
                 label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
                 dataKey="value">
@@ -220,12 +221,12 @@ export default function EnhancedQueryEngine({ compact = false }: Props) {
       }
       default:
         return (
-          <div className="overflow-x-auto">
-            <table className="w-full">
+          <div className="overflow-x-auto rounded-xl border border-border">
+            <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-gray-200">
+                <tr className="bg-brand-50 border-b border-border">
                   {Object.keys(data[0]).map((key) => (
-                    <th key={key} className="px-4 py-3 text-left text-sm font-semibold text-gray-700 capitalize">
+                    <th key={key} className="px-4 py-3 text-left text-xs font-bold text-brand-500 uppercase tracking-wide whitespace-nowrap">
                       {key.replace(/_/g, ' ')}
                     </th>
                   ))}
@@ -233,9 +234,9 @@ export default function EnhancedQueryEngine({ compact = false }: Props) {
               </thead>
               <tbody>
                 {data.slice(0, 100).map((row, index) => (
-                  <tr key={index} className="border-b border-gray-100 hover:bg-gray-50">
+                  <tr key={index} className="border-b border-border hover:bg-brand-50 transition-colors">
                     {Object.values(row).map((value: any, cellIndex) => (
-                      <td key={cellIndex} className="px-4 py-3 text-sm text-gray-600">
+                      <td key={cellIndex} className="px-4 py-3 text-brand-700">
                         {typeof value === 'number' ? value.toLocaleString() : String(value)}
                       </td>
                     ))}
@@ -244,7 +245,7 @@ export default function EnhancedQueryEngine({ compact = false }: Props) {
               </tbody>
             </table>
             {data.length > 100 && (
-              <div className="text-center py-4 text-sm text-gray-500">
+              <div className="text-center py-3 text-xs text-brand-400 border-t border-border bg-brand-50">
                 Showing first 100 of {data.length} results
               </div>
             )}
@@ -253,204 +254,282 @@ export default function EnhancedQueryEngine({ compact = false }: Props) {
     }
   };
 
-  return (
-    <div className="space-y-6">
-      {/* Header */}
-      {!compact && (
-        <AIMSectionIntro
-          eyebrow="Natural Language Query"
-          title="Ask AIM"
-          description="Query SigmaSense in plain English, review the underlying SQL when needed, and save useful answers directly into Insight History."
-          actions={
-            <div className="flex items-center gap-3">
-              {hasApiKey ? (
-                <>
-                  <div className="flex items-center gap-2 px-4 py-2 bg-teal-50 text-teal-700 rounded-lg text-sm">
-                    <i className="ri-check-line"></i>
-                    <span>{provider === 'openai' ? 'OpenAI' : 'Anthropic'} connected</span>
-                  </div>
-                  <button onClick={handleRemoveApiKey} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 whitespace-nowrap cursor-pointer">
-                    Change API Key
-                  </button>
-                </>
-              ) : (
-                <button
-                  onClick={() => setShowApiKeyModal(true)}
-                  className="px-6 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 flex items-center gap-2 whitespace-nowrap cursor-pointer"
-                >
-                  <i className="ri-key-line"></i>
-                  Configure AI
-                </button>
-              )}
-            </div>
-          }
-        />
-      )}
-
-      {/* Query Input */}
-      {compact ? (
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+  // ─── Compact mode (right rail) ────────────────────────────────────────────
+  if (compact) {
+    return (
+      <div className="space-y-4">
         {!hasApiKey && (
-          <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-            Ask AIM can still run using SigmaSense direct query mode. Add an API key if you want richer AI summaries and stronger language interpretation.
+          <div className="flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5">
+            <i className="ri-information-line text-amber-500 mt-0.5 flex-shrink-0"></i>
+            <p className="text-xs text-amber-800 leading-relaxed">
+              Works now in direct mode. Add an API key for richer AI summaries.
+            </p>
           </div>
         )}
-        <div className="flex gap-3">
-          <div className="flex-1">
-            <textarea
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  handleExecuteQuery();
-                }
-              }}
-              placeholder={hasApiKey ? 'Ask anything… results auto-save to Insight History' : 'Ask anything about your data…'}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent resize-none text-sm"
-              rows={compact ? 2 : 3}
-            />
-          </div>
+
+        {/* Input */}
+        <div className="relative">
+          <textarea
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleExecuteQuery();
+              }
+            }}
+            placeholder="Ask about metrics, alerts, trends…"
+            className="w-full px-4 py-3 pr-12 bg-white border border-border rounded-premium-xl focus:outline-none focus:ring-2 focus:ring-ai-300/60 focus:border-ai-300 resize-none text-sm text-brand-800 placeholder:text-brand-300 transition-all shadow-elevation-1"
+            rows={3}
+          />
           <button
             onClick={() => handleExecuteQuery()}
             disabled={!query.trim() || isLoading}
-            className="px-5 py-3 bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center gap-2 h-fit whitespace-nowrap cursor-pointer"
+            className="absolute bottom-2.5 right-2.5 w-8 h-8 flex items-center justify-center bg-gradient-to-br from-ai-500 to-ai-600 text-white rounded-lg hover:from-ai-600 hover:to-ai-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-glow-sm cursor-pointer"
           >
-            {isLoading ? (
-              <><i className="ri-loader-4-line animate-spin"></i>{!compact && 'Analyzing…'}</>
-            ) : (
-              <><i className="ri-send-plane-fill"></i>{!compact && 'Ask'}</>
-            )}
+            {isLoading
+              ? <i className="ri-loader-4-line animate-spin text-sm"></i>
+              : <i className="ri-send-plane-fill text-sm"></i>
+            }
           </button>
         </div>
 
         {/* Suggestions */}
         {!result && suggestions.length > 0 && (
-          <div className="mt-3">
-            <p className="text-xs text-gray-500 mb-2">Try asking:</p>
+          <div>
+            <p className="text-[10px] font-semibold text-brand-400 uppercase tracking-widest mb-2">Try asking</p>
+            <div className="flex flex-col gap-1.5">
+              {suggestions.slice(0, 3).map((s, i) => (
+                <button
+                  key={i}
+                  onClick={() => handleSuggestionClick(s)}
+                  className="text-left px-3 py-2 bg-brand-50 hover:bg-ai-50 border border-border hover:border-ai-200 text-xs text-brand-600 hover:text-ai-700 rounded-premium transition-all cursor-pointer"
+                >
+                  <i className="ri-corner-down-right-line mr-1.5 opacity-50"></i>
+                  {s}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Compact result */}
+        {result && (
+          <div className={`rounded-premium-xl border p-4 ${result.success ? 'border-ai-200 bg-ai-50' : 'border-red-200 bg-red-50'}`}>
+            {result.success ? (
+              <>
+                {result.summary && (
+                  <p className="text-xs text-brand-700 leading-relaxed mb-3">{result.summary}</p>
+                )}
+                {result.data && result.data.length > 0 && (
+                  <div className="text-xs text-ai-600 font-semibold flex items-center gap-1.5">
+                    <i className="ri-database-2-line"></i>
+                    {result.data.length} row{result.data.length === 1 ? '' : 's'} returned
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="flex items-start gap-2">
+                <i className="ri-error-warning-line text-red-500 mt-0.5 flex-shrink-0"></i>
+                <p className="text-xs text-red-700">{result.error}</p>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ─── Full mode ────────────────────────────────────────────────────────────
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <AIMSectionIntro
+        eyebrow="Natural Language Query"
+        title="Ask AIM"
+        description="Query SigmaSense in plain English, review the underlying SQL when needed, and save useful answers directly into Insight History."
+        actions={
+          <div className="flex items-center gap-3">
+            {hasApiKey ? (
+              <>
+                <div className="flex items-center gap-2 px-4 py-2 bg-ai-50 border border-ai-200 text-ai-700 rounded-premium text-sm font-medium">
+                  <i className="ri-shield-check-line text-ai-500"></i>
+                  <span>{provider === 'openai' ? 'OpenAI' : 'Anthropic'} connected</span>
+                </div>
+                <button
+                  onClick={handleRemoveApiKey}
+                  className="px-4 py-2 text-sm text-brand-500 hover:text-brand-800 transition-colors whitespace-nowrap cursor-pointer"
+                >
+                  Change key
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={() => setShowApiKeyModal(true)}
+                className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-ai-500 to-ai-600 text-white text-sm font-semibold rounded-premium hover:from-ai-600 hover:to-ai-700 transition-all shadow-glow-sm whitespace-nowrap cursor-pointer"
+              >
+                <i className="ri-key-2-line"></i>
+                Connect AI
+              </button>
+            )}
+          </div>
+        }
+      />
+
+      {/* Query Studio */}
+      <AIMPanel
+        title="Query Studio"
+        description="Ask an operational question, inspect the result, and preserve the answer as reusable intelligence."
+        icon="ri-chat-voice-line"
+        accentClass="from-ai-500 to-ai-600"
+      >
+        {!hasApiKey && (
+          <div className="mb-5 flex items-start gap-3 rounded-premium-xl border border-amber-200 bg-amber-50 px-4 py-3">
+            <i className="ri-information-line text-amber-500 text-lg mt-0.5 flex-shrink-0"></i>
+            <div>
+              <p className="text-sm font-semibold text-amber-800">Running in direct query mode</p>
+              <p className="text-xs text-amber-700 mt-0.5">Add an OpenAI or Anthropic key for richer AI summaries and stronger language interpretation.</p>
+            </div>
+            <button
+              onClick={() => setShowApiKeyModal(true)}
+              className="ml-auto flex-shrink-0 text-xs font-semibold text-amber-700 hover:text-amber-900 underline underline-offset-2 whitespace-nowrap cursor-pointer"
+            >
+              Connect AI →
+            </button>
+          </div>
+        )}
+
+        <div className="grid gap-5 lg:grid-cols-[1.4fr_0.6fr]">
+          {/* Input area */}
+          <div className="space-y-3">
+            <div className="relative">
+              <textarea
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleExecuteQuery();
+                  }
+                }}
+                placeholder={hasApiKey
+                  ? 'Ask anything about your data… results auto-save to Insight History'
+                  : 'Ask anything about your operations…'
+                }
+                className="w-full min-h-[140px] px-5 py-4 bg-white border border-border rounded-premium-xl focus:outline-none focus:ring-2 focus:ring-ai-300/50 focus:border-ai-300 resize-none text-sm text-brand-800 placeholder:text-brand-300 transition-all shadow-elevation-1 leading-relaxed"
+                rows={5}
+              />
+              <div className="absolute bottom-3 right-3 flex items-center gap-2">
+                {query.trim() && (
+                  <span className="text-xs text-brand-300">{query.length} chars</span>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-brand-400">
+                <kbd className="px-1.5 py-0.5 bg-brand-100 border border-border rounded text-[10px] font-mono">Enter</kbd>
+                {' '}to run &nbsp;·&nbsp;
+                <kbd className="px-1.5 py-0.5 bg-brand-100 border border-border rounded text-[10px] font-mono">Shift+Enter</kbd>
+                {' '}for new line
+              </p>
+              <button
+                onClick={() => handleExecuteQuery()}
+                disabled={!query.trim() || isLoading}
+                className="flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-ai-500 to-ai-600 text-white text-sm font-bold rounded-premium hover:from-ai-600 hover:to-ai-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-glow-sm cursor-pointer"
+              >
+                {isLoading ? (
+                  <><i className="ri-loader-4-line animate-spin"></i> Analyzing…</>
+                ) : (
+                  <><i className="ri-send-plane-fill"></i> Ask AIM</>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* How to use */}
+          <div className="rounded-premium-xl border border-border bg-brand-50 p-5">
+            <div className="text-[10px] font-bold text-brand-400 uppercase tracking-widest mb-4">How to use</div>
+            <ul className="space-y-4">
+              {[
+                { icon: 'ri-bar-chart-box-line', text: 'Ask for trends, exceptions, comparisons, or operational drivers.' },
+                { icon: 'ri-code-s-slash-line', text: 'Review the generated SQL for analyst-level traceability.' },
+                { icon: 'ri-history-line', text: 'Every successful query feeds the AIM memory loop automatically.' },
+              ].map((item, i) => (
+                <li key={i} className="flex items-start gap-3">
+                  <div className="w-7 h-7 flex items-center justify-center bg-white border border-border rounded-lg flex-shrink-0 shadow-elevation-1">
+                    <i className={`${item.icon} text-ai-500 text-sm`}></i>
+                  </div>
+                  <span className="text-xs text-brand-600 leading-relaxed pt-0.5">{item.text}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+
+        {/* Suggested prompts */}
+        {!result && suggestions.length > 0 && (
+          <div className="mt-5 pt-5 border-t border-border">
+            <div className="mb-3 text-[10px] font-bold text-brand-400 uppercase tracking-widest">Suggested prompts</div>
             <div className="flex flex-wrap gap-2">
-              {suggestions.slice(0, compact ? 3 : 6).map((suggestion, index) => (
+              {suggestions.slice(0, 6).map((suggestion, index) => (
                 <button
                   key={index}
                   onClick={() => handleSuggestionClick(suggestion)}
-                  className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-teal-50 hover:text-teal-700 hover:border-teal-200 border border-transparent text-xs transition-all whitespace-nowrap cursor-pointer"
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 bg-white border border-border text-brand-600 hover:bg-ai-50 hover:text-ai-700 hover:border-ai-200 rounded-full text-xs font-medium transition-all whitespace-nowrap cursor-pointer shadow-elevation-1"
                 >
+                  <i className="ri-corner-down-right-line text-brand-300 text-[10px]"></i>
                   {suggestion}
                 </button>
               ))}
             </div>
           </div>
         )}
-      </div>
-      ) : (
-        <AIMPanel
-          title="Query Studio"
-          description="Ask an operational question, inspect the result, and preserve the answer as reusable intelligence."
-          icon="ri-chat-voice-line"
-          accentClass="from-teal-500 to-cyan-600"
-        >
-          {!hasApiKey && (
-            <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-              Ask AIM still works in direct query mode. Add an API key for richer AI summaries and stronger language interpretation.
-            </div>
-          )}
-          <div className="grid gap-5 lg:grid-cols-[1.35fr_0.65fr]">
-            <div>
-              <div className="flex gap-3">
-                <div className="flex-1">
-                  <textarea
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        handleExecuteQuery();
-                      }
-                    }}
-                    placeholder={hasApiKey ? 'Ask anything… results auto-save to Insight History' : 'Ask anything about your data…'}
-                    className="w-full min-h-[132px] px-4 py-4 border border-gray-300 rounded-2xl focus:ring-2 focus:ring-teal-500 focus:border-transparent resize-none text-sm"
-                    rows={4}
-                  />
-                </div>
-                <button
-                  onClick={() => handleExecuteQuery()}
-                  disabled={!query.trim() || isLoading}
-                  className="px-5 py-4 bg-teal-600 text-white rounded-2xl hover:bg-teal-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center gap-2 h-fit whitespace-nowrap cursor-pointer"
-                >
-                  {isLoading ? (
-                    <><i className="ri-loader-4-line animate-spin"></i>Analyzing…</>
-                  ) : (
-                    <><i className="ri-send-plane-fill"></i>Ask AIM</>
-                  )}
-                </button>
-              </div>
-            </div>
-            <div className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-4">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">How to use</div>
-              <ul className="mt-3 space-y-3 text-sm leading-6 text-slate-600">
-                <li className="flex items-start gap-2"><i className="ri-check-line text-teal-600 mt-1"></i><span>Ask for trends, exceptions, comparisons, or operational drivers.</span></li>
-                <li className="flex items-start gap-2"><i className="ri-check-line text-teal-600 mt-1"></i><span>Review the generated SQL when you need analyst-level traceability.</span></li>
-                <li className="flex items-start gap-2"><i className="ri-check-line text-teal-600 mt-1"></i><span>Every successful query can feed the broader AIM memory loop automatically.</span></li>
-              </ul>
-            </div>
-          </div>
-
-          {!result && suggestions.length > 0 && (
-            <div className="mt-5">
-              <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Suggested prompts</div>
-              <div className="flex flex-wrap gap-2">
-                {suggestions.slice(0, 6).map((suggestion, index) => (
-                  <button
-                    key={index}
-                    onClick={() => handleSuggestionClick(suggestion)}
-                    className="px-3 py-1.5 bg-white text-gray-700 rounded-full hover:bg-teal-50 hover:text-teal-700 hover:border-teal-200 border border-slate-200 text-xs transition-all whitespace-nowrap cursor-pointer"
-                  >
-                    {suggestion}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-        </AIMPanel>
-      )}
+      </AIMPanel>
 
       {/* Results */}
       {result && (
         <AIMPanel
-          title="Query Results"
-          description={result.success ? 'Result set, narrative summary, and query trace for your latest Ask AIM request.' : 'AIM could not complete the requested query.'}
+          title={result.success ? 'Query Results' : 'Query Failed'}
+          description={result.success
+            ? 'Result set, narrative summary, and query trace for your latest Ask AIM request.'
+            : 'AIM could not complete the requested query.'
+          }
           icon={result.success ? 'ri-database-2-line' : 'ri-error-warning-line'}
-          accentClass={result.success ? 'from-teal-500 to-cyan-600' : 'from-red-500 to-orange-600'}
+          accentClass={result.success ? 'from-ai-500 to-ai-600' : 'from-red-500 to-orange-600'}
         >
           {result.success ? (
-            <>
-              {/* Saved-to-feed badge */}
+            <div className="space-y-5">
+              {/* Saved badge */}
               {savedToFeed && (
-                <div className="mb-4 flex items-center gap-2 px-3 py-2 bg-teal-50 border border-teal-200 rounded-lg text-sm text-teal-700 w-fit">
-                  <i className="ri-history-line"></i>
-                  Saved to Insight History feed
+                <div className="flex items-center gap-2 px-3.5 py-2 bg-emerald-50 border border-emerald-200 rounded-premium text-xs font-semibold text-emerald-700 w-fit">
+                  <i className="ri-check-double-line"></i>
+                  Saved to Insight History
                 </div>
               )}
 
+              {/* AI Summary */}
               {result.summary && (
-                <div className="mb-6 rounded-[22px] border border-teal-200 bg-gradient-to-br from-teal-50 to-cyan-50 p-5">
+                <div className="rounded-premium-xl border border-ai-200 bg-gradient-to-br from-ai-50 to-ai-100 p-5">
                   <div className="flex items-start gap-3">
-                    <i className="ri-lightbulb-line text-teal-600 text-xl mt-0.5"></i>
+                    <div className="w-9 h-9 flex items-center justify-center bg-ai-500 rounded-xl flex-shrink-0 shadow-glow-sm">
+                      <i className="ri-lightbulb-flash-line text-white text-base"></i>
+                    </div>
                     <div>
-                      <h3 className="font-semibold text-gray-900 mb-1">AIM Summary</h3>
-                      <p className="text-gray-700">{result.summary}</p>
+                      <p className="text-xs font-bold text-ai-700 uppercase tracking-wide mb-1.5">AIM Summary</p>
+                      <p className="text-sm text-brand-800 leading-relaxed">{result.summary}</p>
                     </div>
                   </div>
                 </div>
               )}
 
-              <div className="mb-4 rounded-[24px] border border-slate-200 bg-[linear-gradient(180deg,_rgba(255,255,255,0.98),_rgba(248,250,252,0.94))] p-4 md:p-5">
-                <div className="mb-4 flex flex-wrap items-center gap-2">
-                  <span className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-600">
-                    {result.visualization || 'table'} view
+              {/* Visualization */}
+              <div className="rounded-premium-xl border border-border bg-white p-5 shadow-elevation-1">
+                <div className="flex items-center gap-2 mb-5">
+                  <span className="px-2.5 py-1 bg-brand-100 text-brand-600 text-[11px] font-bold uppercase tracking-wide rounded-full">
+                    {result.visualization || 'table'}
                   </span>
                   {result.data && (
-                    <span className="rounded-full bg-teal-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-teal-700">
+                    <span className="px-2.5 py-1 bg-ai-100 text-ai-700 text-[11px] font-bold uppercase tracking-wide rounded-full">
                       {result.data.length} row{result.data.length === 1 ? '' : 's'}
                     </span>
                   )}
@@ -458,31 +537,33 @@ export default function EnhancedQueryEngine({ compact = false }: Props) {
                 {renderVisualization()}
               </div>
 
+              {/* SQL trace */}
               {result.sql && (
-                <div className="border-t border-gray-200 pt-4">
+                <div>
                   <button
                     onClick={() => setShowSql(!showSql)}
-                    className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 whitespace-nowrap cursor-pointer"
+                    className="flex items-center gap-2 text-xs font-semibold text-brand-400 hover:text-brand-700 transition-colors whitespace-nowrap cursor-pointer"
                   >
                     <i className={`ri-code-${showSql ? 'box' : 's'}-line`}></i>
-                    {showSql ? 'Hide' : 'Show'} SQL Query
+                    {showSql ? 'Hide' : 'Show'} SQL query
+                    <i className={`ri-arrow-${showSql ? 'up' : 'down'}-s-line`}></i>
                   </button>
                   {showSql && (
-                    <pre className="mt-3 p-4 bg-gray-900 text-gray-100 rounded-lg overflow-x-auto text-sm">
+                    <pre className="mt-3 p-5 bg-brand-900 text-ai-200 rounded-premium-xl overflow-x-auto text-xs leading-relaxed font-mono">
                       {result.sql}
                     </pre>
                   )}
                 </div>
               )}
-            </>
+            </div>
           ) : (
-            <div className="p-4 bg-red-50 rounded-lg">
-              <div className="flex items-start gap-3">
-                <i className="ri-error-warning-line text-red-600 text-xl mt-0.5"></i>
-                <div>
-                  <h3 className="font-semibold text-gray-900 mb-1">Error</h3>
-                  <p className="text-gray-700">{result.error}</p>
-                </div>
+            <div className="flex items-start gap-4 p-5 bg-red-50 border border-red-200 rounded-premium-xl">
+              <div className="w-10 h-10 flex items-center justify-center bg-red-100 rounded-xl flex-shrink-0">
+                <i className="ri-error-warning-line text-red-600 text-lg"></i>
+              </div>
+              <div>
+                <p className="font-semibold text-red-800 mb-1">Query could not complete</p>
+                <p className="text-sm text-red-700 leading-relaxed">{result.error}</p>
               </div>
             </div>
           )}
@@ -495,32 +576,34 @@ export default function EnhancedQueryEngine({ compact = false }: Props) {
           title="Recent Queries"
           description="Re-open recent Ask AIM questions and compare successful vs failed runs."
           icon="ri-history-line"
-          accentClass="from-slate-700 to-slate-900"
+          accentClass="from-brand-600 to-brand-800"
+          actions={
+            <button
+              onClick={() => setShowHistory(!showHistory)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-brand-500 hover:text-brand-800 border border-border rounded-premium hover:bg-brand-50 transition-all cursor-pointer"
+            >
+              {showHistory ? 'Collapse' : 'Expand'}
+              <i className={`ri-arrow-${showHistory ? 'up' : 'down'}-s-line`}></i>
+            </button>
+          }
         >
-          <button
-            onClick={() => setShowHistory(!showHistory)}
-            className="flex items-center justify-between w-full text-left whitespace-nowrap cursor-pointer"
-          >
-            <h3 className="text-lg font-semibold text-gray-900">Recent Queries</h3>
-            <i className={`ri-arrow-${showHistory ? 'up' : 'down'}-s-line text-gray-400`}></i>
-          </button>
-
           {showHistory && (
-            <div className="mt-4 space-y-2">
+            <div className="space-y-2">
               {history.slice(0, 10).map((item) => (
                 <button
                   key={item.id}
                   onClick={() => handleHistoryClick(item)}
-                  className="w-full text-left p-3 rounded-lg hover:bg-gray-50 border border-gray-200 cursor-pointer"
+                  className="w-full text-left p-4 rounded-premium border border-border hover:bg-brand-50 hover:border-ai-200 transition-all cursor-pointer group"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm text-gray-900 truncate">{item.query}</p>
-                      <p className="text-xs text-gray-500 mt-1">{new Date(item.timestamp).toLocaleString()}</p>
+                      <p className="text-sm font-medium text-brand-800 truncate">{item.query}</p>
+                      <p className="text-xs text-brand-400 mt-1">{new Date(item.timestamp).toLocaleString()}</p>
                     </div>
                     {item.result.success
-                      ? <i className="ri-check-line text-teal-600"></i>
-                      : <i className="ri-close-line text-red-600"></i>}
+                      ? <span className="flex-shrink-0 w-6 h-6 flex items-center justify-center bg-emerald-100 rounded-full"><i className="ri-check-line text-emerald-600 text-xs"></i></span>
+                      : <span className="flex-shrink-0 w-6 h-6 flex items-center justify-center bg-red-100 rounded-full"><i className="ri-close-line text-red-500 text-xs"></i></span>
+                    }
                   </div>
                 </button>
               ))}
@@ -531,25 +614,38 @@ export default function EnhancedQueryEngine({ compact = false }: Props) {
 
       {/* API Key Modal */}
       {showApiKeyModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xl font-bold text-gray-900">Configure AI Provider</h3>
-              <button onClick={() => setShowApiKeyModal(false)} className="text-gray-400 hover:text-gray-600 w-8 h-8 flex items-center justify-center cursor-pointer">
-                <i className="ri-close-line text-xl"></i>
+        <div className="fixed inset-0 bg-brand-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-premium-xl shadow-elevation-5 max-w-md w-full p-7 border border-border">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 flex items-center justify-center bg-gradient-to-br from-ai-500 to-ai-600 rounded-xl shadow-glow-sm">
+                  <i className="ri-key-2-line text-white text-lg"></i>
+                </div>
+                <h3 className="text-lg font-bold text-brand-900">Connect AI Provider</h3>
+              </div>
+              <button
+                onClick={() => setShowApiKeyModal(false)}
+                className="w-8 h-8 flex items-center justify-center text-brand-400 hover:text-brand-700 hover:bg-brand-100 rounded-lg transition-colors cursor-pointer"
+              >
+                <i className="ri-close-line text-lg"></i>
               </button>
             </div>
-            <p className="text-gray-600 mb-6">Add an API key from OpenAI or Anthropic to enable AI-powered queries.</p>
-            <div className="space-y-4">
+            <p className="text-sm text-brand-500 mb-6 ml-13">
+              Add an API key from OpenAI or Anthropic for richer AI-generated summaries and stronger natural language interpretation.
+            </p>
+
+            <div className="space-y-5">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">AI Provider</label>
+                <label className="block text-xs font-bold text-brand-600 uppercase tracking-wide mb-2">AI Provider</label>
                 <div className="grid grid-cols-2 gap-3">
                   {(['openai', 'anthropic'] as const).map((p) => (
                     <button
                       key={p}
                       onClick={() => setProvider(p)}
-                      className={`px-4 py-3 rounded-lg border-2 text-sm font-medium whitespace-nowrap cursor-pointer ${
-                        provider === p ? 'border-teal-600 bg-teal-50 text-teal-700' : 'border-gray-200 text-gray-700 hover:border-gray-300'
+                      className={`px-4 py-3 rounded-premium border-2 text-sm font-semibold transition-all whitespace-nowrap cursor-pointer ${
+                        provider === p
+                          ? 'border-ai-500 bg-ai-50 text-ai-700 shadow-glow-sm'
+                          : 'border-border text-brand-600 hover:border-brand-300 hover:bg-brand-50'
                       }`}
                     >
                       {p === 'openai' ? 'OpenAI' : 'Anthropic'}
@@ -557,24 +653,30 @@ export default function EnhancedQueryEngine({ compact = false }: Props) {
                   ))}
                 </div>
               </div>
+
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">API Key</label>
+                <label className="block text-xs font-bold text-brand-600 uppercase tracking-wide mb-2">API Key</label>
                 <input
                   type="password"
                   value={apiKey}
                   onChange={(e) => setApiKey(e.target.value)}
-                  placeholder={`Enter your ${provider === 'openai' ? 'OpenAI' : 'Anthropic'} API key`}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent text-sm"
+                  onKeyDown={(e) => e.key === 'Enter' && handleSaveApiKey()}
+                  placeholder={provider === 'openai' ? 'sk-…' : 'sk-ant-…'}
+                  className="w-full px-4 py-3 border border-border rounded-premium focus:outline-none focus:ring-2 focus:ring-ai-300/50 focus:border-ai-300 text-sm text-brand-800 placeholder:text-brand-300 transition-all"
                 />
               </div>
-              <div className="flex gap-3 pt-4">
-                <button onClick={() => setShowApiKeyModal(false)} className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 whitespace-nowrap cursor-pointer">
+
+              <div className="flex gap-3 pt-1">
+                <button
+                  onClick={() => setShowApiKeyModal(false)}
+                  className="flex-1 px-4 py-2.5 border border-border text-brand-600 rounded-premium hover:bg-brand-50 text-sm font-medium transition-colors whitespace-nowrap cursor-pointer"
+                >
                   Cancel
                 </button>
                 <button
                   onClick={handleSaveApiKey}
                   disabled={!apiKey.trim()}
-                  className="flex-1 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:bg-gray-300 disabled:cursor-not-allowed whitespace-nowrap cursor-pointer"
+                  className="flex-1 px-4 py-2.5 bg-gradient-to-r from-ai-500 to-ai-600 text-white rounded-premium hover:from-ai-600 hover:to-ai-700 disabled:opacity-40 disabled:cursor-not-allowed text-sm font-bold transition-all shadow-glow-sm whitespace-nowrap cursor-pointer"
                 >
                   Save & Connect
                 </button>
