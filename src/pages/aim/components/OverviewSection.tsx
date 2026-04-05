@@ -36,7 +36,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   metrics: 'bg-ai-100 text-ai-700',
   projects: 'bg-sapphire-100 text-sapphire-700',
   recommendations: 'bg-amber-100 text-amber-700',
-  forecasts: 'bg-cyan-100 text-cyan-700',
+  forecasts: 'bg-ai-100 text-ai-700',
   'root-cause': 'bg-orange-100 text-orange-700',
   general: 'bg-brand-100 text-brand-700',
 };

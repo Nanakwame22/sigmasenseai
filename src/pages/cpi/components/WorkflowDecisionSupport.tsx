@@ -59,7 +59,7 @@ const LIVE_METRIC_PRIORITY = [
 ];
 
 const stageConfig: Record<string, { icon: string; color: string }> = {
-  Sense:   { icon: 'ri-radar-line',      color: 'text-teal-600 bg-teal-50' },
+  Sense:   { icon: 'ri-radar-line',      color: 'text-ai-600 bg-ai-50' },
   Analyze: { icon: 'ri-brain-line',      color: 'text-indigo-600 bg-indigo-50' },
   Decide:  { icon: 'ri-scales-3-line',   color: 'text-amber-600 bg-amber-50' },
   Act:     { icon: 'ri-flashlight-line', color: 'text-rose-600 bg-rose-50' },
@@ -69,11 +69,11 @@ const stageConfig: Record<string, { icon: string; color: string }> = {
 const ROLE_PRESETS: Record<string, { icon: string; color: string }> = {
   nurse:      { icon: 'ri-nurse-line',       color: 'text-rose-600 bg-rose-50 border-rose-100' },
   bed:        { icon: 'ri-hotel-bed-line',   color: 'text-amber-600 bg-amber-50 border-amber-100' },
-  lab:        { icon: 'ri-test-tube-line',   color: 'text-teal-600 bg-teal-50 border-teal-100' },
+  lab:        { icon: 'ri-test-tube-line',   color: 'text-ai-600 bg-ai-50 border-ai-100' },
   discharge:  { icon: 'ri-door-open-line',   color: 'text-emerald-600 bg-emerald-50 border-emerald-100' },
   physician:  { icon: 'ri-stethoscope-line', color: 'text-indigo-600 bg-indigo-50 border-indigo-100' },
   pharmacist: { icon: 'ri-capsule-line',     color: 'text-violet-600 bg-violet-50 border-violet-100' },
-  other:      { icon: 'ri-user-line',        color: 'text-slate-600 bg-slate-50 border-slate-100' },
+  other:      { icon: 'ri-user-line',        color: 'text-brand-600 bg-brand-50 border-brand-100' },
 };
 
 function timeAgo(ts: string): string {
@@ -201,7 +201,7 @@ function buildLiveCases(metrics: MetricRecord[], metricPoints: MetricPointRecord
       id: 'live-case:lab-escalation',
       role: 'Lab Supervisor — Central Lab',
       role_icon: 'ri-test-tube-line',
-      role_color: 'text-teal-600 bg-teal-50 border-teal-100',
+      role_color: 'text-ai-600 bg-ai-50 border-ai-100',
       signal: `${Math.round(criticalLabs.current)} critical lab result${criticalLabs.current === 1 ? '' : 's'} remain unacknowledged`,
       signal_severity: 'critical',
       decision: 'Auto-escalate to attending or re-route to covering physician?',
@@ -464,23 +464,23 @@ function LogCaseModal({ onClose, onSaved, onTrackedCaseSaved }: LogCaseModalProp
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4 overflow-hidden">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-brand-100">
           <div>
-            <h3 className="text-base font-bold text-slate-900">Log Decision Case</h3>
-            <p className="text-xs text-slate-500 mt-0.5">Record a clinical decision scenario for review and learning</p>
+            <h3 className="text-base font-bold text-brand-900">Log Decision Case</h3>
+            <p className="text-xs text-brand-500 mt-0.5">Record a clinical decision scenario for review and learning</p>
           </div>
-          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 cursor-pointer">
-            <i className="ri-close-line text-slate-500"></i>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-brand-100 cursor-pointer">
+            <i className="ri-close-line text-brand-500"></i>
           </button>
         </div>
         <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-semibold text-slate-600 block mb-1">Role Type</label>
+              <label className="text-xs font-semibold text-brand-600 block mb-1">Role Type</label>
               <select
                 value={roleType}
                 onChange={e => setRoleType(e.target.value)}
-                className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-400"
+                className="w-full text-sm border border-brand-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-ai-400"
               >
                 <option value="nurse">Bedside Nurse</option>
                 <option value="bed">Bed Manager</option>
@@ -492,11 +492,11 @@ function LogCaseModal({ onClose, onSaved, onTrackedCaseSaved }: LogCaseModalProp
               </select>
             </div>
             <div>
-              <label className="text-xs font-semibold text-slate-600 block mb-1">Severity</label>
+              <label className="text-xs font-semibold text-brand-600 block mb-1">Severity</label>
               <select
                 value={severity}
                 onChange={e => setSeverity(e.target.value as 'critical' | 'warning')}
-                className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-400"
+                className="w-full text-sm border border-brand-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-ai-400"
               >
                 <option value="critical">Critical</option>
                 <option value="warning">Warning</option>
@@ -505,57 +505,57 @@ function LogCaseModal({ onClose, onSaved, onTrackedCaseSaved }: LogCaseModalProp
           </div>
 
           <div>
-            <label className="text-xs font-semibold text-slate-600 block mb-1">Role / Name <span className="text-rose-400">*</span></label>
+            <label className="text-xs font-semibold text-brand-600 block mb-1">Role / Name <span className="text-rose-400">*</span></label>
             <input
               type="text"
               value={role}
               onChange={e => setRole(e.target.value)}
               placeholder="e.g. Bedside Nurse — ICU Unit 3"
-              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-400"
+              className="w-full text-sm border border-brand-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-ai-400"
             />
           </div>
 
           <div>
-            <label className="text-xs font-semibold text-slate-600 block mb-1">Signal / Alert <span className="text-rose-400">*</span></label>
+            <label className="text-xs font-semibold text-brand-600 block mb-1">Signal / Alert <span className="text-rose-400">*</span></label>
             <input
               type="text"
               value={signal}
               onChange={e => setSignal(e.target.value)}
               placeholder="e.g. Patient deterioration — Room 7, SpO2 dropping"
-              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-400"
+              className="w-full text-sm border border-brand-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-ai-400"
             />
           </div>
 
           <div>
-            <label className="text-xs font-semibold text-slate-600 block mb-1">Decision Question <span className="text-rose-400">*</span></label>
+            <label className="text-xs font-semibold text-brand-600 block mb-1">Decision Question <span className="text-rose-400">*</span></label>
             <input
               type="text"
               value={decision}
               onChange={e => setDecision(e.target.value)}
               placeholder="e.g. Escalate to attending or manage with current team?"
-              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-400"
+              className="w-full text-sm border border-brand-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-ai-400"
             />
           </div>
 
           <div>
-            <label className="text-xs font-semibold text-slate-600 block mb-1">Action Taken <span className="text-rose-400">*</span></label>
+            <label className="text-xs font-semibold text-brand-600 block mb-1">Action Taken <span className="text-rose-400">*</span></label>
             <input
               type="text"
               value={action}
               onChange={e => setAction(e.target.value)}
               placeholder="e.g. Rapid response called, attending notified"
-              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-400"
+              className="w-full text-sm border border-brand-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-ai-400"
             />
           </div>
 
           <div>
-            <label className="text-xs font-semibold text-slate-600 block mb-1">Tags <span className="text-slate-400 font-normal">(comma separated)</span></label>
+            <label className="text-xs font-semibold text-brand-600 block mb-1">Tags <span className="text-brand-400 font-normal">(comma separated)</span></label>
             <input
               type="text"
               value={tags}
               onChange={e => setTags(e.target.value)}
               placeholder="e.g. deterioration, rapid-response"
-              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-400"
+              className="w-full text-sm border border-brand-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-ai-400"
             />
           </div>
 
@@ -565,14 +565,14 @@ function LogCaseModal({ onClose, onSaved, onTrackedCaseSaved }: LogCaseModalProp
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer whitespace-nowrap"
+              className="px-4 py-2 text-sm text-brand-600 hover:bg-brand-100 rounded-lg cursor-pointer whitespace-nowrap"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={saving}
-              className="px-4 py-2 text-sm font-semibold bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-60 cursor-pointer whitespace-nowrap"
+              className="px-4 py-2 text-sm font-semibold bg-ai-600 text-white rounded-lg hover:bg-ai-700 disabled:opacity-60 cursor-pointer whitespace-nowrap"
             >
               {saving ? 'Saving...' : 'Log Case'}
             </button>
@@ -691,30 +691,30 @@ function ResolveModal({ caseItem, onClose, onSaved, onFed }: ResolveModalProps) 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 overflow-hidden">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-brand-100">
           <div>
-            <h3 className="text-base font-bold text-slate-900">Resolve Case</h3>
-            <p className="text-xs text-slate-500 mt-0.5 truncate max-w-xs">{caseItem.role}</p>
+            <h3 className="text-base font-bold text-brand-900">Resolve Case</h3>
+            <p className="text-xs text-brand-500 mt-0.5 truncate max-w-xs">{caseItem.role}</p>
           </div>
-          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 cursor-pointer">
-            <i className="ri-close-line text-slate-500"></i>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-brand-100 cursor-pointer">
+            <i className="ri-close-line text-brand-500"></i>
           </button>
         </div>
         <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
-          <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
-            <p className="text-xs text-slate-500 mb-1">Action taken</p>
-            <p className="text-sm text-slate-700 font-medium">{caseItem.action}</p>
+          <div className="p-3 bg-brand-50 rounded-lg border border-brand-100">
+            <p className="text-xs text-brand-500 mb-1">Action taken</p>
+            <p className="text-sm text-brand-700 font-medium">{caseItem.action}</p>
           </div>
 
           <div>
-            <label className="text-xs font-semibold text-slate-600 block mb-1">Outcome Description <span className="text-rose-400">*</span></label>
+            <label className="text-xs font-semibold text-brand-600 block mb-1">Outcome Description <span className="text-rose-400">*</span></label>
             <textarea
               value={outcome}
               onChange={e => setOutcome(e.target.value)}
               rows={3}
               maxLength={500}
               placeholder="Describe what happened as a result of this decision..."
-              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-400 resize-none"
+              className="w-full text-sm border border-brand-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-ai-400 resize-none"
             />
           </div>
 
@@ -725,7 +725,7 @@ function ResolveModal({ caseItem, onClose, onSaved, onFed }: ResolveModalProps) 
               className={`flex-1 flex items-center justify-center space-x-2 py-2.5 rounded-lg border text-sm font-medium cursor-pointer transition-all ${
                 outcomePositive
                   ? 'bg-emerald-50 border-emerald-300 text-emerald-700'
-                  : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'
+                  : 'bg-white border-brand-200 text-brand-500 hover:bg-brand-50'
               }`}
             >
               <i className="ri-checkbox-circle-line"></i>
@@ -737,7 +737,7 @@ function ResolveModal({ caseItem, onClose, onSaved, onFed }: ResolveModalProps) 
               className={`flex-1 flex items-center justify-center space-x-2 py-2.5 rounded-lg border text-sm font-medium cursor-pointer transition-all ${
                 !outcomePositive
                   ? 'bg-rose-50 border-rose-300 text-rose-700'
-                  : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'
+                  : 'bg-white border-brand-200 text-brand-500 hover:bg-brand-50'
               }`}
             >
               <i className="ri-close-circle-line"></i>
@@ -767,14 +767,14 @@ function ResolveModal({ caseItem, onClose, onSaved, onFed }: ResolveModalProps) 
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer whitespace-nowrap"
+              className="px-4 py-2 text-sm text-brand-600 hover:bg-brand-100 rounded-lg cursor-pointer whitespace-nowrap"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={saving || !outcome.trim()}
-              className="px-4 py-2 text-sm font-semibold bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-60 cursor-pointer whitespace-nowrap"
+              className="px-4 py-2 text-sm font-semibold bg-ai-600 text-white rounded-lg hover:bg-ai-700 disabled:opacity-60 cursor-pointer whitespace-nowrap"
             >
               {saving ? 'Saving & Feeding...' : 'Resolve & Feed Models'}
             </button>
@@ -1052,12 +1052,12 @@ export default function WorkflowDecisionSupport() {
       {/* Header */}
       <div className="flex items-center justify-between mb-5">
         <div>
-          <h2 className="text-lg font-bold text-slate-900">Workflow-Embedded Decision Support</h2>
-          <p className="text-sm text-slate-500 mt-0.5">Operational decision cases linked to live clinical signals and review workflows</p>
+          <h2 className="text-lg font-bold text-brand-900">Workflow-Embedded Decision Support</h2>
+          <p className="text-sm text-brand-500 mt-0.5">Operational decision cases linked to live clinical signals and review workflows</p>
         </div>
         <button
           onClick={() => setShowLogModal(true)}
-          className="flex items-center space-x-2 px-4 py-2 bg-teal-600 text-white text-sm font-semibold rounded-lg hover:bg-teal-700 transition-colors cursor-pointer whitespace-nowrap"
+          className="flex items-center space-x-2 px-4 py-2 bg-ai-600 text-white text-sm font-semibold rounded-lg hover:bg-ai-700 transition-colors cursor-pointer whitespace-nowrap"
         >
           <i className="ri-add-line"></i>
           <span>Log Case</span>
@@ -1072,10 +1072,10 @@ export default function WorkflowDecisionSupport() {
       {/* Summary Strip */}
       <div className="grid grid-cols-4 gap-3 mb-5">
         {[
-          { label: 'Total Cases',    value: cases.length,        icon: 'ri-file-list-3-line',    color: 'text-slate-600 bg-slate-50  border-slate-100' },
+          { label: 'Total Cases',    value: cases.length,        icon: 'ri-file-list-3-line',    color: 'text-brand-600 bg-brand-50  border-brand-100' },
           { label: 'Active',         value: activeCount,         icon: 'ri-pulse-line',           color: 'text-rose-600 bg-rose-50 border-rose-100' },
           { label: 'Resolved',       value: resolvedCount,       icon: 'ri-checkbox-circle-line', color: 'text-emerald-600 bg-emerald-50 border-emerald-100' },
-          { label: 'Positive Rate',  value: `${positiveRate}%`,  icon: 'ri-bar-chart-line',       color: 'text-teal-600 bg-teal-50 border-teal-100' },
+          { label: 'Positive Rate',  value: `${positiveRate}%`,  icon: 'ri-bar-chart-line',       color: 'text-ai-600 bg-ai-50 border-ai-100' },
         ].map(s => (
           <div key={s.label} className={`flex items-center space-x-3 px-4 py-3 rounded-xl border ${s.color}`}>
             <div className="w-8 h-8 flex items-center justify-center rounded-lg bg-white/60">
@@ -1100,13 +1100,13 @@ export default function WorkflowDecisionSupport() {
       )}
 
       {/* Filter Tabs */}
-      <div className="flex items-center space-x-1 mb-4 bg-slate-100 p-1 rounded-full w-fit">
+      <div className="flex items-center space-x-1 mb-4 bg-brand-100 p-1 rounded-full w-fit">
         {(['all', 'active', 'resolved'] as const).map(f => (
           <button
             key={f}
             onClick={() => setFilter(f)}
             className={`px-4 py-1.5 text-xs font-semibold rounded-full transition-all cursor-pointer whitespace-nowrap capitalize ${
-              filter === f ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+              filter === f ? 'bg-white text-brand-800 shadow-sm' : 'text-brand-500 hover:text-brand-700'
             }`}
           >
             {f === 'all' ? `All (${cases.length})` : f === 'active' ? `Active (${activeCount})` : `Resolved (${resolvedCount})`}
@@ -1118,22 +1118,22 @@ export default function WorkflowDecisionSupport() {
       {loading ? (
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
           {[1, 2, 3, 4].map(i => (
-            <div key={i} className="bg-white rounded-xl border border-slate-100 p-5 animate-pulse">
-              <div className="h-5 bg-slate-100 rounded w-48 mb-4"></div>
-              <div className="h-12 bg-slate-100 rounded mb-3"></div>
-              <div className="h-4 bg-slate-100 rounded w-3/4 mb-2"></div>
-              <div className="h-4 bg-slate-100 rounded w-2/3 mb-3"></div>
-              <div className="h-8 bg-slate-100 rounded"></div>
+            <div key={i} className="bg-white rounded-xl border border-brand-100 p-5 animate-pulse">
+              <div className="h-5 bg-brand-100 rounded w-48 mb-4"></div>
+              <div className="h-12 bg-brand-100 rounded mb-3"></div>
+              <div className="h-4 bg-brand-100 rounded w-3/4 mb-2"></div>
+              <div className="h-4 bg-brand-100 rounded w-2/3 mb-3"></div>
+              <div className="h-8 bg-brand-100 rounded"></div>
             </div>
           ))}
         </div>
       ) : filtered.length === 0 ? (
-        <div className="text-center py-16 bg-slate-50 rounded-xl border border-slate-100">
-          <div className="w-12 h-12 flex items-center justify-center mx-auto bg-slate-100 rounded-xl mb-3">
-            <i className="ri-file-list-3-line text-slate-400 text-xl"></i>
+        <div className="text-center py-16 bg-brand-50 rounded-xl border border-brand-100">
+          <div className="w-12 h-12 flex items-center justify-center mx-auto bg-brand-100 rounded-xl mb-3">
+            <i className="ri-file-list-3-line text-brand-400 text-xl"></i>
           </div>
-          <p className="text-sm font-semibold text-slate-600">No {filter !== 'all' ? filter : ''} cases</p>
-            <p className="text-xs text-slate-400 mt-1">Use &ldquo;Log Case&rdquo; to document a new operational decision and follow-through</p>
+          <p className="text-sm font-semibold text-brand-600">No {filter !== 'all' ? filter : ''} cases</p>
+            <p className="text-xs text-brand-400 mt-1">Use &ldquo;Log Case&rdquo; to document a new operational decision and follow-through</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
@@ -1145,7 +1145,7 @@ export default function WorkflowDecisionSupport() {
             return (
               <div
                 key={c.id}
-                className="bg-white rounded-xl border border-slate-100 overflow-hidden hover:border-slate-200 transition-all duration-300"
+                className="bg-white rounded-xl border border-brand-100 overflow-hidden hover:border-brand-200 transition-all duration-300"
               >
                 <div className="p-5 cursor-pointer" onClick={() => setExpandedId(isOpen ? null : c.id)}>
                   {/* Role row */}
@@ -1164,7 +1164,7 @@ export default function WorkflowDecisionSupport() {
                       }`}>
                         {c.status.charAt(0).toUpperCase() + c.status.slice(1)}
                       </span>
-                      <i className={`ri-arrow-${isOpen ? 'up' : 'down'}-s-line text-slate-400`}></i>
+                      <i className={`ri-arrow-${isOpen ? 'up' : 'down'}-s-line text-brand-400`}></i>
                     </div>
                   </div>
 
@@ -1175,18 +1175,18 @@ export default function WorkflowDecisionSupport() {
                     <i className={`ri-signal-tower-line text-base flex-shrink-0 mt-0.5 ${
                       c.signal_severity === 'critical' ? 'text-rose-500' : 'text-amber-500'
                     }`}></i>
-                    <p className="text-xs font-medium text-slate-700">{c.signal}</p>
+                    <p className="text-xs font-medium text-brand-700">{c.signal}</p>
                   </div>
 
                   {/* Decision + Action */}
                   <div className="space-y-2 mb-3">
                     <div className="flex items-start space-x-2">
-                      <i className="ri-scales-3-line text-slate-400 text-sm mt-0.5 flex-shrink-0"></i>
-                      <p className="text-xs text-slate-600">{c.decision}</p>
+                      <i className="ri-scales-3-line text-brand-400 text-sm mt-0.5 flex-shrink-0"></i>
+                      <p className="text-xs text-brand-600">{c.decision}</p>
                     </div>
                     <div className="flex items-start space-x-2">
-                      <i className="ri-flashlight-line text-teal-500 text-sm mt-0.5 flex-shrink-0"></i>
-                      <p className="text-xs text-slate-700 font-medium">{c.action}</p>
+                      <i className="ri-flashlight-line text-ai-500 text-sm mt-0.5 flex-shrink-0"></i>
+                      <p className="text-xs text-brand-700 font-medium">{c.action}</p>
                     </div>
                   </div>
 
@@ -1194,12 +1194,12 @@ export default function WorkflowDecisionSupport() {
                   {c.outcome ? (
                     <div className={`flex items-center space-x-2 p-2.5 rounded-lg ${c.outcome_positive ? 'bg-emerald-50' : 'bg-rose-50'}`}>
                       <i className={`text-sm ${c.outcome_positive ? 'ri-checkbox-circle-line text-emerald-600' : 'ri-close-circle-line text-rose-600'}`}></i>
-                      <p className="text-xs text-slate-700">{c.outcome}</p>
+                      <p className="text-xs text-brand-700">{c.outcome}</p>
                     </div>
                   ) : (
-                    <div className="flex items-center space-x-2 p-2.5 rounded-lg bg-slate-50 border border-slate-100">
-                      <i className="ri-time-line text-slate-400 text-sm"></i>
-                      <p className="text-xs text-slate-500">Outcome pending — resolve to feed the Learn stage</p>
+                    <div className="flex items-center space-x-2 p-2.5 rounded-lg bg-brand-50 border border-brand-100">
+                      <i className="ri-time-line text-brand-400 text-sm"></i>
+                      <p className="text-xs text-brand-500">Outcome pending — resolve to feed the Learn stage</p>
                     </div>
                   )}
 
@@ -1207,21 +1207,21 @@ export default function WorkflowDecisionSupport() {
                     <div className="flex items-center justify-between mt-3">
                       <div className="flex items-center flex-wrap gap-1">
                         {c.tags.slice(0, 3).map(tag => (
-                          <span key={tag} className="text-xs px-2 py-0.5 bg-slate-100 text-slate-500 rounded-full">{tag}</span>
+                          <span key={tag} className="text-xs px-2 py-0.5 bg-brand-100 text-brand-500 rounded-full">{tag}</span>
                         ))}
                         {linkedCaseActions[c.id] && (
-                          <span className="text-xs px-2 py-0.5 bg-teal-50 text-teal-700 rounded-full font-medium border border-teal-100">
+                          <span className="text-xs px-2 py-0.5 bg-ai-50 text-ai-700 rounded-full font-medium border border-ai-100">
                             In Action Tracker
                           </span>
                         )}
                       </div>
-                      <span className="text-xs text-slate-400 whitespace-nowrap">{timeAgo(c.created_at)}</span>
+                      <span className="text-xs text-brand-400 whitespace-nowrap">{timeAgo(c.created_at)}</span>
                     </div>
 
-                  <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-100">
+                  <div className="flex items-center justify-between mt-3 pt-3 border-t border-brand-100">
                     <div className="flex items-center space-x-2 min-w-0">
-                      <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Owner</span>
-                      <span className="text-xs font-medium text-slate-700 truncate">{owner}</span>
+                      <span className="text-[11px] font-semibold uppercase tracking-wide text-brand-400">Owner</span>
+                      <span className="text-xs font-medium text-brand-700 truncate">{owner}</span>
                     </div>
                     <div className={`flex items-center space-x-1.5 px-2.5 py-1 rounded-full border text-xs font-semibold ${dueMeta.tone}`}>
                       <i className={`${dueMeta.icon} text-xs`}></i>
@@ -1232,9 +1232,9 @@ export default function WorkflowDecisionSupport() {
 
                 {/* Expanded: intelligence cycle */}
                 {isOpen && (
-                  <div className="px-5 pb-5 border-t border-slate-100 pt-4">
+                  <div className="px-5 pb-5 border-t border-brand-100 pt-4">
                     <div className="flex items-center justify-between mb-3">
-                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Intelligence Cycle</p>
+                      <p className="text-xs font-semibold text-brand-500 uppercase tracking-wider">Intelligence Cycle</p>
                       {c.status === 'active' && !c.id.startsWith('live-case:') && (
                         <div className="flex items-center space-x-2">
                           {!linkedCaseActions[c.id] && (
@@ -1244,7 +1244,7 @@ export default function WorkflowDecisionSupport() {
                                 void pushTrackedCaseToActionTracker(c);
                               }}
                               disabled={pushingCaseId === c.id}
-                              className="flex items-center space-x-1.5 px-3 py-1.5 text-xs font-semibold bg-white border border-teal-200 text-teal-700 rounded-lg hover:bg-teal-50 disabled:opacity-60 cursor-pointer whitespace-nowrap"
+                              className="flex items-center space-x-1.5 px-3 py-1.5 text-xs font-semibold bg-white border border-ai-200 text-ai-700 rounded-lg hover:bg-ai-50 disabled:opacity-60 cursor-pointer whitespace-nowrap"
                             >
                               <i className="ri-send-plane-line text-sm"></i>
                               <span>{pushingCaseId === c.id ? 'Pushing...' : 'Push to Action Tracker'}</span>
@@ -1252,7 +1252,7 @@ export default function WorkflowDecisionSupport() {
                           )}
                           <button
                             onClick={(e) => { e.stopPropagation(); setResolveCase(c); }}
-                            className="flex items-center space-x-1.5 px-3 py-1.5 text-xs font-semibold bg-teal-600 text-white rounded-lg hover:bg-teal-700 cursor-pointer whitespace-nowrap"
+                            className="flex items-center space-x-1.5 px-3 py-1.5 text-xs font-semibold bg-ai-600 text-white rounded-lg hover:bg-ai-700 cursor-pointer whitespace-nowrap"
                           >
                             <i className="ri-loop-left-line text-sm"></i>
                             <span>Resolve &amp; Feed Models</span>
@@ -1281,7 +1281,7 @@ export default function WorkflowDecisionSupport() {
                     </div>
                     <div className="space-y-2">
                       {(c.steps as DecisionStep[]).map((step, i) => {
-                        const cfg = stageConfig[step.stage] || { icon: 'ri-circle-line', color: 'text-slate-500 bg-slate-50' };
+                        const cfg = stageConfig[step.stage] || { icon: 'ri-circle-line', color: 'text-brand-500 bg-brand-50' };
                         return (
                           <div key={i} className="flex items-start space-x-3">
                             <div className={`w-7 h-7 flex items-center justify-center rounded-lg flex-shrink-0 ${cfg.color}`}>
@@ -1289,12 +1289,12 @@ export default function WorkflowDecisionSupport() {
                             </div>
                             <div className="flex-1">
                               <div className="flex items-center space-x-2">
-                                <span className="text-xs font-bold text-slate-700">{step.stage}</span>
+                                <span className="text-xs font-bold text-brand-700">{step.stage}</span>
                                 {step.automated && (
-                                  <span className="text-xs px-1.5 py-0.5 bg-teal-50 text-teal-600 rounded-full font-medium">Automated</span>
+                                  <span className="text-xs px-1.5 py-0.5 bg-ai-50 text-ai-600 rounded-full font-medium">Automated</span>
                                 )}
                               </div>
-                              <p className="text-xs text-slate-500 mt-0.5">{step.description}</p>
+                              <p className="text-xs text-brand-500 mt-0.5">{step.description}</p>
                             </div>
                           </div>
                         );
@@ -1303,8 +1303,8 @@ export default function WorkflowDecisionSupport() {
 
                     {/* Target models chip row for active cases */}
                     {c.status === 'active' && (
-                      <div className="mt-3 pt-3 border-t border-slate-100">
-                        <p className="text-xs text-slate-400 mb-1.5">Will feed learning data to:</p>
+                      <div className="mt-3 pt-3 border-t border-brand-100">
+                        <p className="text-xs text-brand-400 mb-1.5">Will feed learning data to:</p>
                         <div className="flex flex-wrap gap-1">
                           {getTargetModels(c).map(key => (
                             <span key={key} className="text-xs px-2 py-0.5 bg-emerald-50 border border-emerald-100 text-emerald-700 rounded-full font-medium whitespace-nowrap">
@@ -1315,14 +1315,14 @@ export default function WorkflowDecisionSupport() {
                       </div>
                     )}
 
-                    <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between gap-3">
+                    <div className="mt-3 pt-3 border-t border-brand-100 flex items-center justify-between gap-3">
                       <div className="min-w-0">
-                        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Audit Trail</p>
-                        <p className="text-xs text-slate-600 mt-1 truncate">
+                        <p className="text-xs font-semibold text-brand-400 uppercase tracking-wider">Audit Trail</p>
+                        <p className="text-xs text-brand-600 mt-1 truncate">
                           {auditMeta.label} · Owner: {owner}
                         </p>
                       </div>
-                      <span className="text-xs text-slate-400 whitespace-nowrap">
+                      <span className="text-xs text-brand-400 whitespace-nowrap">
                         {auditMeta.timestamp ? new Date(auditMeta.timestamp).toLocaleString() : '—'}
                       </span>
                     </div>

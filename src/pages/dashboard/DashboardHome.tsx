@@ -1,8 +1,18 @@
 import { Link } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import { useDashboardData } from '../../hooks/useDashboardData';
 import MetricTrendChart from './components/MetricTrendChart';
 import KPIHealthGrid from './components/KPIHealthGrid';
 import OperationalTrustPanel from '../../components/common/OperationalTrustPanel';
+
+const cardVariants = {
+  hidden: { opacity: 0, y: 18 },
+  show: (i: number) => ({
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.38, delay: i * 0.07, ease: [0.22, 1, 0.36, 1] },
+  }),
+};
 
 interface StatCardProps {
   title: string;
@@ -53,13 +63,49 @@ export default function DashboardHome() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-[80vh]">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-14 h-14 bg-gradient-to-br from-ai-500 to-sapphire-600 rounded-premium-lg flex items-center justify-center shadow-glow-md">
-            <i className="ri-loader-4-line text-white text-2xl animate-spin"></i>
+      <div className="space-y-6 animate-pulse">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div className="space-y-2">
+            <div className="h-6 w-56 bg-brand-100 rounded-lg"></div>
+            <div className="h-3.5 w-72 bg-brand-100 rounded-lg"></div>
           </div>
-          <p className="text-brand-400 font-medium text-sm">Loading intelligence dashboard...</p>
+          <div className="h-10 w-32 bg-brand-100 rounded-premium"></div>
         </div>
+        {/* Trust panel */}
+        <div className="h-14 bg-brand-50 border border-border rounded-premium-lg"></div>
+        {/* Stat cards */}
+        <div className="grid grid-cols-4 gap-4">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="bg-white rounded-premium border border-border shadow-elevation-1 p-5 h-28">
+              <div className="flex items-start justify-between">
+                <div className="space-y-2 flex-1">
+                  <div className="h-2.5 w-20 bg-brand-100 rounded"></div>
+                  <div className="h-8 w-14 bg-brand-100 rounded"></div>
+                  <div className="h-2.5 w-28 bg-brand-100 rounded"></div>
+                </div>
+                <div className="w-10 h-10 bg-brand-100 rounded-premium flex-shrink-0"></div>
+              </div>
+            </div>
+          ))}
+        </div>
+        {/* Trend + AI panel */}
+        <div className="grid grid-cols-3 gap-5">
+          <div className="col-span-2 bg-white rounded-premium-lg border border-border shadow-elevation-1 p-6 h-[340px]">
+            <div className="h-4 w-40 bg-brand-100 rounded mb-6"></div>
+            <div className="h-[260px] bg-brand-50 rounded-xl"></div>
+          </div>
+          <div className="bg-brand-900 rounded-premium-lg shadow-elevation-4 p-5 h-[340px]">
+            <div className="h-4 w-28 bg-brand-800 rounded mb-4"></div>
+            <div className="space-y-3">
+              {[...Array(3)].map((_, i) => (
+                <div key={i} className="h-16 bg-brand-800/60 rounded-xl"></div>
+              ))}
+            </div>
+          </div>
+        </div>
+        {/* KPI grid placeholder */}
+        <div className="h-48 bg-white rounded-premium-lg border border-border shadow-elevation-1"></div>
       </div>
     );
   }
@@ -145,45 +191,42 @@ export default function DashboardHome() {
 
       {/* ── Stat Cards ── */}
       <div className="grid grid-cols-4 gap-4">
-        <StatCard
-          title="Total Metrics"
-          value={stats.totalMetrics}
-          subtitle="Tracked across all processes"
-          icon="ri-line-chart-line"
-          iconBg="bg-gradient-to-br from-sapphire-500 to-sapphire-600"
-          accent="bg-sapphire-500"
-          trend={stats.totalMetrics > 0 ? { value: `${stats.totalMetrics} active`, up: true } : null}
-        />
-        <StatCard
-          title="Active Alerts"
-          value={stats.activeAlerts}
-          subtitle={stats.activeAlerts === 0 ? 'All systems normal' : 'Require attention'}
-          icon="ri-alert-line"
-          iconBg={stats.activeAlerts > 0 ? 'bg-gradient-to-br from-red-500 to-red-600' : 'bg-gradient-to-br from-emerald-500 to-emerald-600'}
-          accent={stats.activeAlerts > 0 ? 'bg-red-500' : 'bg-emerald-500'}
-          trend={null}
-        />
-        <StatCard
-          title="Avg KPI Health"
-          value={`${stats.avgMetricValue.toFixed(1)}%`}
-          subtitle="Average attainment vs targets"
-          icon="ri-speed-up-line"
-          iconBg="bg-gradient-to-br from-ai-500 to-ai-600"
-          accent="bg-ai-500"
-          trend={stats.avgMetricValue > 0 ? {
-            value: `${avgPctVsTarget >= 0 ? '+' : ''}${avgPctVsTarget.toFixed(1)}% vs target`,
-            up: avgPctVsTarget >= 0,
-          } : null}
-        />
-        <StatCard
-          title="Completed Actions"
-          value={stats.completedActions}
-          subtitle={`${stats.completedForecasts} forecasts · ${stats.pendingRecommendations} pending recs`}
-          icon="ri-checkbox-circle-line"
-          iconBg="bg-gradient-to-br from-violet-500 to-violet-600"
-          accent="bg-violet-500"
-          trend={stats.completedActions > 0 ? { value: `${stats.completedActions} resolved`, up: true } : null}
-        />
+        {[
+          {
+            title: 'Total Metrics', value: stats.totalMetrics,
+            subtitle: 'Tracked across all processes', icon: 'ri-line-chart-line',
+            iconBg: 'bg-gradient-to-br from-sapphire-500 to-sapphire-600', accent: 'bg-sapphire-500',
+            trend: stats.totalMetrics > 0 ? { value: `${stats.totalMetrics} active`, up: true } : null,
+          },
+          {
+            title: 'Active Alerts', value: stats.activeAlerts,
+            subtitle: stats.activeAlerts === 0 ? 'All systems normal' : 'Require attention',
+            icon: 'ri-alert-line',
+            iconBg: stats.activeAlerts > 0 ? 'bg-gradient-to-br from-red-500 to-red-600' : 'bg-gradient-to-br from-emerald-500 to-emerald-600',
+            accent: stats.activeAlerts > 0 ? 'bg-red-500' : 'bg-emerald-500',
+            trend: null,
+          },
+          {
+            title: 'Avg KPI Health', value: `${stats.avgMetricValue.toFixed(1)}%`,
+            subtitle: 'Average attainment vs targets', icon: 'ri-speed-up-line',
+            iconBg: 'bg-gradient-to-br from-ai-500 to-ai-600', accent: 'bg-ai-500',
+            trend: stats.avgMetricValue > 0 ? {
+              value: `${avgPctVsTarget >= 0 ? '+' : ''}${avgPctVsTarget.toFixed(1)}% vs target`,
+              up: avgPctVsTarget >= 0,
+            } : null,
+          },
+          {
+            title: 'Completed Actions', value: stats.completedActions,
+            subtitle: `${stats.completedForecasts} forecasts · ${stats.pendingRecommendations} pending recs`,
+            icon: 'ri-checkbox-circle-line',
+            iconBg: 'bg-gradient-to-br from-violet-500 to-violet-600', accent: 'bg-violet-500',
+            trend: stats.completedActions > 0 ? { value: `${stats.completedActions} resolved`, up: true } : null,
+          },
+        ].map((card, i) => (
+          <motion.div key={card.title} custom={i} variants={cardVariants} initial="hidden" animate="show">
+            <StatCard {...card} />
+          </motion.div>
+        ))}
       </div>
 
       {/* ── Trend Chart + AI Alert Panel ── */}

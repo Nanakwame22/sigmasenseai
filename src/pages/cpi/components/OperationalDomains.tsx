@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { motion } from 'framer-motion';
 import { useCPIData } from '../../../hooks/useCPIData';
 import type { CPIDomainSnapshot } from '../../../hooks/useCPIData';
 import DomainActionModal from './DomainActionModal';
@@ -314,15 +315,23 @@ export default function OperationalDomains() {
       </div>
 
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
-        {sortedDomains.map((domain) => {
+        {sortedDomains.map((domain, i) => {
           const config = domainConfigs[domain.domain_id];
           if (!config) return null;
-          return <DomainCard
-            key={domain.id}
-            domain={domain}
-            config={config}
-            onTakeAction={() => setActionTarget({ domain, name: config.name, icon: config.icon })}
-          />;
+          return (
+            <motion.div
+              key={domain.id}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: i * 0.08, ease: [0.22, 1, 0.36, 1] }}
+            >
+              <DomainCard
+                domain={domain}
+                config={config}
+                onTakeAction={() => setActionTarget({ domain, name: config.name, icon: config.icon })}
+              />
+            </motion.div>
+          );
         })}
       </div>
 
