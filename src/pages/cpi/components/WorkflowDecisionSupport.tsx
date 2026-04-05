@@ -366,7 +366,7 @@ function buildTrackedCaseFromLiveCase(caseItem: DecisionCase) {
     action: caseItem.action,
     steps: caseItem.steps,
     status: 'active',
-    tags: caseItem.tags,
+    tags: Array.from(new Set([...(caseItem.tags || []), `cpi-live-case:${caseItem.id}`])),
     updated_at: new Date().toISOString(),
   };
 }
@@ -931,6 +931,14 @@ export default function WorkflowDecisionSupport() {
 
     let mergedCases = (data as DecisionCase[]) || [];
 
+    const trackedLiveCaseIds = new Set(
+      mergedCases.flatMap((item) =>
+        (item.tags || [])
+          .filter((tag) => tag.startsWith('cpi-live-case:'))
+          .map((tag) => tag.replace('cpi-live-case:', ''))
+      )
+    );
+
     if (organizationId) {
       const { data: metricRows, error: metricsError } = await supabase
         .from('metrics')
@@ -948,7 +956,8 @@ export default function WorkflowDecisionSupport() {
           .limit(500);
 
         if (!pointsError) {
-          const liveCases = buildLiveCases(metricRows as MetricRecord[], (pointRows as MetricPointRecord[]) || []);
+          const liveCases = buildLiveCases(metricRows as MetricRecord[], (pointRows as MetricPointRecord[]) || [])
+            .filter((item) => !trackedLiveCaseIds.has(item.id));
           const existingIds = new Set(liveCases.map(item => item.id));
           mergedCases = [...liveCases, ...mergedCases.filter(item => !existingIds.has(item.id))];
         }
