@@ -139,12 +139,17 @@ function meetsRecommendationGate(pattern: DataPattern): boolean {
       return evidenceStrength >= 72 && normalizePatternNumber(pattern.data?.growth) >= 20;
     case 'active_alert_pressure':
       return (
-        evidenceStrength >= 60 &&
+        evidenceStrength >= 55 &&
         (
-          normalizePatternNumber(pattern.data?.alert?.confidence) >= 70 ||
+          normalizePatternNumber(pattern.data?.alert?.confidence) >= 60 ||
           normalizePatternNumber(pattern.data?.alert?.days_until) <= 30 ||
           pattern.severity === 'critical' ||
-          pattern.severity === 'high'
+          pattern.severity === 'high' ||
+          (
+            pattern.severity === 'medium' &&
+            normalizePatternNumber(pattern.data?.alert?.days_until) > 0 &&
+            normalizePatternNumber(pattern.data?.alert?.days_until) <= 45
+          )
         )
       );
     default:
@@ -588,8 +593,8 @@ export class RecommendationsEngine {
       const shouldPromote =
         severity === 'critical' ||
         severity === 'high' ||
-        confidence >= 70 ||
-        (daysUntil > 0 && daysUntil <= 30);
+        confidence >= 60 ||
+        (daysUntil > 0 && daysUntil <= 45);
 
       if (!shouldPromote) continue;
 
