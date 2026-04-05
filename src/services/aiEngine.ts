@@ -43,6 +43,13 @@ interface ForecastPoint {
   seasonal: number;
 }
 
+interface ForecastValidation {
+  sample_size: number;
+  mape: number;
+  directional_accuracy: number;
+  realized_label: 'Validated' | 'Mixed' | 'Weak';
+}
+
 interface AdvancedForecast {
   method: 'sma' | 'ema' | 'exponential_smoothing' | 'seasonal';
   forecast: ForecastPoint[];
@@ -50,6 +57,7 @@ interface AdvancedForecast {
   trend_strength: number;
   seasonality_detected: boolean;
   outliers: number[];
+  validation: ForecastValidation;
 }
 
 // Helper function for linear regression
@@ -272,6 +280,84 @@ function calculateConfidenceInterval(data: number[], forecast: number, confidenc
   };
 }
 
+function projectNextValue(
+  values: number[],
+  method: 'sma' | 'ema' | 'exponential_smoothing' | 'seasonal'
+): number {
+  if (values.length === 0) return 0;
+  if (values.length < 2) return values[values.length - 1] ?? 0;
+
+  switch (method) {
+    case 'sma': {
+      const sma = calculateSMA(values, Math.min(7, values.length));
+      const lastValue = sma[sma.length - 1] ?? values[values.length - 1];
+      const priorValue = sma[Math.max(0, sma.length - Math.min(7, sma.length))] ?? lastValue;
+      const trend = (lastValue - priorValue) / Math.max(1, Math.min(7, sma.length) - 1);
+      return lastValue + trend;
+    }
+    case 'ema': {
+      const ema = calculateEMA(values, Math.min(14, values.length));
+      const lastValue = ema[ema.length - 1] ?? values[values.length - 1];
+      const priorValue = ema[Math.max(0, ema.length - Math.min(7, ema.length))] ?? lastValue;
+      const trend = (lastValue - priorValue) / Math.max(1, Math.min(7, ema.length) - 1);
+      return lastValue + trend;
+    }
+    case 'exponential_smoothing': {
+      const { level, trend } = exponentialSmoothing(values);
+      return (level[level.length - 1] ?? values[values.length - 1]) + (trend[trend.length - 1] ?? 0);
+    }
+    case 'seasonal': {
+      const { level, trend } = exponentialSmoothing(values);
+      const { seasonal } = detectSeasonality(values);
+      const seasonalPeriod = Math.max(1, Math.min(7, seasonal.length || 1));
+      const seasonalIndex = values.length % seasonalPeriod;
+      return (level[level.length - 1] ?? values[values.length - 1]) + (trend[trend.length - 1] ?? 0) + (seasonal[seasonalIndex] ?? 0);
+    }
+  }
+}
+
+function backtestForecast(
+  values: number[],
+  method: 'sma' | 'ema' | 'exponential_smoothing' | 'seasonal'
+): ForecastValidation {
+  const validationWindow = Math.min(12, Math.max(4, Math.floor(values.length * 0.15)));
+  const startIndex = Math.max(6, values.length - validationWindow);
+  let mapeSum = 0;
+  let directionalHits = 0;
+  let samples = 0;
+
+  for (let i = startIndex; i < values.length; i++) {
+    const training = values.slice(0, i);
+    const actual = values[i];
+    if (training.length < 6 || !Number.isFinite(actual) || actual === 0) continue;
+
+    const predicted = projectNextValue(training, method);
+    const previous = training[training.length - 1];
+    mapeSum += Math.abs((actual - predicted) / actual);
+
+    const actualDirection = Math.sign(actual - previous);
+    const predictedDirection = Math.sign(predicted - previous);
+    if (actualDirection === predictedDirection || Math.abs(actual - previous) < 0.001) {
+      directionalHits += 1;
+    }
+    samples += 1;
+  }
+
+  const mape = samples > 0 ? (mapeSum / samples) * 100 : 100;
+  const directionalAccuracy = samples > 0 ? (directionalHits / samples) * 100 : 0;
+  const realized_label =
+    mape <= 18 && directionalAccuracy >= 70 ? 'Validated' :
+    mape <= 30 && directionalAccuracy >= 55 ? 'Mixed' :
+    'Weak';
+
+  return {
+    sample_size: samples,
+    mape: Math.round(mape * 10) / 10,
+    directional_accuracy: Math.round(directionalAccuracy),
+    realized_label,
+  };
+}
+
 // Generate Advanced Forecast
 export async function generateAdvancedForecast(
   metricId: string,
@@ -411,6 +497,7 @@ export async function generateAdvancedForecast(
     }
     
     const accuracy = Math.max(0, Math.min(100, 100 - mape));
+    const validation = backtestForecast(cleanedValues, selectedMethod as AdvancedForecast['method']);
     
     return {
       method: selectedMethod as any,
@@ -418,7 +505,8 @@ export async function generateAdvancedForecast(
       accuracy: Math.round(accuracy),
       trend_strength: Math.round(trendStrength * 100) / 100,
       seasonality_detected: seasonalityDetected,
-      outliers
+      outliers,
+      validation,
     };
     
   } catch (error) {

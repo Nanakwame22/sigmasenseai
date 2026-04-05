@@ -183,6 +183,7 @@ const ImpactForecastsSection: React.FC = () => {
         metric_name: metric?.name || 'Unknown Metric',
         method: forecast.method,
         accuracy: forecast.accuracy,
+        validation: forecast.validation,
         trend_strength: forecast.trend_strength,
         seasonality_detected: forecast.seasonality_detected,
         outliers_count: forecast.outliers.length,
@@ -528,13 +529,24 @@ const ImpactForecastsSection: React.FC = () => {
               </div>
 
               {/* Forecast Statistics */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
                 <div className="bg-gradient-to-br from-ai-50 to-ai-100 rounded-lg p-4">
                   <div className="flex items-center gap-2 mb-1">
                     <i className="ri-accuracy-line text-ai-600"></i>
                     <span className="text-sm text-ai-700 font-medium">Accuracy</span>
                   </div>
                   <div className="text-2xl font-bold text-ai-900">{forecast.accuracy}%</div>
+                </div>
+
+                <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-lg p-4">
+                  <div className="flex items-center gap-2 mb-1">
+                    <i className="ri-checkbox-circle-line text-emerald-600"></i>
+                    <span className="text-sm text-emerald-700 font-medium">Realized Check</span>
+                  </div>
+                  <div className="text-2xl font-bold text-emerald-900">{forecast.validation?.realized_label ?? '—'}</div>
+                  <div className="mt-1 text-xs text-emerald-700/80">
+                    {forecast.validation?.sample_size ?? 0} held-out points
+                  </div>
                 </div>
 
                 <div className="bg-gradient-to-br from-sapphire-50 to-sapphire-100 rounded-lg p-4">
@@ -563,6 +575,25 @@ const ImpactForecastsSection: React.FC = () => {
                   <div className="text-2xl font-bold text-orange-900">{forecast.outliers_count}</div>
                 </div>
               </div>
+
+              {forecast.validation && (
+                <div className="mb-6 rounded-xl border border-emerald-100 bg-emerald-50/70 p-4">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-emerald-700">
+                      Realized MAPE: {forecast.validation.mape}%
+                    </span>
+                    <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-emerald-700">
+                      Directional accuracy: {forecast.validation.directional_accuracy}%
+                    </span>
+                    <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-emerald-700">
+                      Held-out samples: {forecast.validation.sample_size}
+                    </span>
+                  </div>
+                  <p className="mt-3 text-sm text-emerald-800">
+                    SigmaSense back-tested this forecast against recent realized metric outcomes so this card reflects not only modeled fit, but whether the forecast direction actually held up on held-out history.
+                  </p>
+                </div>
+              )}
 
               {/* Forecast Chart with Confidence Intervals */}
               <div className="bg-brand-50 rounded-lg p-4">
