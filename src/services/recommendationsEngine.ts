@@ -85,6 +85,9 @@ function getPatternRefreshTimestamp(pattern: DataPattern): string | null {
   if (pattern.type === 'recurring_anomalies') {
     return pattern.data?.anomalies?.[0]?.detected_at ?? null;
   }
+  if (pattern.type === 'active_alert_pressure') {
+    return pattern.data?.alert?.created_at ?? null;
+  }
   return null;
 }
 
@@ -102,6 +105,16 @@ function getPatternEvidenceStrength(pattern: DataPattern): number {
       return Math.min(100, 60 + Number(pattern.data?.decline || 0) * 0.9 + ((pattern.data?.predictions?.length || 0) >= 12 ? 8 : 0));
     case 'positive_forecast':
       return Math.min(100, 45 + Number(pattern.data?.growth || 0) * 0.6);
+    case 'active_alert_pressure':
+      return Math.min(
+        100,
+        52 +
+          normalizePatternNumber(pattern.data?.alert?.confidence) * 0.35 +
+          (normalizePatternNumber(pattern.data?.alert?.days_until) > 0
+            ? Math.max(0, 30 - normalizePatternNumber(pattern.data?.alert?.days_until)) * 0.8
+            : 0) +
+          (pattern.severity === 'critical' ? 12 : pattern.severity === 'high' ? 8 : 0)
+      );
     default:
       return 0;
   }
@@ -120,9 +133,19 @@ function meetsRecommendationGate(pattern: DataPattern): boolean {
     case 'recurring_anomalies':
       return evidenceStrength >= 70 && normalizePatternNumber(pattern.data?.count) >= 3;
     case 'negative_forecast':
-      return evidenceStrength >= 66 && normalizePatternNumber(pattern.data?.decline) >= 10;
+      return evidenceStrength >= 60 && normalizePatternNumber(pattern.data?.decline) >= 8;
     case 'positive_forecast':
       return evidenceStrength >= 72 && normalizePatternNumber(pattern.data?.growth) >= 20;
+    case 'active_alert_pressure':
+      return (
+        evidenceStrength >= 60 &&
+        (
+          normalizePatternNumber(pattern.data?.alert?.confidence) >= 70 ||
+          normalizePatternNumber(pattern.data?.alert?.days_until) <= 30 ||
+          pattern.severity === 'critical' ||
+          pattern.severity === 'high'
+        )
+      );
     default:
       return false;
   }
@@ -139,6 +162,8 @@ function buildRecommendationSignature(pattern: DataPattern): string {
     case 'negative_forecast':
     case 'positive_forecast':
       return `${pattern.type}::${pattern.data?.forecast?.metric_id || pattern.data?.forecast?.metric_name || 'forecastless'}`;
+    case 'active_alert_pressure':
+      return `${pattern.type}::${pattern.data?.alert?.metric_id || pattern.data?.alert?.title || 'alertless'}::${pattern.data?.alert?.alert_type || 'signal'}`;
     default:
       return `${pattern.type}::generic`;
   }
@@ -155,6 +180,8 @@ function getPatternGeneratedFrom(pattern: DataPattern): string[] {
     case 'negative_forecast':
     case 'positive_forecast':
       return ['forecasts', 'metrics'];
+    case 'active_alert_pressure':
+      return ['alerts', 'metrics'];
     default:
       return ['aim'];
   }
@@ -345,6 +372,9 @@ export class RecommendationsEngine {
     const forecastPatterns = await this.analyzeForecasts();
     patterns.push(...forecastPatterns);
 
+    const alertPatterns = await this.analyzeAlertSignals();
+    patterns.push(...alertPatterns);
+
     return patterns;
   }
 
@@ -516,6 +546,59 @@ export class RecommendationsEngine {
     return patterns;
   }
 
+  private async analyzeAlertSignals(): Promise<DataPattern[]> {
+    const patterns: DataPattern[] = [];
+    const orgId = await this.getOrganizationId();
+    if (!orgId) return patterns;
+
+    const { data: alerts } = await supabase
+      .from('alerts')
+      .select('id, metric_id, title, description, message, severity, alert_type, status, category, confidence, days_until, created_at')
+      .eq('organization_id', orgId)
+      .in('status', ['new', 'acknowledged'])
+      .order('created_at', { ascending: false })
+      .limit(30);
+
+    if (!alerts || alerts.length === 0) return patterns;
+
+    const seenKeys = new Set<string>();
+
+    for (const alert of alerts) {
+      const dedupeKey = `${alert.metric_id || alert.title || alert.id}::${alert.alert_type || alert.category || 'signal'}`;
+      if (seenKeys.has(dedupeKey)) continue;
+      seenKeys.add(dedupeKey);
+
+      const severity = (['critical', 'high', 'medium', 'low'].includes(alert.severity)
+        ? alert.severity
+        : 'medium') as DataPattern['severity'];
+      const confidence = normalizePatternNumber(alert.confidence);
+      const daysUntil = normalizePatternNumber(alert.days_until);
+      const shouldPromote =
+        severity === 'critical' ||
+        severity === 'high' ||
+        confidence >= 70 ||
+        (daysUntil > 0 && daysUntil <= 30);
+
+      if (!shouldPromote) continue;
+
+      patterns.push({
+        type: 'active_alert_pressure',
+        severity,
+        data: {
+          alert,
+          confidence,
+          daysUntil,
+        },
+        insight:
+          alert.description ||
+          alert.message ||
+          `${alert.title} is showing enough sustained pressure to justify operator review and potential intervention.`,
+      });
+    }
+
+    return patterns;
+  }
+
   private createRecommendation(pattern: DataPattern, organizationId: string): Recommendation | null {
     if (!meetsRecommendationGate(pattern)) {
       return null;
@@ -679,6 +762,41 @@ export class RecommendationsEngine {
             'Recognize and reward teams contributing to success'
           ],
           expected_impact: `Sustaining this momentum could achieve ${pattern.data.growth}%+ improvement and establish new performance baseline.`
+        };
+
+      case 'active_alert_pressure':
+        return {
+          ...baseRecommendation,
+          id: crypto.randomUUID(),
+          title: `Respond to ${pattern.data.alert.title}`,
+          description:
+            pattern.insight ||
+            `${pattern.data.alert.title} is now strong enough to move from watch mode into guided operator response.`,
+          category: 'risk',
+          priority: pattern.severity,
+          impact_score:
+            pattern.severity === 'critical'
+              ? 88
+              : pattern.severity === 'high'
+                ? 78
+                : 68,
+          effort_score:
+            pattern.severity === 'critical'
+              ? 58
+              : pattern.severity === 'high'
+                ? 52
+                : 45,
+          confidence_score: Math.max(68, Math.min(96, getPatternEvidenceStrength(pattern))),
+          recommended_actions: [
+            'Review the leading signal and validate the underlying source metric or workflow pressure.',
+            'Assign an owner to confirm whether the condition is persistent or transient.',
+            'Take the highest-leverage corrective step from the linked response actions.',
+            'Recheck the signal after the next refresh cycle and capture whether conditions improved.'
+          ],
+          expected_impact:
+            pattern.data.daysUntil > 0
+              ? `Acting inside the ${pattern.data.daysUntil}-day lead window should reduce the chance of this signal becoming an operating incident.`
+              : 'Acting now should reduce the chance of this alert family escalating into a larger operating incident.',
         };
 
       default:
