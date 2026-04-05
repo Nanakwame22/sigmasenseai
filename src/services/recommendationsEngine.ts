@@ -1,5 +1,9 @@
 import { supabase } from '../lib/supabase';
 import { summarizeAIMRecommendations } from './aimWorkSummary';
+import {
+  curateRecommendationQueue,
+  inferRecommendationCandidates,
+} from './recommendationInference';
 
 export interface Recommendation {
   id: string;
@@ -991,52 +995,23 @@ export class RecommendationsEngine {
     const patterns = await this.analyzeDataPatterns();
     const orgId = await this.getOrganizationId();
     if (!orgId) return [];
-    const recommendations: Recommendation[] = [];
+    const inferred = inferRecommendationCandidates(patterns, {
+      userId: this.userId,
+      organizationId: orgId,
+    });
     const diagnostics = {
-      patternsAnalyzed: patterns.length,
+      patternsAnalyzed: inferred.diagnostics.patternsAnalyzed,
+      survivingPatterns: inferred.diagnostics.survivingPatterns,
+      topFocusKeys: inferred.diagnostics.topFocusKeys,
       alertPressurePatterns: patterns.filter((pattern) => pattern.type === 'active_alert_pressure').length,
-      createdCandidates: 0,
+      createdCandidates: inferred.candidates.length,
       candidateRecommendations: 0,
       reactivated: 0,
       inserted: 0,
+      directionalFallbackUsed: inferred.diagnostics.directionalFallbackUsed,
     };
 
-    const rankedPatterns = [...patterns]
-      .filter((pattern) => !shouldSuppressPattern(pattern))
-      .sort((a, b) => getPatternRank(b) - getPatternRank(a))
-      .filter((pattern, index, list) => {
-        const focusKey = getPatternFocusKey(pattern);
-        return list.findIndex((candidate) => getPatternFocusKey(candidate) === focusKey) === index;
-      })
-      .slice(0, 6);
-
-    for (const pattern of rankedPatterns) {
-      const recommendation = this.createRecommendation(pattern, orgId);
-      if (recommendation) {
-        recommendations.push(recommendation);
-      }
-    }
-    diagnostics.createdCandidates = recommendations.length;
-
-    if (recommendations.length === 0) {
-      const directionalWatchPattern = [...patterns]
-        .filter((pattern) => pattern.type === 'active_alert_pressure')
-        .sort((a, b) => {
-          const severityRank = { critical: 4, high: 3, medium: 2, low: 1 };
-          const severityDelta = severityRank[b.severity] - severityRank[a.severity];
-          if (severityDelta !== 0) return severityDelta;
-          return getPatternEvidenceStrength(b) - getPatternEvidenceStrength(a);
-        })[0];
-
-      if (directionalWatchPattern) {
-        const fallbackRecommendation = this.createDirectionalRecommendation(directionalWatchPattern, orgId);
-        if (fallbackRecommendation) {
-          recommendations.push(fallbackRecommendation);
-        }
-      }
-    }
-
-    if (recommendations.length > 0) {
+    if (inferred.candidates.length > 0) {
       const cutoffIso = new Date(
         Date.now() - RECOMMENDATION_RECENT_DUPLICATE_WINDOW_DAYS * 24 * 60 * 60 * 1000
       ).toISOString();
@@ -1075,7 +1050,7 @@ export class RecommendationsEngine {
       );
 
       const seenSignatures = new Set<string>();
-      const candidateRecommendations = recommendations.filter((rec) => {
+      const candidateRecommendations = inferred.candidates.filter((rec) => {
         const signature = rec.source_data?.signature;
         if (!signature) return true;
         if (seenSignatures.has(signature)) return false;
@@ -1793,7 +1768,7 @@ export class RecommendationsEngine {
       if (filters?.priority) next = next.eq('priority', filters.priority);
       return next;
     });
-    return curateVisibleRecommendations(recommendations);
+    return curateRecommendationQueue(recommendations);
   }
 
   async startRecommendation(id: string, assignedTo?: string): Promise<boolean> {
@@ -1946,7 +1921,7 @@ export class RecommendationsEngine {
       };
     }
 
-    const recommendations = curateVisibleRecommendations(await this.getRecommendationsByScope());
+    const recommendations = curateRecommendationQueue(await this.getRecommendationsByScope());
 
     if (!recommendations || recommendations.length === 0) {
       return {
