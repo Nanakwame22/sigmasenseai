@@ -29,12 +29,12 @@ interface QueryInsight {
 
 const CATEGORY_COLORS: Record<string, string> = {
   alerts: 'bg-red-100 text-red-700',
-  metrics: 'bg-teal-100 text-teal-700',
+  metrics: 'bg-ai-100 text-ai-700',
   projects: 'bg-indigo-100 text-indigo-700',
   recommendations: 'bg-amber-100 text-amber-700',
-  forecasts: 'bg-cyan-100 text-cyan-700',
+  forecasts: 'bg-ai-100 text-ai-700',
   'root-cause': 'bg-orange-100 text-orange-700',
-  general: 'bg-gray-100 text-gray-700',
+  general: 'bg-brand-100 text-brand-700',
 };
 
 const VIZ_ICON: Record<string, string> = {
@@ -236,8 +236,8 @@ const InsightHistorySection: React.FC = () => {
     return (
       <div className="flex items-center justify-center h-96">
         <div className="text-center">
-          <div className="w-16 h-16 border-4 border-teal-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-slate-600">Loading insight history…</p>
+          <div className="w-16 h-16 border-4 border-ai-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-brand-600">Loading insight history…</p>
         </div>
       </div>
     );
@@ -252,7 +252,7 @@ const InsightHistorySection: React.FC = () => {
         actions={
           <button
             onClick={() => { loadHistoricalData(); loadQueryInsights(); }}
-            className="px-4 py-2 bg-white border border-slate-200 text-slate-700 text-sm font-medium rounded-lg hover:bg-slate-50 transition-colors whitespace-nowrap flex items-center gap-2 cursor-pointer"
+            className="px-4 py-2 bg-white border border-brand-200 text-brand-700 text-sm font-medium rounded-lg hover:bg-brand-50 transition-colors whitespace-nowrap flex items-center gap-2 cursor-pointer"
           >
             <i className="ri-refresh-line"></i>
             Refresh
@@ -263,26 +263,26 @@ const InsightHistorySection: React.FC = () => {
       <AIMMetricTiles
         items={[
           { label: 'Predictions Tracked', value: stats.totalPredictions },
-          { label: 'Current Accuracy', value: `${stats.currentAccuracy}%`, accent: 'text-teal-600' },
-          { label: 'Accuracy Lift', value: `+${stats.accuracyImprovement}%`, accent: 'text-blue-600' },
+          { label: 'Current Accuracy', value: `${stats.currentAccuracy}%`, accent: 'text-ai-600' },
+          { label: 'Accuracy Lift', value: `+${stats.accuracyImprovement}%`, accent: 'text-sapphire-600' },
           { label: 'Value Delivered', value: `$${stats.valueDelivered.toLocaleString()}`, accent: 'text-emerald-600' },
         ]}
       />
 
       {/* ── Ask Sigma Query Feed ── */}
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-gradient-to-r from-teal-50 to-cyan-50">
+      <div className="bg-white rounded-xl border border-brand-200 overflow-hidden">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-brand-100 bg-gradient-to-r from-ai-50 to-ai-100">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-teal-500 to-cyan-600 rounded-lg flex items-center justify-center">
+            <div className="w-10 h-10 bg-gradient-to-br from-ai-500 to-ai-600 rounded-lg flex items-center justify-center">
               <i className="ri-chat-voice-line text-xl text-white"></i>
             </div>
             <div>
-              <h2 className="text-lg font-bold text-slate-900">Ask Sigma Query Feed</h2>
-              <p className="text-sm text-slate-600">Every query you run is automatically captured here</p>
+              <h2 className="text-lg font-bold text-brand-900">Ask Sigma Query Feed</h2>
+              <p className="text-sm text-brand-600">Every query you run is automatically captured here</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <span className="px-3 py-1 bg-teal-100 text-teal-700 text-sm font-semibold rounded-full">
+            <span className="px-3 py-1 bg-ai-100 text-ai-700 text-sm font-semibold rounded-full">
               {queryInsights.length} queries
             </span>
             {pinnedInsights.length > 0 && (
@@ -296,21 +296,21 @@ const InsightHistorySection: React.FC = () => {
 
         {queryInsights.length === 0 ? (
           <div className="text-center py-16 px-6">
-            <div className="w-16 h-16 bg-teal-50 rounded-full flex items-center justify-center mx-auto mb-4">
-              <i className="ri-chat-3-line text-3xl text-teal-400"></i>
+            <div className="w-16 h-16 bg-ai-50 rounded-full flex items-center justify-center mx-auto mb-4">
+              <i className="ri-chat-3-line text-3xl text-ai-400"></i>
             </div>
-            <h3 className="text-lg font-semibold text-slate-900 mb-2">No queries yet</h3>
-            <p className="text-slate-500 max-w-sm mx-auto">
+            <h3 className="text-lg font-semibold text-brand-900 mb-2">No queries yet</h3>
+            <p className="text-brand-500 max-w-sm mx-auto">
               Go to <strong>Ask AIM</strong> and run a query — it will appear here instantly with its results and summary.
             </p>
           </div>
         ) : (
-          <div className="divide-y divide-slate-100">
+          <div className="divide-y divide-brand-100">
             {/* Pinned first */}
             {[...pinnedInsights, ...unpinnedInsights].map((qi) => (
               <div
                 key={qi.id}
-                className={`p-5 hover:bg-slate-50 transition-colors ${qi.is_pinned ? 'bg-amber-50/40' : ''}`}
+                className={`p-5 hover:bg-brand-50 transition-colors ${qi.is_pinned ? 'bg-amber-50/40' : ''}`}
               >
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
@@ -324,25 +324,25 @@ const InsightHistorySection: React.FC = () => {
                       <span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${CATEGORY_COLORS[qi.category] ?? CATEGORY_COLORS.general}`}>
                         {qi.category}
                       </span>
-                      <span className="flex items-center gap-1 text-xs text-slate-500">
-                        <i className={`${VIZ_ICON[qi.visualization] ?? 'ri-table-line'} text-slate-400`}></i>
+                      <span className="flex items-center gap-1 text-xs text-brand-500">
+                        <i className={`${VIZ_ICON[qi.visualization] ?? 'ri-table-line'} text-brand-400`}></i>
                         {qi.visualization}
                       </span>
-                      <span className="text-xs text-slate-400">{qi.row_count} rows</span>
+                      <span className="text-xs text-brand-400">{qi.row_count} rows</span>
                     </div>
 
-                    <p className="text-sm font-semibold text-slate-900 mb-1 flex items-start gap-2">
-                      <i className="ri-chat-1-line text-teal-500 mt-0.5 flex-shrink-0"></i>
+                    <p className="text-sm font-semibold text-brand-900 mb-1 flex items-start gap-2">
+                      <i className="ri-chat-1-line text-ai-500 mt-0.5 flex-shrink-0"></i>
                       <span className="italic">&ldquo;{qi.query_text}&rdquo;</span>
                     </p>
 
-                    <p className="text-sm text-slate-600 ml-5 mb-2">{qi.summary}</p>
+                    <p className="text-sm text-brand-600 ml-5 mb-2">{qi.summary}</p>
 
                     {/* Tags */}
                     {qi.tags && qi.tags.length > 0 && (
                       <div className="flex flex-wrap gap-1 ml-5 mb-2">
                         {qi.tags.map((tag) => (
-                          <span key={tag} className="px-2 py-0.5 bg-slate-100 text-slate-600 text-xs rounded-full">
+                          <span key={tag} className="px-2 py-0.5 bg-brand-100 text-brand-600 text-xs rounded-full">
                             #{tag}
                           </span>
                         ))}
@@ -354,22 +354,22 @@ const InsightHistorySection: React.FC = () => {
                       <div className="ml-5">
                         <button
                           onClick={() => setExpandedQuery(expandedQuery === qi.id ? null : qi.id)}
-                          className="text-xs text-teal-600 hover:text-teal-800 flex items-center gap-1 cursor-pointer"
+                          className="text-xs text-ai-600 hover:text-ai-800 flex items-center gap-1 cursor-pointer"
                         >
                           <i className={`ri-arrow-${expandedQuery === qi.id ? 'up' : 'down'}-s-line`}></i>
                           {expandedQuery === qi.id ? 'Hide' : 'Preview'} data snapshot ({Math.min(qi.data_snapshot.length, 5)} rows)
                         </button>
 
                         {expandedQuery === qi.id && (
-                          <div className="mt-2 overflow-x-auto rounded-lg border border-slate-200">
+                          <div className="mt-2 overflow-x-auto rounded-lg border border-brand-200">
                             <table className="w-full text-xs">
                               <thead>
-                                <tr className="bg-slate-50">
+                                <tr className="bg-brand-50">
                                   {Object.keys(qi.data_snapshot[0])
                                     .filter((k) => !['id', 'user_id', 'organization_id', 'created_at', 'updated_at'].includes(k))
                                     .slice(0, 5)
                                     .map((col) => (
-                                      <th key={col} className="px-3 py-2 text-left font-semibold text-slate-600 uppercase tracking-wide whitespace-nowrap">
+                                      <th key={col} className="px-3 py-2 text-left font-semibold text-brand-600 uppercase tracking-wide whitespace-nowrap">
                                         {col.replace(/_/g, ' ')}
                                       </th>
                                     ))}
@@ -377,12 +377,12 @@ const InsightHistorySection: React.FC = () => {
                               </thead>
                               <tbody>
                                 {qi.data_snapshot.slice(0, 5).map((row, i) => (
-                                  <tr key={i} className="border-t border-slate-100 hover:bg-slate-50">
+                                  <tr key={i} className="border-t border-brand-100 hover:bg-brand-50">
                                     {Object.entries(row)
                                       .filter(([k]) => !['id', 'user_id', 'organization_id', 'created_at', 'updated_at'].includes(k))
                                       .slice(0, 5)
                                       .map(([k, v]) => (
-                                        <td key={k} className="px-3 py-2 text-slate-700 max-w-[140px] truncate">
+                                        <td key={k} className="px-3 py-2 text-brand-700 max-w-[140px] truncate">
                                           {String(v ?? '—').slice(0, 50)}
                                         </td>
                                       ))}
@@ -395,7 +395,7 @@ const InsightHistorySection: React.FC = () => {
                       </div>
                     )}
 
-                    <p className="text-xs text-slate-400 ml-5 mt-2">
+                    <p className="text-xs text-brand-400 ml-5 mt-2">
                       <i className="ri-time-line mr-1"></i>
                       {new Date(qi.created_at).toLocaleString()}
                     </p>
@@ -407,7 +407,7 @@ const InsightHistorySection: React.FC = () => {
                       onClick={() => handlePinToggle(qi.id, qi.is_pinned)}
                       title={qi.is_pinned ? 'Unpin' : 'Pin to top'}
                       className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors cursor-pointer ${
-                        qi.is_pinned ? 'text-amber-600 bg-amber-100 hover:bg-amber-200' : 'text-slate-400 hover:text-amber-600 hover:bg-amber-50'
+                        qi.is_pinned ? 'text-amber-600 bg-amber-100 hover:bg-amber-200' : 'text-brand-400 hover:text-amber-600 hover:bg-amber-50'
                       }`}
                     >
                       <i className={`ri-pushpin-${qi.is_pinned ? 'fill' : 'line'} text-sm`}></i>
@@ -415,7 +415,7 @@ const InsightHistorySection: React.FC = () => {
                     <button
                       onClick={() => handleDeleteQueryInsight(qi.id)}
                       title="Remove from feed"
-                      className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors cursor-pointer"
+                      className="w-8 h-8 flex items-center justify-center rounded-lg text-brand-400 hover:text-red-500 hover:bg-red-50 transition-colors cursor-pointer"
                     >
                       <i className="ri-delete-bin-line text-sm"></i>
                     </button>
@@ -428,20 +428,20 @@ const InsightHistorySection: React.FC = () => {
       </div>
 
       {/* ── AIM Accuracy Trend ── */}
-      <div className="bg-white rounded-xl border border-slate-200 p-6">
+      <div className="bg-white rounded-xl border border-brand-200 p-6">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-teal-500 to-cyan-600 rounded-lg flex items-center justify-center">
+            <div className="w-10 h-10 bg-gradient-to-br from-ai-500 to-ai-600 rounded-lg flex items-center justify-center">
               <i className="ri-line-chart-line text-xl text-white"></i>
             </div>
             <div>
-              <h2 className="text-xl font-bold text-slate-900">AIM Accuracy Trend</h2>
-              <p className="text-sm text-slate-600">Prediction accuracy over the last 7 months</p>
+              <h2 className="text-xl font-bold text-brand-900">AIM Accuracy Trend</h2>
+              <p className="text-sm text-brand-600">Prediction accuracy over the last 7 months</p>
             </div>
           </div>
           <div className="text-right">
-            <div className="text-4xl font-bold text-teal-600">{stats.currentAccuracy}%</div>
-            <div className="text-sm text-slate-600">Current Accuracy</div>
+            <div className="text-4xl font-bold text-ai-600">{stats.currentAccuracy}%</div>
+            <div className="text-sm text-brand-600">Current Accuracy</div>
           </div>
         </div>
 
@@ -452,68 +452,68 @@ const InsightHistorySection: React.FC = () => {
                 <div className="w-full flex items-end justify-center h-48">
                   <div className="relative group w-full">
                     <div
-                      className="w-full bg-gradient-to-t from-teal-500 to-cyan-600 rounded-t-lg transition-all duration-500 hover:shadow-lg cursor-pointer"
+                      className="w-full bg-gradient-to-t from-ai-500 to-ai-600 rounded-t-lg transition-all duration-500 hover:shadow-lg cursor-pointer"
                       style={{ height: `${(data.accuracy / 100) * 100}%` }}
                     >
-                      <div className="absolute -top-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-900 text-white text-xs px-3 py-2 rounded whitespace-nowrap z-10">
+                      <div className="absolute -top-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity bg-brand-900 text-white text-xs px-3 py-2 rounded whitespace-nowrap z-10">
                         <div className="font-bold">{data.accuracy}% Accurate</div>
                         <div>{data.correct}/{data.predictions} predictions</div>
                       </div>
                     </div>
                   </div>
                 </div>
-                <div className="text-xs font-medium text-slate-600">{data.month}</div>
+                <div className="text-xs font-medium text-brand-600">{data.month}</div>
               </div>
             ))}
           </div>
         </div>
 
-        <div className="grid grid-cols-4 gap-4 pt-6 border-t border-slate-200">
-          <div className="text-center p-4 bg-gradient-to-br from-teal-50 to-cyan-50 rounded-lg">
-            <div className="text-2xl font-bold text-teal-600">+{stats.accuracyImprovement}%</div>
-            <div className="text-xs text-slate-600">Accuracy Improvement</div>
+        <div className="grid grid-cols-4 gap-4 pt-6 border-t border-brand-200">
+          <div className="text-center p-4 bg-gradient-to-br from-ai-50 to-ai-100 rounded-lg">
+            <div className="text-2xl font-bold text-ai-600">+{stats.accuracyImprovement}%</div>
+            <div className="text-xs text-brand-600">Accuracy Improvement</div>
           </div>
-          <div className="text-center p-4 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg">
-            <div className="text-2xl font-bold text-blue-600">{stats.totalPredictions}</div>
-            <div className="text-xs text-slate-600">Total Predictions</div>
+          <div className="text-center p-4 bg-gradient-to-br from-sapphire-50 to-indigo-50 rounded-lg">
+            <div className="text-2xl font-bold text-sapphire-600">{stats.totalPredictions}</div>
+            <div className="text-xs text-brand-600">Total Predictions</div>
           </div>
-          <div className="text-center p-4 bg-gradient-to-br from-emerald-50 to-teal-50 rounded-lg">
+          <div className="text-center p-4 bg-gradient-to-br from-emerald-50 to-ai-50 rounded-lg">
             <div className="text-2xl font-bold text-emerald-600">{stats.correctPredictions}</div>
-            <div className="text-xs text-slate-600">Correct Predictions</div>
+            <div className="text-xs text-brand-600">Correct Predictions</div>
           </div>
           <div className="text-center p-4 bg-gradient-to-br from-violet-50 to-pink-50 rounded-lg">
             <div className="text-2xl font-bold text-violet-600">${stats.valueDelivered}K</div>
-            <div className="text-xs text-slate-600">Value Delivered</div>
+            <div className="text-xs text-brand-600">Value Delivered</div>
           </div>
         </div>
       </div>
 
       {/* ── Filters + Historical Insights ── */}
-      <div className="bg-white rounded-xl border border-slate-200 p-4">
+      <div className="bg-white rounded-xl border border-brand-200 p-4">
         <div className="flex items-center gap-4 flex-wrap">
           <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-slate-700">Period:</span>
+            <span className="text-sm font-medium text-brand-700">Period:</span>
             <select
               value={selectedPeriod}
               onChange={(e) => setSelectedPeriod(e.target.value)}
-              className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 cursor-pointer"
+              className="px-3 py-2 bg-brand-50 border border-brand-200 rounded-lg text-sm text-brand-700 cursor-pointer"
             >
               {periods.map((period) => (
                 <option key={period} value={period}>{period === 'all' ? 'All Time' : period}</option>
               ))}
             </select>
           </div>
-          <div className="h-6 w-px bg-slate-200"></div>
+          <div className="h-6 w-px bg-brand-200"></div>
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-sm font-medium text-slate-700">Category:</span>
+            <span className="text-sm font-medium text-brand-700">Category:</span>
             {categories.map((cat) => (
               <button
                 key={cat}
                 onClick={() => setSelectedCategory(cat)}
                 className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-all whitespace-nowrap cursor-pointer ${
                   selectedCategory === cat
-                    ? 'bg-gradient-to-r from-teal-500 to-cyan-600 text-white'
-                    : 'bg-slate-50 text-slate-700 hover:bg-slate-100'
+                    ? 'bg-gradient-to-r from-ai-500 to-ai-600 text-white'
+                    : 'bg-brand-50 text-brand-700 hover:bg-brand-100'
                 }`}
               >
                 {cat === 'all' ? 'All' : cat.charAt(0).toUpperCase() + cat.slice(1)}
@@ -524,37 +524,37 @@ const InsightHistorySection: React.FC = () => {
       </div>
 
       {/* Previously Triggered Insights */}
-      <div className="bg-white rounded-xl border border-slate-200 p-6">
+      <div className="bg-white rounded-xl border border-brand-200 p-6">
         <div className="flex items-center gap-3 mb-6">
-          <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center">
+          <div className="w-10 h-10 bg-gradient-to-br from-sapphire-500 to-indigo-600 rounded-lg flex items-center justify-center">
             <i className="ri-history-line text-xl text-white"></i>
           </div>
           <div>
-            <h2 className="text-xl font-bold text-slate-900">Previously Triggered Insights</h2>
-            <p className="text-sm text-slate-600">Historical predictions and their outcomes</p>
+            <h2 className="text-xl font-bold text-brand-900">Previously Triggered Insights</h2>
+            <p className="text-sm text-brand-600">Historical predictions and their outcomes</p>
           </div>
         </div>
 
         {filteredInsights.length === 0 ? (
           <div className="text-center py-12">
-            <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <i className="ri-history-line text-3xl text-slate-400"></i>
+            <div className="w-16 h-16 bg-brand-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <i className="ri-history-line text-3xl text-brand-400"></i>
             </div>
-            <h3 className="text-lg font-bold text-slate-900 mb-2">No Historical Insights Yet</h3>
-            <p className="text-slate-600">Complete recommendations and resolve alerts to build your insight history.</p>
+            <h3 className="text-lg font-bold text-brand-900 mb-2">No Historical Insights Yet</h3>
+            <p className="text-brand-600">Complete recommendations and resolve alerts to build your insight history.</p>
           </div>
         ) : (
           <div className="space-y-3">
             {filteredInsights.map((insight) => (
-              <div key={insight.id} className="p-5 border border-slate-200 rounded-xl hover:shadow-lg transition-all">
+              <div key={insight.id} className="p-5 border border-brand-200 rounded-xl hover:shadow-lg transition-all">
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-2">
-                      <h3 className="text-lg font-bold text-slate-900">{insight.title}</h3>
+                      <h3 className="text-lg font-bold text-brand-900">{insight.title}</h3>
                       <span className="px-2 py-1 bg-emerald-100 text-emerald-700 text-xs font-bold rounded-full">{insight.outcome}</span>
                     </div>
-                    <p className="text-sm text-slate-600 mb-3">{insight.description}</p>
-                    <div className="flex items-center gap-4 text-xs text-slate-500">
+                    <p className="text-sm text-brand-600 mb-3">{insight.description}</p>
+                    <div className="flex items-center gap-4 text-xs text-brand-500">
                       <span className="flex items-center gap-1"><i className="ri-calendar-line"></i>{new Date(insight.date).toLocaleDateString()}</span>
                       <span className="flex items-center gap-1"><i className="ri-folder-line"></i>{insight.category}</span>
                       <span className="flex items-center gap-1"><i className="ri-shield-check-line"></i>{insight.confidence}% confidence</span>
@@ -562,7 +562,7 @@ const InsightHistorySection: React.FC = () => {
                   </div>
                   <div className="text-right ml-4">
                     <div className="text-xl font-bold text-emerald-600">{insight.impact}</div>
-                    <div className="text-xs text-slate-500">Impact</div>
+                    <div className="text-xs text-brand-500">Impact</div>
                   </div>
                 </div>
               </div>
@@ -573,26 +573,26 @@ const InsightHistorySection: React.FC = () => {
 
       {/* Resolved Improvement Areas */}
       {resolvedAreas.length > 0 && (
-        <div className="bg-white rounded-xl border border-slate-200 p-6">
+        <div className="bg-white rounded-xl border border-brand-200 p-6">
           <div className="flex items-center gap-3 mb-6">
-            <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-lg flex items-center justify-center">
+            <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-ai-600 rounded-lg flex items-center justify-center">
               <i className="ri-checkbox-circle-line text-xl text-white"></i>
             </div>
             <div>
-              <h2 className="text-xl font-bold text-slate-900">Resolved Improvement Areas</h2>
-              <p className="text-sm text-slate-600">Successfully addressed issues identified by AIM</p>
+              <h2 className="text-xl font-bold text-brand-900">Resolved Improvement Areas</h2>
+              <p className="text-sm text-brand-600">Successfully addressed issues identified by AIM</p>
             </div>
           </div>
           <div className="space-y-4">
             {resolvedAreas.map((area, index) => (
-              <div key={index} className="p-5 border border-emerald-200 bg-gradient-to-br from-emerald-50 to-teal-50 rounded-xl">
+              <div key={index} className="p-5 border border-emerald-200 bg-gradient-to-br from-emerald-50 to-ai-50 rounded-xl">
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-2">
                       <i className="ri-check-double-line text-2xl text-emerald-600"></i>
-                      <h3 className="text-lg font-bold text-slate-900">{area.area}</h3>
+                      <h3 className="text-lg font-bold text-brand-900">{area.area}</h3>
                     </div>
-                    <div className="text-xs text-slate-500 mb-3">Resolved on {new Date(area.resolvedDate).toLocaleDateString()}</div>
+                    <div className="text-xs text-brand-500 mb-3">Resolved on {new Date(area.resolvedDate).toLocaleDateString()}</div>
                   </div>
                   <div className="text-right">
                     <div className="text-xl font-bold text-emerald-600">{area.impact}</div>
@@ -600,12 +600,12 @@ const InsightHistorySection: React.FC = () => {
                 </div>
                 <div className="grid grid-cols-2 gap-4 mb-4">
                   <div>
-                    <div className="text-xs font-semibold text-slate-700 mb-2">Original Issue</div>
-                    <div className="text-sm text-slate-600">{area.originalIssue}</div>
+                    <div className="text-xs font-semibold text-brand-700 mb-2">Original Issue</div>
+                    <div className="text-sm text-brand-600">{area.originalIssue}</div>
                   </div>
                   <div>
-                    <div className="text-xs font-semibold text-slate-700 mb-2">Solution Implemented</div>
-                    <div className="text-sm text-slate-600">{area.solution}</div>
+                    <div className="text-xs font-semibold text-brand-700 mb-2">Solution Implemented</div>
+                    <div className="text-sm text-brand-600">{area.solution}</div>
                   </div>
                 </div>
                 <div className="flex gap-3 flex-wrap">

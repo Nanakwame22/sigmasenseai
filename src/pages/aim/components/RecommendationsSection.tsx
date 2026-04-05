@@ -413,18 +413,18 @@ export default function RecommendationsSection() {
       case 'critical': return 'text-red-600 bg-red-50';
       case 'high': return 'text-orange-600 bg-orange-50';
       case 'medium': return 'text-yellow-600 bg-yellow-50';
-      case 'low': return 'text-teal-600 bg-teal-50';
-      default: return 'text-gray-600 bg-gray-50';
+      case 'low': return 'text-ai-600 bg-ai-50';
+      default: return 'text-brand-600 bg-brand-50';
     }
   };
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'pending': return 'text-gray-600 bg-gray-100';
-      case 'in_progress': return 'text-teal-600 bg-teal-100';
+      case 'pending': return 'text-brand-600 bg-brand-100';
+      case 'in_progress': return 'text-ai-600 bg-ai-100';
       case 'completed': return 'text-green-600 bg-green-100';
-      case 'dismissed': return 'text-gray-400 bg-gray-50';
-      default: return 'text-gray-600 bg-gray-100';
+      case 'dismissed': return 'text-brand-400 bg-brand-50';
+      default: return 'text-brand-600 bg-brand-100';
     }
   };
 
@@ -436,7 +436,7 @@ export default function RecommendationsSection() {
       case 'critical': return 'bg-red-50 text-red-700 border-red-200';
       case 'high': return 'bg-orange-50 text-orange-700 border-orange-200';
       case 'medium': return 'bg-amber-50 text-amber-700 border-amber-200';
-      default: return 'bg-slate-100 text-slate-700 border-slate-200';
+      default: return 'bg-brand-100 text-brand-700 border-brand-200';
     }
   };
 
@@ -457,7 +457,7 @@ export default function RecommendationsSection() {
           <button
             onClick={handleGenerateRecommendations}
             disabled={generating}
-            className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 whitespace-nowrap"
+            className="px-4 py-2 bg-ai-600 text-white rounded-lg hover:bg-ai-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 whitespace-nowrap"
           >
             <i className={`${generating ? 'ri-loader-4-line animate-spin' : 'ri-magic-line'}`}></i>
             {generating ? 'Analyzing...' : 'Generate Recommendations'}
@@ -474,14 +474,14 @@ export default function RecommendationsSection() {
         >
           <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr),minmax(320px,0.8fr)]">
             <div className="space-y-4">
-              <div className="rounded-[26px] border border-slate-200 bg-[linear-gradient(180deg,_rgba(255,255,255,0.98),_rgba(247,250,252,0.95))] p-4 shadow-[0_14px_34px_rgba(15,23,42,0.04)]">
+              <div className="rounded-[26px] border border-brand-200 bg-[linear-gradient(180deg,_rgba(255,255,255,0.98),_rgba(247,250,252,0.95))] p-4 shadow-[0_14px_34px_rgba(15,23,42,0.04)]">
                 <div className="grid gap-3 md:grid-cols-[repeat(3,minmax(0,1fr)),minmax(220px,1.1fr)]">
                   {[
                     {
                       label: 'Watch Signals',
                       value: readinessSummary.watchSignals,
                       detail: 'Signals still below the action threshold.',
-                      accent: 'text-slate-950',
+                      accent: 'text-brand-900',
                     },
                     {
                       label: 'Needs Review',
@@ -493,38 +493,38 @@ export default function RecommendationsSection() {
                       label: 'Evidence Coverage',
                       value: `${readinessSummary.evidenceCoverage}/5`,
                       detail: 'Live signal classes feeding readiness.',
-                      accent: 'text-teal-600',
+                      accent: 'text-ai-600',
                     },
                   ].map((item) => (
                     <div
                       key={item.label}
-                      className="rounded-[20px] border border-slate-200/90 bg-white p-4"
+                      className="rounded-[20px] border border-brand-200/90 bg-white p-4"
                     >
-                      <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">{item.label}</div>
+                      <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-brand-500">{item.label}</div>
                       <div className={`mt-2 text-[1.65rem] leading-none font-bold tracking-tight ${item.accent}`}>{item.value}</div>
-                      <p className="mt-2 text-[12px] leading-5 text-slate-600">{item.detail}</p>
+                      <p className="mt-2 text-[12px] leading-5 text-brand-600">{item.detail}</p>
                     </div>
                   ))}
 
                   <div className="rounded-[22px] border border-sky-200 bg-[linear-gradient(180deg,_rgba(240,249,255,0.92),_rgba(255,255,255,0.98))] p-4">
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Current State</div>
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-brand-500">Current State</div>
                     <div className="mt-2 text-[1.35rem] leading-tight font-bold tracking-tight text-sky-700">
                       {readinessSummary.recommendationState}
                     </div>
-                    <p className="mt-2 text-[12px] leading-5 text-slate-600">
+                    <p className="mt-2 text-[12px] leading-5 text-brand-600">
                       AIM can guide direction, but it is not yet action-ready.
                     </p>
                   </div>
                 </div>
               </div>
 
-              <div className="rounded-[26px] border border-slate-200 bg-[linear-gradient(180deg,_rgba(248,250,252,0.95),_rgba(255,255,255,0.98))] p-6 shadow-[0_14px_34px_rgba(15,23,42,0.04)]">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Why no recommendation yet</div>
-                <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-700">
+              <div className="rounded-[26px] border border-brand-200 bg-[linear-gradient(180deg,_rgba(248,250,252,0.95),_rgba(255,255,255,0.98))] p-6 shadow-[0_14px_34px_rgba(15,23,42,0.04)]">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-brand-500">Why no recommendation yet</div>
+                <p className="mt-3 max-w-3xl text-sm leading-6 text-brand-700">
                   AIM still needs a stronger combination of persistent signal pressure, fresh corroborating evidence, and clearer execution confidence
                   before it promotes a watch signal into a formal recommendation.
                 </p>
-                <p className="mt-3 text-sm leading-6 text-slate-600">
+                <p className="mt-3 text-sm leading-6 text-brand-600">
                   Best next move: review the strongest watch signals below, validate whether the pressure is continuing, and then generate recommendations again
                   after the next refresh cycle.
                 </p>
@@ -534,27 +534,27 @@ export default function RecommendationsSection() {
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Closest watch signals</div>
-                  <p className="mt-1 text-sm text-slate-600">Signals closest to crossing into formal recommendation territory.</p>
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-brand-500">Closest watch signals</div>
+                  <p className="mt-1 text-sm text-brand-600">Signals closest to crossing into formal recommendation territory.</p>
                 </div>
-                <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold text-slate-600">
+                <span className="rounded-full border border-brand-200 bg-brand-50 px-3 py-1 text-[11px] font-semibold text-brand-600">
                   {watchSignals.length} active
                 </span>
               </div>
               {watchSignals.slice(0, 2).map((signal) => (
-                <div key={signal.id} className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-[0_14px_30px_rgba(15,23,42,0.04)]">
+                <div key={signal.id} className="rounded-[24px] border border-brand-200 bg-white p-5 shadow-[0_14px_30px_rgba(15,23,42,0.04)]">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h3 className="text-[14px] font-semibold leading-6 text-slate-900">{signal.title}</h3>
+                    <h3 className="text-[14px] font-semibold leading-6 text-brand-900">{signal.title}</h3>
                     <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${getWatchSignalTone(signal.severity)}`}>
                       {signal.severity}
                     </span>
                   </div>
-                  <p className="mt-3 text-[13px] leading-6 text-slate-600">{signal.reason}</p>
+                  <p className="mt-3 text-[13px] leading-6 text-brand-600">{signal.reason}</p>
                   <div className="mt-3 flex flex-wrap gap-2">
-                    <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
+                    <span className="rounded-full border border-brand-200 bg-brand-50 px-2.5 py-1 text-[11px] font-semibold text-brand-600">
                       Freshness: {signal.freshness}
                     </span>
-                    <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
+                    <span className="rounded-full border border-brand-200 bg-brand-50 px-2.5 py-1 text-[11px] font-semibold text-brand-600">
                       Closest to recommendation threshold
                     </span>
                   </div>
@@ -570,11 +570,11 @@ export default function RecommendationsSection() {
         <AIMMetricTiles
           columns="grid-cols-1 md:grid-cols-2 xl:grid-cols-5"
           items={[
-            { label: 'Open', value: statistics.open, color: 'text-gray-900' },
-            { label: 'Pending', value: statistics.pending, color: 'text-gray-600' },
-            { label: 'In Progress', value: statistics.inProgress, color: 'text-teal-600' },
+            { label: 'Open', value: statistics.open, color: 'text-brand-900' },
+            { label: 'Pending', value: statistics.pending, color: 'text-brand-600' },
+            { label: 'In Progress', value: statistics.inProgress, color: 'text-ai-600' },
             { label: 'Completed', value: statistics.completed, color: 'text-green-600' },
-            { label: 'Avg Open Impact', value: `${statistics.avgImpactScore}%`, color: 'text-teal-600' },
+            { label: 'Avg Open Impact', value: `${statistics.avgImpactScore}%`, color: 'text-ai-600' },
           ].map((s) => ({ label: s.label, value: s.value, accent: s.color }))}
         />
       )}
@@ -584,7 +584,7 @@ export default function RecommendationsSection() {
         title="Recommendation Filters"
         description="Focus the queue by status, category, and priority."
         icon="ri-equalizer-2-line"
-        accentClass="from-slate-700 to-slate-900"
+        accentClass="from-brand-700 to-brand-900"
       >
         <div className="flex flex-wrap gap-4">
           {[
@@ -613,11 +613,11 @@ export default function RecommendationsSection() {
             },
           ].map((f) => (
             <div key={f.label} className="flex-1 min-w-[200px]">
-              <label className="block text-sm font-medium text-gray-700 mb-2">{f.label}</label>
+              <label className="block text-sm font-medium text-brand-700 mb-2">{f.label}</label>
               <select
                 value={f.value}
                 onChange={(e) => f.onChange(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent text-sm"
+                className="w-full px-3 py-2 border border-brand-300 rounded-lg focus:ring-2 focus:ring-ai-500 focus:border-transparent text-sm"
               >
                 {f.options.map((o) => (
                   <option key={o.v} value={o.v}>{o.l}</option>
@@ -632,8 +632,8 @@ export default function RecommendationsSection() {
       <div className="space-y-4">
         {loading ? (
           <div className="text-center py-12">
-            <i className="ri-loader-4-line text-4xl text-teal-600 animate-spin"></i>
-            <p className="text-gray-600 mt-4">Loading recommendations...</p>
+            <i className="ri-loader-4-line text-4xl text-ai-600 animate-spin"></i>
+            <p className="text-brand-600 mt-4">Loading recommendations...</p>
           </div>
         ) : recommendations.length === 0 ? (
           watchSignals.length > 0 ? (
@@ -645,24 +645,24 @@ export default function RecommendationsSection() {
             >
               <div className="space-y-4">
                 {watchSignals.map((signal) => (
-                  <div key={signal.id} className="rounded-[24px] border border-slate-200 bg-white p-5">
+                  <div key={signal.id} className="rounded-[24px] border border-brand-200 bg-white p-5">
                     <div className="flex items-start justify-between gap-4">
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2 mb-2">
-                          <h3 className="text-base font-semibold text-slate-900">{signal.title}</h3>
+                          <h3 className="text-base font-semibold text-brand-900">{signal.title}</h3>
                           <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${getWatchSignalTone(signal.severity)}`}>
                             {signal.severity}
                           </span>
-                          <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
+                          <span className="rounded-full border border-brand-200 bg-brand-50 px-2.5 py-1 text-[11px] font-semibold text-brand-600">
                             {signal.category}
                           </span>
                         </div>
-                        <p className="text-sm text-slate-600">{signal.reason}</p>
+                        <p className="text-sm text-brand-600">{signal.reason}</p>
                         <div className="mt-3 flex flex-wrap gap-2">
-                          <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
+                          <span className="rounded-full border border-brand-200 bg-brand-50 px-2.5 py-1 text-[11px] font-semibold text-brand-600">
                             Freshness: {signal.freshness}
                           </span>
-                          <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
+                          <span className="rounded-full border border-brand-200 bg-brand-50 px-2.5 py-1 text-[11px] font-semibold text-brand-600">
                             Watch only
                           </span>
                         </div>
@@ -691,7 +691,7 @@ export default function RecommendationsSection() {
             return (
               <div
                 key={rec.id}
-                className="bg-white rounded-lg border border-gray-200 overflow-hidden hover:shadow-md transition-shadow"
+                className="bg-white rounded-lg border border-brand-200 overflow-hidden hover:shadow-md transition-shadow"
               >
                 <div className="p-6">
                   <div className="flex items-start justify-between gap-4">
@@ -702,7 +702,7 @@ export default function RecommendationsSection() {
 
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap mb-2">
-                          <h3 className="text-lg font-semibold text-gray-900">{rec.title}</h3>
+                          <h3 className="text-lg font-semibold text-brand-900">{rec.title}</h3>
                           <span className={`px-2 py-1 rounded-full text-xs font-medium ${getPriorityColor(rec.priority)}`}>
                             {rec.priority.toUpperCase()}
                           </span>
@@ -717,134 +717,134 @@ export default function RecommendationsSection() {
                           )}
                         </div>
 
-                        <p className="text-sm text-gray-600 mb-4">{rec.description}</p>
+                        <p className="text-sm text-brand-600 mb-4">{rec.description}</p>
 
                         <div className="flex items-center gap-6 text-sm">
                           <div className="flex items-center gap-2">
-                            <i className="ri-flashlight-line text-teal-600"></i>
-                            <span className="text-gray-600">Impact:</span>
-                            <span className="font-semibold text-gray-900">{rec.impact_score}%</span>
+                            <i className="ri-flashlight-line text-ai-600"></i>
+                            <span className="text-brand-600">Impact:</span>
+                            <span className="font-semibold text-brand-900">{rec.impact_score}%</span>
                           </div>
                           <div className="flex items-center gap-2">
-                            <i className="ri-time-line text-gray-600"></i>
-                            <span className="text-gray-600">Effort:</span>
-                            <span className="font-semibold text-gray-900">{rec.effort_score}%</span>
+                            <i className="ri-time-line text-brand-600"></i>
+                            <span className="text-brand-600">Effort:</span>
+                            <span className="font-semibold text-brand-900">{rec.effort_score}%</span>
                           </div>
                           <div className="flex items-center gap-2">
-                            <i className="ri-shield-check-line text-gray-600"></i>
-                            <span className="text-gray-600">Confidence:</span>
-                            <span className="font-semibold text-gray-900">{rec.confidence_score}%</span>
+                            <i className="ri-shield-check-line text-brand-600"></i>
+                            <span className="text-brand-600">Confidence:</span>
+                            <span className="font-semibold text-brand-900">{rec.confidence_score}%</span>
                           </div>
                         </div>
 
-                        <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/90 p-4">
+                        <div className="mt-4 rounded-2xl border border-brand-200 bg-brand-50/90 p-4">
                           <div className="flex flex-wrap items-center gap-2">
-                            <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-600">
+                            <span className="rounded-full border border-brand-200 bg-white px-3 py-1 text-[11px] font-semibold text-brand-600">
                               Freshness: {signal.evidence.freshnessLabel}
                             </span>
                             <span className={`rounded-full border px-3 py-1 text-[11px] font-semibold ${readiness.tone}`}>
                               {readiness.label}
                             </span>
-                            <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-600">
+                            <span className="rounded-full border border-brand-200 bg-white px-3 py-1 text-[11px] font-semibold text-brand-600">
                               Provenance: {signal.evidence.sourceLabel}
                             </span>
                             <button
                               onClick={() => setExpandedId(isExpanded ? null : rec.id)}
-                              className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-100 transition-colors"
+                              className="rounded-full border border-brand-200 bg-white px-3 py-1 text-[11px] font-semibold text-brand-700 hover:bg-brand-100 transition-colors"
                             >
                               {isExpanded ? 'Hide evidence' : 'Open evidence'}
                             </button>
                           </div>
-                          <p className="mt-2 text-[11px] leading-5 text-slate-500">
+                          <p className="mt-2 text-[11px] leading-5 text-brand-500">
                             {getRecommendationEvidence(rec) || 'Confidence and action evidence will strengthen as AIM accumulates more live operational context.'}
                           </p>
-                          <p className="mt-1 text-[11px] leading-5 text-slate-400">
+                          <p className="mt-1 text-[11px] leading-5 text-brand-400">
                             Lineage: {categoryLineage[rec.category] || 'Operational signals → AIM recommendation engine'}
                           </p>
                         </div>
 
                         {isExpanded && (
-                          <div className="mt-6 rounded-[24px] border border-teal-100 bg-gradient-to-br from-teal-50 via-white to-cyan-50 p-5 space-y-4">
+                          <div className="mt-6 rounded-[24px] border border-ai-100 bg-gradient-to-br from-ai-50 via-white to-ai-50 p-5 space-y-4">
                             <div className="flex flex-wrap items-center gap-2">
                               <span className={`rounded-full border px-3 py-1 text-[11px] font-semibold ${readiness.tone}`}>
                                 Decision Readiness: {readiness.label}
                               </span>
-                              <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-600">
+                              <span className="rounded-full border border-brand-200 bg-white px-3 py-1 text-[11px] font-semibold text-brand-600">
                                 Confidence basis: {signal.evidence.confidenceState} ({signal.confidenceScore}%)
                               </span>
-                              <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-600">
+                              <span className="rounded-full border border-brand-200 bg-white px-3 py-1 text-[11px] font-semibold text-brand-600">
                                 Effort load: {rec.effort_score || 0}%
                               </span>
-                              <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-600">
+                              <span className="rounded-full border border-brand-200 bg-white px-3 py-1 text-[11px] font-semibold text-brand-600">
                                 Provenance: {signal.evidence.sourceLabel}
                               </span>
                             </div>
                             <div className="grid gap-4 lg:grid-cols-3">
                               <div className="rounded-2xl border border-white/70 bg-white/90 p-4">
-                                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Why AIM surfaced this</div>
-                                <p className="mt-2 text-sm leading-6 text-slate-700">
+                                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-brand-500">Why AIM surfaced this</div>
+                                <p className="mt-2 text-sm leading-6 text-brand-700">
                                   {signal.evidence.evidenceSummary}
                                 </p>
                               </div>
                               <div className="rounded-2xl border border-white/70 bg-white/90 p-4">
-                                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Evidence window</div>
-                                <p className="mt-2 text-sm leading-6 text-slate-700">
+                                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-brand-500">Evidence window</div>
+                                <p className="mt-2 text-sm leading-6 text-brand-700">
                                   Latest signal refresh: {signal.evidence.freshnessLabel}. Stronger evidence appears as more recommendations, alerts, and tracked outcomes accumulate.
                                 </p>
                               </div>
                               <div className="rounded-2xl border border-white/70 bg-white/90 p-4">
-                                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Operator guidance</div>
-                                <p className="mt-2 text-sm leading-6 text-slate-700">
+                                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-brand-500">Operator guidance</div>
+                                <p className="mt-2 text-sm leading-6 text-brand-700">
                                   {rationale.nextBestMove}
                                 </p>
                               </div>
                             </div>
                             <div className="grid gap-4 lg:grid-cols-3">
-                              <div className="rounded-2xl border border-slate-200 bg-white/90 p-4">
-                                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Decision stance</div>
-                                <p className="mt-2 text-sm leading-6 text-slate-700">
+                              <div className="rounded-2xl border border-brand-200 bg-white/90 p-4">
+                                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-brand-500">Decision stance</div>
+                                <p className="mt-2 text-sm leading-6 text-brand-700">
                                   {rationale.decisionStance}
                                 </p>
                               </div>
-                              <div className="rounded-2xl border border-slate-200 bg-white/90 p-4">
-                                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Execution tradeoff</div>
-                                <p className="mt-2 text-sm leading-6 text-slate-700">
+                              <div className="rounded-2xl border border-brand-200 bg-white/90 p-4">
+                                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-brand-500">Execution tradeoff</div>
+                                <p className="mt-2 text-sm leading-6 text-brand-700">
                                   {rationale.tradeoff}
                                 </p>
                               </div>
-                              <div className="rounded-2xl border border-slate-200 bg-white/90 p-4">
-                                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">What would strengthen this</div>
-                                <p className="mt-2 text-sm leading-6 text-slate-700">
+                              <div className="rounded-2xl border border-brand-200 bg-white/90 p-4">
+                                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-brand-500">What would strengthen this</div>
+                                <p className="mt-2 text-sm leading-6 text-brand-700">
                                   {rationale.missingEvidence}
                                 </p>
                               </div>
                             </div>
                             {rec.recommended_actions && rec.recommended_actions.length > 0 && (
                               <div>
-                                <h4 className="text-sm font-semibold text-gray-900 mb-2">Recommended Actions:</h4>
+                                <h4 className="text-sm font-semibold text-brand-900 mb-2">Recommended Actions:</h4>
                                 <ol className="list-decimal list-inside space-y-1">
                                   {rec.recommended_actions.map((action, idx) => (
-                                    <li key={idx} className="text-sm text-gray-600">{action}</li>
+                                    <li key={idx} className="text-sm text-brand-600">{action}</li>
                                   ))}
                                 </ol>
                               </div>
                             )}
                             {rec.expected_impact && (
                               <div>
-                                <h4 className="text-sm font-semibold text-gray-900 mb-2">Expected Impact:</h4>
-                                <p className="text-sm text-gray-600">{rec.expected_impact}</p>
+                                <h4 className="text-sm font-semibold text-brand-900 mb-2">Expected Impact:</h4>
+                                <p className="text-sm text-brand-600">{rec.expected_impact}</p>
                               </div>
                             )}
                             {rec.actual_impact && (
                               <div>
-                                <h4 className="text-sm font-semibold text-gray-900 mb-2">Actual Impact:</h4>
+                                <h4 className="text-sm font-semibold text-brand-900 mb-2">Actual Impact:</h4>
                                 <p className="text-sm text-green-600">{rec.actual_impact}</p>
                               </div>
                             )}
                             {rec.implementation_notes && (
                               <div>
-                                <h4 className="text-sm font-semibold text-gray-900 mb-2">Implementation Notes:</h4>
-                                <p className="text-sm text-gray-600">{rec.implementation_notes}</p>
+                                <h4 className="text-sm font-semibold text-brand-900 mb-2">Implementation Notes:</h4>
+                                <p className="text-sm text-brand-600">{rec.implementation_notes}</p>
                               </div>
                             )}
                           </div>
@@ -863,8 +863,8 @@ export default function RecommendationsSection() {
                           isPushed
                             ? 'bg-green-100 text-green-700 cursor-default'
                             : isPushing
-                            ? 'bg-teal-100 text-teal-600 cursor-wait'
-                            : 'bg-teal-600 text-white hover:bg-teal-700 cursor-pointer'
+                            ? 'bg-ai-100 text-ai-600 cursor-wait'
+                            : 'bg-ai-600 text-white hover:bg-ai-700 cursor-pointer'
                         }`}
                       >
                         {isPushing ? (
@@ -888,7 +888,7 @@ export default function RecommendationsSection() {
                       {rec.status === 'pending' && (
                         <button
                           onClick={() => handleStartRecommendation(rec)}
-                          className="px-4 py-2 bg-teal-50 text-teal-700 border border-teal-200 rounded-lg hover:bg-teal-100 transition-colors text-sm whitespace-nowrap"
+                          className="px-4 py-2 bg-ai-50 text-ai-700 border border-ai-200 rounded-lg hover:bg-ai-100 transition-colors text-sm whitespace-nowrap"
                         >
                           Start
                         </button>
@@ -904,14 +904,14 @@ export default function RecommendationsSection() {
                       {(rec.status === 'pending' || rec.status === 'in_progress') && (
                         <button
                           onClick={() => handleDismissRecommendation(rec)}
-                          className="px-4 py-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition-colors text-sm whitespace-nowrap"
+                          className="px-4 py-2 bg-brand-100 text-brand-600 rounded-lg hover:bg-brand-200 transition-colors text-sm whitespace-nowrap"
                         >
                           Dismiss
                         </button>
                       )}
                       <button
                         onClick={() => setExpandedId(expandedId === rec.id ? null : rec.id)}
-                        className="px-4 py-2 bg-gray-50 text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors text-sm whitespace-nowrap"
+                        className="px-4 py-2 bg-brand-50 text-brand-600 border border-brand-200 rounded-lg hover:bg-brand-100 transition-colors text-sm whitespace-nowrap"
                       >
                         {expandedId === rec.id ? 'Less' : 'Details'}
                       </button>
@@ -928,15 +928,15 @@ export default function RecommendationsSection() {
       {actionModal.show && actionModal.recommendation && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg max-w-md w-full p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">
+            <h3 className="text-lg font-semibold text-brand-900 mb-4">
               {actionModal.type === 'start' && 'Start Recommendation'}
               {actionModal.type === 'complete' && 'Complete Recommendation'}
               {actionModal.type === 'dismiss' && 'Dismiss Recommendation'}
             </h3>
-            <p className="text-sm text-gray-600 mb-4">{actionModal.recommendation.title}</p>
+            <p className="text-sm text-brand-600 mb-4">{actionModal.recommendation.title}</p>
             {(actionModal.type === 'complete' || actionModal.type === 'dismiss') && (
               <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-brand-700 mb-2">
                   {actionModal.type === 'complete' ? 'Results & Notes' : 'Reason for Dismissal'}
                 </label>
                 <textarea
@@ -944,7 +944,7 @@ export default function RecommendationsSection() {
                   onChange={(e) => setActionNotes(e.target.value)}
                   rows={4}
                   maxLength={500}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent text-sm"
+                  className="w-full px-3 py-2 border border-brand-300 rounded-lg focus:ring-2 focus:ring-ai-500 focus:border-transparent text-sm"
                   placeholder={
                     actionModal.type === 'complete'
                       ? 'Describe the results and impact...'
@@ -956,7 +956,7 @@ export default function RecommendationsSection() {
             <div className="flex gap-3">
               <button
                 onClick={executeAction}
-                className="flex-1 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors whitespace-nowrap"
+                className="flex-1 px-4 py-2 bg-ai-600 text-white rounded-lg hover:bg-ai-700 transition-colors whitespace-nowrap"
               >
                 Confirm
               </button>
@@ -965,7 +965,7 @@ export default function RecommendationsSection() {
                   setActionModal({ show: false, type: null, recommendation: null });
                   setActionNotes('');
                 }}
-                className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors whitespace-nowrap"
+                className="flex-1 px-4 py-2 bg-brand-200 text-brand-700 rounded-lg hover:bg-brand-300 transition-colors whitespace-nowrap"
               >
                 Cancel
               </button>

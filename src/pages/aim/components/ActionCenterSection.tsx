@@ -24,21 +24,21 @@ interface Action extends CanonicalTrackedWorkItem {
 }
 
 const STATUS_THEME: Record<string, { badge: string; bar: string }> = {
-  Completed: { badge: 'bg-emerald-100 text-emerald-700', bar: 'from-emerald-500 to-teal-600' },
-  'In Progress': { badge: 'bg-blue-100 text-blue-700', bar: 'from-blue-500 to-indigo-600' },
+  Completed: { badge: 'bg-emerald-100 text-emerald-700', bar: 'from-emerald-500 to-ai-600' },
+  'In Progress': { badge: 'bg-sapphire-100 text-sapphire-700', bar: 'from-sapphire-500 to-indigo-600' },
   'On Hold': { badge: 'bg-amber-100 text-amber-700', bar: 'from-amber-500 to-orange-500' },
-  'Not Started': { badge: 'bg-slate-100 text-slate-700', bar: 'from-slate-400 to-slate-500' },
+  'Not Started': { badge: 'bg-brand-100 text-brand-700', bar: 'from-brand-400 to-brand-500' },
 };
 
 const PRIORITY_THEME: Record<string, string> = {
   Critical: 'bg-red-100 text-red-700',
   High: 'bg-red-100 text-red-700',
   Medium: 'bg-amber-100 text-amber-700',
-  Low: 'bg-slate-100 text-slate-700',
+  Low: 'bg-brand-100 text-brand-700',
 };
 
 const TYPE_THEME: Record<string, string> = {
-  Task: 'bg-blue-100 text-blue-700',
+  Task: 'bg-sapphire-100 text-sapphire-700',
   DMAIC: 'bg-violet-100 text-violet-700',
   Kaizen: 'bg-emerald-100 text-emerald-700',
 };
@@ -48,7 +48,7 @@ const OUTCOME_THEME: Record<Action['outcomeState'], string> = {
   'Awaiting Verification': 'bg-amber-100 text-amber-700',
   Monitoring: 'bg-sky-100 text-sky-700',
   'At Risk': 'bg-rose-100 text-rose-700',
-  'Baseline Ready': 'bg-slate-100 text-slate-700',
+  'Baseline Ready': 'bg-brand-100 text-brand-700',
 };
 
 const formatShortDate = (value?: string | null) => {
@@ -537,8 +537,8 @@ const ActionCenterSection: React.FC = () => {
     return (
       <div className="flex items-center justify-center h-96">
         <div className="text-center">
-          <div className="w-16 h-16 border-4 border-teal-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-slate-600">Loading actions...</p>
+          <div className="w-16 h-16 border-4 border-ai-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-brand-600">Loading actions...</p>
         </div>
       </div>
     );
@@ -554,14 +554,14 @@ const ActionCenterSection: React.FC = () => {
           <>
             <button
               onClick={() => navigate('/dashboard/action-tracker')}
-              className="px-4 py-2 bg-gradient-to-r from-teal-500 to-cyan-600 text-white text-sm font-semibold rounded-lg hover:shadow-lg transition-all whitespace-nowrap flex items-center gap-2"
+              className="px-4 py-2 bg-gradient-to-r from-ai-500 to-ai-600 text-white text-sm font-semibold rounded-lg hover:shadow-lg transition-all whitespace-nowrap flex items-center gap-2"
             >
               <i className="ri-add-line"></i>
               Create New Action
             </button>
             <button 
               onClick={handleExportActions}
-              className="px-4 py-2 bg-white border border-slate-200 text-slate-700 text-sm font-medium rounded-lg hover:bg-slate-50 transition-colors whitespace-nowrap flex items-center gap-2"
+              className="px-4 py-2 bg-white border border-brand-200 text-brand-700 text-sm font-medium rounded-lg hover:bg-brand-50 transition-colors whitespace-nowrap flex items-center gap-2"
             >
               <i className="ri-download-line"></i>
               Export Actions
@@ -575,13 +575,13 @@ const ActionCenterSection: React.FC = () => {
         columns="grid-cols-1 md:grid-cols-2 xl:grid-cols-5"
         items={[
           { label: 'Total Actions', value: stats.total },
-          { label: 'In Progress', value: stats.inProgress, accent: 'text-blue-600' },
+          { label: 'In Progress', value: stats.inProgress, accent: 'text-sapphire-600' },
           { label: 'Completed', value: stats.completed, accent: 'text-emerald-600' },
-          { label: 'Not Started', value: stats.notStarted, accent: 'text-slate-900' },
+          { label: 'Not Started', value: stats.notStarted, accent: 'text-brand-900' },
           {
             label: 'Total Impact',
             value: stats.totalImpact >= 1000000 ? `$${(stats.totalImpact / 1000000).toFixed(1)}M` : `$${Math.round(stats.totalImpact / 1000)}K`,
-            accent: 'text-teal-600'
+            accent: 'text-ai-600'
           },
         ]}
       />
@@ -590,12 +590,12 @@ const ActionCenterSection: React.FC = () => {
         title="Outcome Loop"
         description="Connect execution back to recommendation sources and visible outcome capture so AIM can learn what actually worked."
         icon="ri-git-merge-line"
-        accentClass="from-teal-500 to-cyan-600"
+        accentClass="from-ai-500 to-ai-600"
       >
         <AIMMetricTiles
           columns="grid-cols-1 md:grid-cols-2 xl:grid-cols-4"
           items={[
-            { label: 'Linked To AIM', value: outcomeLoop.linked, detail: 'Execution items with a direct recommendation link', accent: 'text-slate-900' },
+            { label: 'Linked To AIM', value: outcomeLoop.linked, detail: 'Execution items with a direct recommendation link', accent: 'text-brand-900' },
             { label: 'Outcome Captured', value: outcomeLoop.captured, detail: 'Completed work with realized impact already recorded', accent: 'text-emerald-600' },
             { label: 'Awaiting Verification', value: outcomeLoop.awaitingVerification, detail: 'Work finished, but KPI impact still needs confirmation', accent: 'text-amber-600' },
             { label: 'At Risk', value: outcomeLoop.atRisk, detail: 'Execution items that are overdue or blocked', accent: 'text-rose-600' },
@@ -608,11 +608,11 @@ const ActionCenterSection: React.FC = () => {
         title="Action Filters"
         description="Slice the execution queue by work type, status, and urgency."
         icon="ri-filter-3-line"
-        accentClass="from-slate-700 to-slate-900"
+        accentClass="from-brand-700 to-brand-900"
       >
         <div className="flex items-center gap-4 flex-wrap">
           <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-slate-700">Type:</span>
+            <span className="text-sm font-medium text-brand-700">Type:</span>
             <div className="flex gap-2">
               {['all', 'Task', 'DMAIC', 'Kaizen'].map(type => (
                 <button
@@ -620,8 +620,8 @@ const ActionCenterSection: React.FC = () => {
                   onClick={() => setFilterType(type)}
                   className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-all whitespace-nowrap ${
                     filterType === type
-                      ? 'bg-gradient-to-r from-teal-500 to-cyan-600 text-white'
-                      : 'bg-slate-50 text-slate-700 hover:bg-slate-100'
+                      ? 'bg-gradient-to-r from-ai-500 to-ai-600 text-white'
+                      : 'bg-brand-50 text-brand-700 hover:bg-brand-100'
                   }`}
                 >
                   {type === 'all' ? 'All' : type}
@@ -630,10 +630,10 @@ const ActionCenterSection: React.FC = () => {
             </div>
           </div>
 
-          <div className="h-6 w-px bg-slate-200"></div>
+          <div className="h-6 w-px bg-brand-200"></div>
 
           <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-slate-700">Status:</span>
+            <span className="text-sm font-medium text-brand-700">Status:</span>
             <div className="flex gap-2">
               {['all', 'Not Started', 'In Progress', 'Completed', 'On Hold'].map(status => (
                 <button
@@ -641,8 +641,8 @@ const ActionCenterSection: React.FC = () => {
                   onClick={() => setFilterStatus(status)}
                   className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-all whitespace-nowrap ${
                     filterStatus === status
-                      ? 'bg-gradient-to-r from-teal-500 to-cyan-600 text-white'
-                      : 'bg-slate-50 text-slate-700 hover:bg-slate-100'
+                      ? 'bg-gradient-to-r from-ai-500 to-ai-600 text-white'
+                      : 'bg-brand-50 text-brand-700 hover:bg-brand-100'
                   }`}
                 >
                   {status === 'all' ? 'All' : status}
@@ -651,10 +651,10 @@ const ActionCenterSection: React.FC = () => {
             </div>
           </div>
 
-          <div className="h-6 w-px bg-slate-200"></div>
+          <div className="h-6 w-px bg-brand-200"></div>
 
           <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-slate-700">Priority:</span>
+            <span className="text-sm font-medium text-brand-700">Priority:</span>
             <div className="flex gap-2">
               {['all', 'Critical', 'High', 'Medium', 'Low'].map(priority => (
                 <button
@@ -662,8 +662,8 @@ const ActionCenterSection: React.FC = () => {
                   onClick={() => setFilterPriority(priority)}
                   className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-all whitespace-nowrap ${
                     filterPriority === priority
-                      ? 'bg-gradient-to-r from-teal-500 to-cyan-600 text-white'
-                      : 'bg-slate-50 text-slate-700 hover:bg-slate-100'
+                      ? 'bg-gradient-to-r from-ai-500 to-ai-600 text-white'
+                      : 'bg-brand-50 text-brand-700 hover:bg-brand-100'
                   }`}
                 >
                   {priority === 'all' ? 'All' : priority}
@@ -676,7 +676,7 @@ const ActionCenterSection: React.FC = () => {
 
       {/* Bulk Actions */}
       {selectedActions.length > 0 && (
-        <div className="bg-gradient-to-r from-teal-500 to-cyan-600 rounded-xl p-4 text-white">
+        <div className="bg-gradient-to-r from-ai-500 to-ai-600 rounded-xl p-4 text-white">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <i className="ri-checkbox-multiple-line text-2xl"></i>
@@ -701,19 +701,19 @@ const ActionCenterSection: React.FC = () => {
       )}
 
       {/* Actions List */}
-      <div className="bg-white rounded-[28px] border border-slate-200 overflow-hidden shadow-[0_20px_60px_rgba(15,23,42,0.06)]">
+      <div className="bg-white rounded-[28px] border border-brand-200 overflow-hidden shadow-[0_20px_60px_rgba(15,23,42,0.06)]">
         {filteredActions.length === 0 ? (
           <div className="p-6">
             {queueIsFilteredEmpty ? (
               <div className="space-y-4">
-                <div className="rounded-[24px] border border-slate-200 bg-white p-6">
+                <div className="rounded-[24px] border border-brand-200 bg-white p-6">
                   <div className="flex items-start gap-4">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-teal-500 to-cyan-600">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-ai-500 to-ai-600">
                       <i className="ri-links-line text-2xl text-white"></i>
                     </div>
                     <div>
-                      <h3 className="text-lg font-bold text-slate-900">Tracked execution is active</h3>
-                      <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+                      <h3 className="text-lg font-bold text-brand-900">Tracked execution is active</h3>
+                      <p className="mt-2 max-w-2xl text-sm leading-6 text-brand-600">
                         AIM is already linked to tracked work, but the current filters are hiding it. Clear the queue filters to bring live
                         action items, DMAIC work, and Kaizen initiatives back into view.
                       </p>
@@ -721,17 +721,17 @@ const ActionCenterSection: React.FC = () => {
                   </div>
 
                   <div className="mt-5 grid gap-4 md:grid-cols-3">
-                    <div className="rounded-2xl bg-slate-50 p-4">
-                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Task Items</div>
-                      <div className="mt-2 text-2xl font-bold text-slate-900">{readinessCounts.tasks}</div>
+                    <div className="rounded-2xl bg-brand-50 p-4">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-500">Task Items</div>
+                      <div className="mt-2 text-2xl font-bold text-brand-900">{readinessCounts.tasks}</div>
                     </div>
-                    <div className="rounded-2xl bg-slate-50 p-4">
-                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">DMAIC Work</div>
-                      <div className="mt-2 text-2xl font-bold text-slate-900">{readinessCounts.dmaic}</div>
+                    <div className="rounded-2xl bg-brand-50 p-4">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-500">DMAIC Work</div>
+                      <div className="mt-2 text-2xl font-bold text-brand-900">{readinessCounts.dmaic}</div>
                     </div>
-                    <div className="rounded-2xl bg-slate-50 p-4">
-                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Kaizen Items</div>
-                      <div className="mt-2 text-2xl font-bold text-slate-900">{readinessCounts.kaizen}</div>
+                    <div className="rounded-2xl bg-brand-50 p-4">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-500">Kaizen Items</div>
+                      <div className="mt-2 text-2xl font-bold text-brand-900">{readinessCounts.kaizen}</div>
                     </div>
                   </div>
                 </div>
@@ -747,7 +747,7 @@ const ActionCenterSection: React.FC = () => {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-slate-50 border-b border-slate-200">
+              <thead className="bg-brand-50 border-b border-brand-200">
                 <tr>
                   <th className="py-3 px-4 text-left">
                     <input
@@ -763,23 +763,23 @@ const ActionCenterSection: React.FC = () => {
                       className="w-4 h-4 cursor-pointer"
                     />
                   </th>
-                  <th className="py-3 px-4 text-left text-sm font-semibold text-slate-700">Action</th>
-                  <th className="py-3 px-4 text-center text-sm font-semibold text-slate-700">Type</th>
-                  <th className="py-3 px-4 text-center text-sm font-semibold text-slate-700">Status</th>
-                  <th className="py-3 px-4 text-center text-sm font-semibold text-slate-700">Priority</th>
-                  <th className="py-3 px-4 text-left text-sm font-semibold text-slate-700">Owner</th>
-                  <th className="py-3 px-4 text-center text-sm font-semibold text-slate-700">Due Date</th>
-                  <th className="py-3 px-4 text-center text-sm font-semibold text-slate-700">Progress</th>
-                  <th className="py-3 px-4 text-left text-sm font-semibold text-slate-700">Outcome Signal</th>
-                  <th className="py-3 px-4 text-center text-sm font-semibold text-slate-700">Impact</th>
+                  <th className="py-3 px-4 text-left text-sm font-semibold text-brand-700">Action</th>
+                  <th className="py-3 px-4 text-center text-sm font-semibold text-brand-700">Type</th>
+                  <th className="py-3 px-4 text-center text-sm font-semibold text-brand-700">Status</th>
+                  <th className="py-3 px-4 text-center text-sm font-semibold text-brand-700">Priority</th>
+                  <th className="py-3 px-4 text-left text-sm font-semibold text-brand-700">Owner</th>
+                  <th className="py-3 px-4 text-center text-sm font-semibold text-brand-700">Due Date</th>
+                  <th className="py-3 px-4 text-center text-sm font-semibold text-brand-700">Progress</th>
+                  <th className="py-3 px-4 text-left text-sm font-semibold text-brand-700">Outcome Signal</th>
+                  <th className="py-3 px-4 text-center text-sm font-semibold text-brand-700">Impact</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredActions.map((action) => (
                   <tr
                     key={action.id}
-                    className={`border-b border-slate-100 hover:bg-slate-50 transition-colors ${
-                      selectedActions.includes(action.id) ? 'bg-teal-50' : ''
+                    className={`border-b border-brand-100 hover:bg-brand-50 transition-colors ${
+                      selectedActions.includes(action.id) ? 'bg-ai-50' : ''
                     }`}
                   >
                     <td className="py-4 px-4">
@@ -792,13 +792,13 @@ const ActionCenterSection: React.FC = () => {
                     </td>
                     <td className="py-4 px-4">
                       <div>
-                        <div className="font-semibold text-slate-900 mb-1">{action.title}</div>
-                        <div className="text-xs text-slate-500">From: {action.createdFrom}</div>
+                        <div className="font-semibold text-brand-900 mb-1">{action.title}</div>
+                        <div className="text-xs text-brand-500">From: {action.createdFrom}</div>
                         <div className="mt-2 flex flex-wrap items-center gap-2">
-                          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-700">
+                          <span className="rounded-full bg-brand-100 px-2.5 py-1 text-[11px] font-semibold text-brand-700">
                             {action.sourceSignalLabel}
                           </span>
-                          <span className="text-xs text-slate-500">{action.sourceSignalDetail}</span>
+                          <span className="text-xs text-brand-500">{action.sourceSignalDetail}</span>
                         </div>
                       </div>
                     </td>
@@ -819,24 +819,24 @@ const ActionCenterSection: React.FC = () => {
                     </td>
                     <td className="py-4 px-4">
                       <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 bg-gradient-to-br from-teal-500 to-cyan-600 rounded-full flex items-center justify-center text-white text-xs font-bold">
+                        <div className="w-8 h-8 bg-gradient-to-br from-ai-500 to-ai-600 rounded-full flex items-center justify-center text-white text-xs font-bold">
                           {action.owner.split(' ').map(n => n[0]).join('')}
                         </div>
-                        <span className="text-sm text-slate-700">{action.owner}</span>
+                        <span className="text-sm text-brand-700">{action.owner}</span>
                       </div>
                     </td>
                     <td className="py-4 px-4 text-center">
-                      <span className="text-sm text-slate-700">{action.dueDate}</span>
+                      <span className="text-sm text-brand-700">{action.dueDate}</span>
                     </td>
                     <td className="py-4 px-4">
                       <div className="flex items-center gap-2">
-                        <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
+                        <div className="flex-1 h-2 bg-brand-100 rounded-full overflow-hidden">
                           <div
                             className={`h-full bg-gradient-to-r ${STATUS_THEME[action.status]?.bar || STATUS_THEME['Not Started'].bar} rounded-full transition-all`}
                             style={{ width: `${action.progress}%` }}
                           ></div>
                         </div>
-                        <span className="text-xs font-semibold text-slate-700 w-10">{action.progress}%</span>
+                        <span className="text-xs font-semibold text-brand-700 w-10">{action.progress}%</span>
                       </div>
                     </td>
                     <td className="py-4 px-4">
@@ -844,7 +844,7 @@ const ActionCenterSection: React.FC = () => {
                         <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${OUTCOME_THEME[action.outcomeState]}`}>
                           {action.outcomeState}
                         </span>
-                        <div className="max-w-xs text-xs leading-5 text-slate-600">{action.outcomeDetail}</div>
+                        <div className="max-w-xs text-xs leading-5 text-brand-600">{action.outcomeDetail}</div>
                       </div>
                     </td>
                     <td className="py-4 px-4 text-center">
@@ -860,29 +860,29 @@ const ActionCenterSection: React.FC = () => {
 
       {/* Team Members */}
       {teamMembers.length > 0 && (
-        <div className="bg-white rounded-xl border border-slate-200 p-6">
+        <div className="bg-white rounded-xl border border-brand-200 p-6">
           <div className="flex items-center gap-3 mb-6">
-            <div className="w-10 h-10 bg-gradient-to-br from-teal-500 to-cyan-600 rounded-lg flex items-center justify-center">
+            <div className="w-10 h-10 bg-gradient-to-br from-ai-500 to-ai-600 rounded-lg flex items-center justify-center">
               <i className="ri-team-line text-xl text-white"></i>
             </div>
             <div>
-              <h2 className="text-xl font-bold text-slate-900">Team Workload</h2>
-              <p className="text-sm text-slate-600">Current action assignments by team member</p>
+              <h2 className="text-xl font-bold text-brand-900">Team Workload</h2>
+              <p className="text-sm text-brand-600">Current action assignments by team member</p>
             </div>
           </div>
 
           <div className="grid grid-cols-5 gap-4">
             {teamMembers.slice(0, 5).map((member) => (
-              <div key={member.id} className="p-4 border border-slate-200 rounded-xl hover:shadow-lg transition-all cursor-pointer">
+              <div key={member.id} className="p-4 border border-brand-200 rounded-xl hover:shadow-lg transition-all cursor-pointer">
                 <div className="flex flex-col items-center text-center">
-                  <div className="w-16 h-16 bg-gradient-to-br from-teal-500 to-cyan-600 rounded-full flex items-center justify-center text-white text-xl font-bold mb-3">
+                  <div className="w-16 h-16 bg-gradient-to-br from-ai-500 to-ai-600 rounded-full flex items-center justify-center text-white text-xl font-bold mb-3">
                     {member.avatar}
                   </div>
-                  <h3 className="text-sm font-bold text-slate-900 mb-1">{member.name}</h3>
-                  <p className="text-xs text-slate-600 mb-3">{member.role}</p>
-                  <div className="w-full pt-3 border-t border-slate-200">
-                    <div className="text-2xl font-bold text-teal-600">{member.activeActions}</div>
-                    <div className="text-xs text-slate-500">Active Actions</div>
+                  <h3 className="text-sm font-bold text-brand-900 mb-1">{member.name}</h3>
+                  <p className="text-xs text-brand-600 mb-3">{member.role}</p>
+                  <div className="w-full pt-3 border-t border-brand-200">
+                    <div className="text-2xl font-bold text-ai-600">{member.activeActions}</div>
+                    <div className="text-xs text-brand-500">Active Actions</div>
                   </div>
                 </div>
               </div>
@@ -895,29 +895,29 @@ const ActionCenterSection: React.FC = () => {
       {showAssignModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl p-6 w-full max-w-md">
-            <h3 className="text-xl font-bold text-slate-900 mb-4">Assign Owner</h3>
+            <h3 className="text-xl font-bold text-brand-900 mb-4">Assign Owner</h3>
             <div className="space-y-3 mb-6 max-h-96 overflow-y-auto">
               {teamMembers.map((member) => (
                 <button
                   key={member.id}
                   onClick={() => assignOwner(member.id)}
-                  className="w-full flex items-center gap-3 p-3 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+                  className="w-full flex items-center gap-3 p-3 border border-brand-200 rounded-lg hover:bg-brand-50 transition-colors"
                 >
-                  <div className="w-10 h-10 bg-gradient-to-br from-teal-500 to-cyan-600 rounded-full flex items-center justify-center text-white text-sm font-bold">
+                  <div className="w-10 h-10 bg-gradient-to-br from-ai-500 to-ai-600 rounded-full flex items-center justify-center text-white text-sm font-bold">
                     {member.avatar}
                   </div>
                   <div className="flex-1 text-left">
-                    <div className="font-semibold text-slate-900">{member.name}</div>
-                    <div className="text-xs text-slate-600">{member.role}</div>
+                    <div className="font-semibold text-brand-900">{member.name}</div>
+                    <div className="text-xs text-brand-600">{member.role}</div>
                   </div>
-                  <div className="text-sm text-slate-500">{member.activeActions} active</div>
+                  <div className="text-sm text-brand-500">{member.activeActions} active</div>
                 </button>
               ))}
             </div>
             <div className="flex gap-3">
               <button
                 onClick={() => setShowAssignModal(false)}
-                className="flex-1 px-4 py-2 bg-slate-100 text-slate-700 text-sm font-medium rounded-lg hover:bg-slate-200 transition-colors whitespace-nowrap"
+                className="flex-1 px-4 py-2 bg-brand-100 text-brand-700 text-sm font-medium rounded-lg hover:bg-brand-200 transition-colors whitespace-nowrap"
               >
                 Cancel
               </button>

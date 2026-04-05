@@ -48,7 +48,7 @@ const REPORT_TEMPLATES: Array<{
     description: 'Comprehensive monthly report covering intelligence, decisions, actions, and alert posture.',
     type: 'Monthly Summary',
     icon: 'ri-file-text-line',
-    shell: 'from-teal-50 to-cyan-50 border-teal-200',
+    shell: 'from-ai-50 to-ai-100 border-ai-200',
     includedSections: [
       'Executive Summary',
       'Performance Narrative',
@@ -67,7 +67,7 @@ const REPORT_TEMPLATES: Array<{
     description: 'Boardroom-ready snapshot focused on risk, opportunity, and recommended decisions.',
     type: 'Executive Brief',
     icon: 'ri-presentation-line',
-    shell: 'from-blue-50 to-indigo-50 border-blue-200',
+    shell: 'from-sapphire-50 to-indigo-50 border-sapphire-200',
     includedSections: [
       'Executive Summary',
       'Performance Narrative',
@@ -99,7 +99,7 @@ const REPORT_TEMPLATES: Array<{
     description: 'Assemble a report pack tailored to the audience, review, or operating question at hand.',
     type: 'Custom Report',
     icon: 'ri-mail-send-line',
-    shell: 'from-emerald-50 to-teal-50 border-emerald-200',
+    shell: 'from-emerald-50 to-ai-50 border-emerald-200',
     includedSections: [],
     audience: 'Custom distribution',
   },
@@ -700,8 +700,8 @@ const ReportsSection: React.FC = () => {
     return (
       <div className="flex items-center justify-center h-96">
         <div className="text-center">
-          <div className="w-16 h-16 border-4 border-teal-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-slate-600">Loading reports...</p>
+          <div className="w-16 h-16 border-4 border-ai-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-brand-600">Loading reports...</p>
         </div>
       </div>
     );
@@ -717,7 +717,7 @@ const ReportsSection: React.FC = () => {
           <>
             <button
               onClick={() => setShowScheduleModal(true)}
-              className="px-4 py-2 bg-white border border-slate-200 text-slate-700 text-sm font-medium rounded-xl hover:bg-slate-50 transition-colors whitespace-nowrap flex items-center gap-2"
+              className="px-4 py-2 bg-white border border-brand-200 text-brand-700 text-sm font-medium rounded-xl hover:bg-brand-50 transition-colors whitespace-nowrap flex items-center gap-2"
             >
               <i className="ri-calendar-line"></i>
               Schedule Reports
@@ -725,7 +725,7 @@ const ReportsSection: React.FC = () => {
             <button
               onClick={() => generateReport(selectedTemplate)}
               disabled={generating}
-              className="px-4 py-2 bg-gradient-to-r from-teal-500 to-cyan-600 text-white text-sm font-semibold rounded-xl hover:shadow-lg transition-all whitespace-nowrap flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-4 py-2 bg-gradient-to-r from-ai-500 to-ai-600 text-white text-sm font-semibold rounded-xl hover:shadow-lg transition-all whitespace-nowrap flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <i className={`ri-file-add-line ${generating ? 'animate-spin' : ''}`}></i>
               {generating ? 'Generating...' : 'Generate Report'}
@@ -764,7 +764,7 @@ const ReportsSection: React.FC = () => {
         title="Report Templates"
         description="Choose the reporting posture that best matches your audience before you generate or schedule delivery."
         icon="ri-layout-grid-line"
-        accentClass="from-teal-500 to-cyan-600"
+        accentClass="from-ai-500 to-ai-600"
       >
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           {REPORT_TEMPLATES.map((template) => {
@@ -775,23 +775,23 @@ const ReportsSection: React.FC = () => {
                 onClick={() => setSelectedTemplate(template.id)}
                 className={`rounded-[24px] border p-5 text-left transition-all ${
                   isActive
-                    ? 'border-teal-500 bg-gradient-to-br from-teal-50 to-cyan-50 shadow-lg shadow-teal-100/70'
-                    : `border-slate-200 bg-gradient-to-br ${template.shell} hover:shadow-md`
+                    ? 'border-ai-500 bg-gradient-to-br from-ai-50 to-ai-100 shadow-lg shadow-ai-100/70'
+                    : `border-brand-200 bg-gradient-to-br ${template.shell} hover:shadow-md`
                 }`}
               >
                 <div className="mb-4 flex items-start justify-between gap-3">
                   <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/80 shadow-sm">
-                    <i className={`${template.icon} text-xl text-slate-700`}></i>
+                    <i className={`${template.icon} text-xl text-brand-700`}></i>
                   </div>
                   {isActive ? (
-                    <span className="rounded-full bg-teal-500 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-white">
+                    <span className="rounded-full bg-ai-500 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-white">
                       Selected
                     </span>
                   ) : null}
                 </div>
-                <h3 className="text-lg font-bold text-slate-900">{template.title}</h3>
-                <p className="mt-2 text-sm leading-6 text-slate-600">{template.description}</p>
-                <div className="mt-4 text-xs font-medium uppercase tracking-[0.16em] text-slate-500">
+                <h3 className="text-lg font-bold text-brand-900">{template.title}</h3>
+                <p className="mt-2 text-sm leading-6 text-brand-600">{template.description}</p>
+                <div className="mt-4 text-xs font-medium uppercase tracking-[0.16em] text-brand-500">
                   {template.audience}
                 </div>
               </button>
@@ -804,19 +804,19 @@ const ReportsSection: React.FC = () => {
         title="Report Archive"
         description="Review the latest generated report packs and export or share them in the format your audience expects."
         icon="ri-folder-line"
-        accentClass="from-blue-500 to-indigo-600"
+        accentClass="from-sapphire-500 to-indigo-600"
       >
 
         {reports.length === 0 ? (
           <div className="text-center py-12">
-            <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <i className="ri-file-list-line text-3xl text-slate-400"></i>
+            <div className="w-16 h-16 bg-brand-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <i className="ri-file-list-line text-3xl text-brand-400"></i>
             </div>
-            <h3 className="text-lg font-bold text-slate-900 mb-2">No Reports Yet</h3>
-            <p className="text-slate-600 mb-4">Generate your first AIM report to get started</p>
+            <h3 className="text-lg font-bold text-brand-900 mb-2">No Reports Yet</h3>
+            <p className="text-brand-600 mb-4">Generate your first AIM report to get started</p>
             <button
               onClick={() => generateReport(selectedTemplate)}
-              className="px-6 py-3 bg-gradient-to-r from-teal-500 to-cyan-600 text-white text-sm font-semibold rounded-lg hover:shadow-lg transition-all whitespace-nowrap"
+              className="px-6 py-3 bg-gradient-to-r from-ai-500 to-ai-600 text-white text-sm font-semibold rounded-lg hover:shadow-lg transition-all whitespace-nowrap"
             >
               Generate Report
             </button>
@@ -826,19 +826,19 @@ const ReportsSection: React.FC = () => {
             {reports.map((report) => (
               <div
                 key={report.id}
-                className={`p-5 border border-slate-200 rounded-xl hover:shadow-lg transition-all cursor-pointer ${
-                  selectedReport === report.id ? 'ring-2 ring-teal-500 bg-teal-50' : ''
+                className={`p-5 border border-brand-200 rounded-xl hover:shadow-lg transition-all cursor-pointer ${
+                  selectedReport === report.id ? 'ring-2 ring-ai-500 bg-ai-50' : ''
                 }`}
                 onClick={() => setSelectedReport(report.id)}
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-4 flex-1">
-                    <div className="w-12 h-12 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-lg flex items-center justify-center">
-                      <i className="ri-file-text-line text-2xl text-blue-600"></i>
+                    <div className="w-12 h-12 bg-gradient-to-br from-sapphire-100 to-indigo-100 rounded-lg flex items-center justify-center">
+                      <i className="ri-file-text-line text-2xl text-sapphire-600"></i>
                     </div>
                     <div className="flex-1">
-                      <h3 className="text-lg font-bold text-slate-900 mb-1">{report.title}</h3>
-                      <div className="flex items-center gap-4 text-sm text-slate-600">
+                      <h3 className="text-lg font-bold text-brand-900 mb-1">{report.title}</h3>
+                      <div className="flex items-center gap-4 text-sm text-brand-600">
                         <span className="flex items-center gap-1">
                           <i className="ri-calendar-line"></i>
                           {report.date}
@@ -858,7 +858,7 @@ const ReportsSection: React.FC = () => {
                   <div className="flex items-center gap-2">
                     <span className={`px-3 py-1 ${
                       report.status === 'Ready' ? 'bg-emerald-100 text-emerald-700' :
-                      report.status === 'Generating' ? 'bg-blue-100 text-blue-700' :
+                      report.status === 'Generating' ? 'bg-sapphire-100 text-sapphire-700' :
                       'bg-amber-100 text-amber-700'
                     } text-xs font-semibold rounded-full whitespace-nowrap`}>
                       {report.status}
@@ -869,7 +869,7 @@ const ReportsSection: React.FC = () => {
                         e.stopPropagation();
                         exportReport(report, 'pdf');
                       }}
-                      className="w-10 h-10 flex items-center justify-center hover:bg-slate-100 rounded-lg transition-colors" 
+                      className="w-10 h-10 flex items-center justify-center hover:bg-brand-100 rounded-lg transition-colors" 
                       title="Download PDF"
                     >
                       <i className="ri-file-pdf-line text-red-600 text-xl"></i>
@@ -879,7 +879,7 @@ const ReportsSection: React.FC = () => {
                         e.stopPropagation();
                         exportReport(report, 'excel');
                       }}
-                      className="w-10 h-10 flex items-center justify-center hover:bg-slate-100 rounded-lg transition-colors" 
+                      className="w-10 h-10 flex items-center justify-center hover:bg-brand-100 rounded-lg transition-colors" 
                       title="Download Excel"
                     >
                       <i className="ri-file-excel-line text-emerald-600 text-xl"></i>
@@ -889,20 +889,20 @@ const ReportsSection: React.FC = () => {
                         e.stopPropagation();
                         exportReport(report, 'email');
                       }}
-                      className="w-10 h-10 flex items-center justify-center hover:bg-slate-100 rounded-lg transition-colors" 
+                      className="w-10 h-10 flex items-center justify-center hover:bg-brand-100 rounded-lg transition-colors" 
                       title="Email Report"
                     >
-                      <i className="ri-mail-line text-blue-600 text-xl"></i>
+                      <i className="ri-mail-line text-sapphire-600 text-xl"></i>
                     </button>
                     <button
                       onClick={async (e) => {
                         e.stopPropagation();
                         await shareReport(report);
                       }}
-                      className="w-10 h-10 flex items-center justify-center hover:bg-slate-100 rounded-lg transition-colors"
+                      className="w-10 h-10 flex items-center justify-center hover:bg-brand-100 rounded-lg transition-colors"
                       title="Share"
                     >
-                      <i className="ri-share-line text-slate-600 text-xl"></i>
+                      <i className="ri-share-line text-brand-600 text-xl"></i>
                     </button>
                   </div>
                 </div>
@@ -926,29 +926,29 @@ const ReportsSection: React.FC = () => {
               onClick={() => toggleSection(index)}
               className={`p-4 border-2 rounded-xl transition-all cursor-pointer ${
                 section.included
-                  ? 'border-teal-500 bg-gradient-to-br from-teal-50 to-cyan-50'
-                  : 'border-slate-200 hover:border-slate-300'
+                  ? 'border-ai-500 bg-gradient-to-br from-ai-50 to-ai-100'
+                  : 'border-brand-200 hover:border-brand-300'
               }`}
             >
               <div className="flex items-start justify-between mb-3">
                 <div className="flex-1">
-                  <h3 className="text-lg font-bold text-slate-900 mb-1">{section.title}</h3>
-                  <p className="text-sm text-slate-600">{section.description}</p>
+                  <h3 className="text-lg font-bold text-brand-900 mb-1">{section.title}</h3>
+                  <p className="text-sm text-brand-600">{section.description}</p>
                 </div>
                 <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${
                   section.included
-                    ? 'bg-teal-500 border-teal-500'
-                    : 'border-slate-300'
+                    ? 'bg-ai-500 border-ai-500'
+                    : 'border-brand-300'
                 }`}>
                   {section.included && (
                     <i className="ri-check-line text-white text-sm"></i>
                   )}
                 </div>
               </div>
-              <div className="flex items-center justify-between text-xs text-slate-500">
+              <div className="flex items-center justify-between text-xs text-brand-500">
                 <span>{section.pages} pages</span>
                 {section.included && (
-                  <span className="px-2 py-1 bg-teal-100 text-teal-700 font-semibold rounded-full">
+                  <span className="px-2 py-1 bg-ai-100 text-ai-700 font-semibold rounded-full">
                     Included
                   </span>
                 )}
@@ -957,9 +957,9 @@ const ReportsSection: React.FC = () => {
           ))}
         </div>
 
-        <div className="mt-6 pt-6 border-t border-slate-200 flex items-center justify-between">
-          <div className="text-sm text-slate-600">
-            <span className="font-semibold text-slate-900">
+        <div className="mt-6 pt-6 border-t border-brand-200 flex items-center justify-between">
+          <div className="text-sm text-brand-600">
+            <span className="font-semibold text-brand-900">
               {getSelectedSections().length} sections selected
             </span>
             {' • '}
@@ -970,7 +970,7 @@ const ReportsSection: React.FC = () => {
           <button
             onClick={() => generateReport(selectedTemplate)}
             disabled={generating}
-            className="px-6 py-3 bg-gradient-to-r from-teal-500 to-cyan-600 text-white text-sm font-semibold rounded-lg hover:shadow-lg transition-all whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-6 py-3 bg-gradient-to-r from-ai-500 to-ai-600 text-white text-sm font-semibold rounded-lg hover:shadow-lg transition-all whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {generating ? 'Generating...' : 'Generate Custom Report'}
           </button>
@@ -981,52 +981,52 @@ const ReportsSection: React.FC = () => {
         title="Distribution Options"
         description="Export, email, or stage the report package in the format each audience expects."
         icon="ri-download-cloud-line"
-        accentClass="from-blue-500 to-indigo-600"
+        accentClass="from-sapphire-500 to-indigo-600"
       >
 
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <button 
             onClick={() => reports[0] ? exportReport(reports[0], 'pdf') : generateReport(selectedTemplate)}
-            className="p-6 border border-slate-200 rounded-xl hover:shadow-lg hover:border-teal-500 transition-all text-center group"
+            className="p-6 border border-brand-200 rounded-xl hover:shadow-lg hover:border-ai-500 transition-all text-center group"
           >
             <div className="w-16 h-16 bg-gradient-to-br from-red-100 to-pink-100 rounded-lg flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
               <i className="ri-file-pdf-line text-3xl text-red-600"></i>
             </div>
-            <h3 className="text-sm font-bold text-slate-900 mb-1">PDF Document</h3>
-            <p className="text-xs text-slate-600">Professional formatted report</p>
+            <h3 className="text-sm font-bold text-brand-900 mb-1">PDF Document</h3>
+            <p className="text-xs text-brand-600">Professional formatted report</p>
           </button>
 
           <button 
             onClick={() => reports[0] ? exportReport(reports[0], 'excel') : generateReport(selectedTemplate)}
-            className="p-6 border border-slate-200 rounded-xl hover:shadow-lg hover:border-teal-500 transition-all text-center group"
+            className="p-6 border border-brand-200 rounded-xl hover:shadow-lg hover:border-ai-500 transition-all text-center group"
           >
-            <div className="w-16 h-16 bg-gradient-to-br from-emerald-100 to-teal-100 rounded-lg flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
+            <div className="w-16 h-16 bg-gradient-to-br from-emerald-100 to-ai-100 rounded-lg flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
               <i className="ri-file-excel-line text-3xl text-emerald-600"></i>
             </div>
-            <h3 className="text-sm font-bold text-slate-900 mb-1">Excel Workbook</h3>
-            <p className="text-xs text-slate-600">Data tables and charts</p>
+            <h3 className="text-sm font-bold text-brand-900 mb-1">Excel Workbook</h3>
+            <p className="text-xs text-brand-600">Data tables and charts</p>
           </button>
 
           <button 
             onClick={() => reports[0] ? exportReport(reports[0], 'email') : generateReport(selectedTemplate)}
-            className="p-6 border border-slate-200 rounded-xl hover:shadow-lg hover:border-teal-500 transition-all text-center group"
+            className="p-6 border border-brand-200 rounded-xl hover:shadow-lg hover:border-ai-500 transition-all text-center group"
           >
-            <div className="w-16 h-16 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-lg flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
-              <i className="ri-mail-line text-3xl text-blue-600"></i>
+            <div className="w-16 h-16 bg-gradient-to-br from-sapphire-100 to-indigo-100 rounded-lg flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
+              <i className="ri-mail-line text-3xl text-sapphire-600"></i>
             </div>
-            <h3 className="text-sm font-bold text-slate-900 mb-1">Email Report</h3>
-            <p className="text-xs text-slate-600">Send directly to recipients</p>
+            <h3 className="text-sm font-bold text-brand-900 mb-1">Email Report</h3>
+            <p className="text-xs text-brand-600">Send directly to recipients</p>
           </button>
 
           <button 
             onClick={() => reports[0] ? exportReport(reports[0], 'presentation') : generateReport(selectedTemplate)}
-            className="p-6 border border-slate-200 rounded-xl hover:shadow-lg hover:border-teal-500 transition-all text-center group"
+            className="p-6 border border-brand-200 rounded-xl hover:shadow-lg hover:border-ai-500 transition-all text-center group"
           >
             <div className="w-16 h-16 bg-gradient-to-br from-purple-100 to-pink-100 rounded-lg flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
               <i className="ri-presentation-line text-3xl text-purple-600"></i>
             </div>
-            <h3 className="text-sm font-bold text-slate-900 mb-1">Presentation</h3>
-            <p className="text-xs text-slate-600">PowerPoint slides</p>
+            <h3 className="text-sm font-bold text-brand-900 mb-1">Presentation</h3>
+            <p className="text-xs text-brand-600">PowerPoint slides</p>
           </button>
         </div>
       </AIMPanel>
@@ -1039,22 +1039,22 @@ const ReportsSection: React.FC = () => {
       >
 
         <div className="grid gap-6 md:grid-cols-3">
-          <div className="p-5 bg-gradient-to-br from-slate-50 to-slate-100 rounded-xl">
-            <div className="text-sm text-slate-600 mb-2">Total Reports Generated</div>
-            <div className="text-3xl font-bold text-slate-900 mb-1">{auditStats.totalReports}</div>
-            <div className="text-xs text-slate-500">All time</div>
+          <div className="p-5 bg-gradient-to-br from-brand-50 to-brand-100 rounded-xl">
+            <div className="text-sm text-brand-600 mb-2">Total Reports Generated</div>
+            <div className="text-3xl font-bold text-brand-900 mb-1">{auditStats.totalReports}</div>
+            <div className="text-xs text-brand-500">All time</div>
           </div>
 
-          <div className="p-5 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl">
-            <div className="text-sm text-slate-600 mb-2">Data Sources Validated</div>
-            <div className="text-3xl font-bold text-blue-600 mb-1">{auditStats.dataSourcesValidated}</div>
-            <div className="text-xs text-slate-500">All sources verified</div>
+          <div className="p-5 bg-gradient-to-br from-sapphire-50 to-indigo-50 rounded-xl">
+            <div className="text-sm text-brand-600 mb-2">Data Sources Validated</div>
+            <div className="text-3xl font-bold text-sapphire-600 mb-1">{auditStats.dataSourcesValidated}</div>
+            <div className="text-xs text-brand-500">All sources verified</div>
           </div>
 
-          <div className="p-5 bg-gradient-to-br from-emerald-50 to-teal-50 rounded-xl">
-            <div className="text-sm text-slate-600 mb-2">Audit Trail Complete</div>
+          <div className="p-5 bg-gradient-to-br from-emerald-50 to-ai-50 rounded-xl">
+            <div className="text-sm text-brand-600 mb-2">Audit Trail Complete</div>
             <div className="text-3xl font-bold text-emerald-600 mb-1">{auditStats.auditTrailComplete}%</div>
-            <div className="text-xs text-slate-500">Full traceability</div>
+            <div className="text-xs text-brand-500">Full traceability</div>
           </div>
         </div>
 
@@ -1062,8 +1062,8 @@ const ReportsSection: React.FC = () => {
           <div className="flex items-start gap-3">
             <i className="ri-information-line text-amber-600 text-xl mt-0.5"></i>
             <div>
-              <h4 className="text-sm font-semibold text-slate-900 mb-1">Compliance Note</h4>
-              <p className="text-sm text-slate-600">
+              <h4 className="text-sm font-semibold text-brand-900 mb-1">Compliance Note</h4>
+              <p className="text-sm text-brand-600">
                 All AIM reports include full audit trails, data source documentation, and methodology transparency. 
                 Reports meet ISO 9001 and Six Sigma documentation standards.
               </p>
@@ -1077,19 +1077,19 @@ const ReportsSection: React.FC = () => {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-6">
-              <h3 className="text-2xl font-bold text-slate-900">Schedule Automated Reports</h3>
+              <h3 className="text-2xl font-bold text-brand-900">Schedule Automated Reports</h3>
               <button
                 onClick={() => setShowScheduleModal(false)}
-                className="w-8 h-8 flex items-center justify-center hover:bg-slate-100 rounded-lg transition-colors"
+                className="w-8 h-8 flex items-center justify-center hover:bg-brand-100 rounded-lg transition-colors"
               >
-                <i className="ri-close-line text-slate-600 text-xl"></i>
+                <i className="ri-close-line text-brand-600 text-xl"></i>
               </button>
             </div>
 
             <div className="space-y-6">
               {/* Frequency */}
               <div>
-                <label className="text-sm font-semibold text-slate-900 mb-3 block">Report Frequency</label>
+                <label className="text-sm font-semibold text-brand-900 mb-3 block">Report Frequency</label>
                 <div className="grid grid-cols-4 gap-3">
                   {['weekly', 'monthly', 'quarterly', 'custom'].map((freq) => (
                     <button
@@ -1097,8 +1097,8 @@ const ReportsSection: React.FC = () => {
                       onClick={() => setReportFrequency(freq)}
                       className={`px-4 py-3 text-sm font-medium rounded-lg transition-all capitalize ${
                         reportFrequency === freq
-                          ? 'bg-gradient-to-r from-teal-500 to-cyan-600 text-white'
-                          : 'bg-slate-50 text-slate-700 hover:bg-slate-100'
+                          ? 'bg-gradient-to-r from-ai-500 to-ai-600 text-white'
+                          : 'bg-brand-50 text-brand-700 hover:bg-brand-100'
                       }`}
                     >
                       {freq}
@@ -1109,11 +1109,11 @@ const ReportsSection: React.FC = () => {
 
               {/* Recipients */}
               <div>
-                <label className="text-sm font-semibold text-slate-900 mb-3 block">
+                <label className="text-sm font-semibold text-brand-900 mb-3 block">
                   Select Recipients ({selectedRecipients.length} selected)
                 </label>
                 {recipients.length === 0 ? (
-                  <div className="text-center py-8 text-slate-600">
+                  <div className="text-center py-8 text-brand-600">
                     No team members found. Add team members to send reports.
                   </div>
                 ) : (
@@ -1124,22 +1124,22 @@ const ReportsSection: React.FC = () => {
                         onClick={() => toggleRecipient(recipient.id)}
                         className={`w-full flex items-center gap-3 p-3 border-2 rounded-lg transition-all ${
                           selectedRecipients.includes(recipient.id)
-                            ? 'border-teal-500 bg-teal-50'
-                            : 'border-slate-200 hover:border-slate-300'
+                            ? 'border-ai-500 bg-ai-50'
+                            : 'border-brand-200 hover:border-brand-300'
                         }`}
                       >
                         <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center ${
                           selectedRecipients.includes(recipient.id)
-                            ? 'bg-teal-500 border-teal-500'
-                            : 'border-slate-300'
+                            ? 'bg-ai-500 border-ai-500'
+                            : 'border-brand-300'
                         }`}>
                           {selectedRecipients.includes(recipient.id) && (
                             <i className="ri-check-line text-white text-sm"></i>
                           )}
                         </div>
                         <div className="flex-1 text-left">
-                          <div className="font-semibold text-slate-900">{recipient.name}</div>
-                          <div className="text-xs text-slate-600">{recipient.role} • {recipient.email}</div>
+                          <div className="font-semibold text-brand-900">{recipient.name}</div>
+                          <div className="text-xs text-brand-600">{recipient.role} • {recipient.email}</div>
                         </div>
                       </button>
                     ))}
@@ -1149,31 +1149,31 @@ const ReportsSection: React.FC = () => {
 
               {/* Delivery Options */}
               <div>
-                <label className="text-sm font-semibold text-slate-900 mb-3 block">Delivery Format</label>
+                <label className="text-sm font-semibold text-brand-900 mb-3 block">Delivery Format</label>
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="p-4 border border-slate-200 rounded-lg">
+                  <div className="p-4 border border-brand-200 rounded-lg">
                     <input type="checkbox" id="pdf" defaultChecked className="mr-2" />
-                    <label htmlFor="pdf" className="text-sm text-slate-700 cursor-pointer">PDF Document</label>
+                    <label htmlFor="pdf" className="text-sm text-brand-700 cursor-pointer">PDF Document</label>
                   </div>
-                  <div className="p-4 border border-slate-200 rounded-lg">
+                  <div className="p-4 border border-brand-200 rounded-lg">
                     <input type="checkbox" id="excel" className="mr-2" />
-                    <label htmlFor="excel" className="text-sm text-slate-700 cursor-pointer">Excel Workbook</label>
+                    <label htmlFor="excel" className="text-sm text-brand-700 cursor-pointer">Excel Workbook</label>
                   </div>
                 </div>
               </div>
 
               {/* Action Buttons */}
-              <div className="flex gap-3 pt-4 border-t border-slate-200">
+              <div className="flex gap-3 pt-4 border-t border-brand-200">
                 <button
                   onClick={() => setShowScheduleModal(false)}
-                  className="flex-1 px-4 py-3 bg-slate-100 text-slate-700 text-sm font-medium rounded-lg hover:bg-slate-200 transition-colors whitespace-nowrap"
+                  className="flex-1 px-4 py-3 bg-brand-100 text-brand-700 text-sm font-medium rounded-lg hover:bg-brand-200 transition-colors whitespace-nowrap"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={scheduleReport}
                   disabled={selectedRecipients.length === 0}
-                  className="flex-1 px-4 py-3 bg-gradient-to-r from-teal-500 to-cyan-600 text-white text-sm font-semibold rounded-lg hover:shadow-lg transition-all whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex-1 px-4 py-3 bg-gradient-to-r from-ai-500 to-ai-600 text-white text-sm font-semibold rounded-lg hover:shadow-lg transition-all whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Schedule Reports
                 </button>
