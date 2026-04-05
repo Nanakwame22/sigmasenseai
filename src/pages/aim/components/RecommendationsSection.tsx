@@ -307,7 +307,14 @@ export default function RecommendationsSection() {
         due_date: dueDate.toISOString().split('T')[0],
         progress: 0,
         estimated_hours: 0,
-        tags: [`rec:${rec.id}`, 'ai-recommendation', rec.category ?? 'general'],
+        tags: [
+          `rec:${rec.id}`,
+          'ai-recommendation',
+          'aim-source:recommendation',
+          'aim-outcome:baseline_ready',
+          'aim-verification:pending',
+          rec.category ?? 'general',
+        ],
         assigned_to: null,
       };
 

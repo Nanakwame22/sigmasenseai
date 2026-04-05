@@ -174,6 +174,12 @@ function appendLifecycleEvent(
   };
 }
 
+function replaceTags(existingTags: string[] | null | undefined, nextTags: string[], tagsToRemove: string[] = []) {
+  const base = Array.isArray(existingTags) ? existingTags.filter((tag) => typeof tag === 'string') : [];
+  const filtered = base.filter((tag) => !tagsToRemove.includes(tag) && !tag.startsWith('aim-outcome:') && !tag.startsWith('aim-verification:'));
+  return Array.from(new Set([...filtered, ...nextTags]));
+}
+
 export class RecommendationsEngine {
   private userId: string;
   private organizationId: string | null = null;
@@ -206,6 +212,41 @@ export class RecommendationsEngine {
 
     this.organizationId = membership?.organization_id || null;
     return this.organizationId;
+  }
+
+  private async syncLinkedActionItems(
+    recommendationId: string,
+    nextTags: string[],
+    options?: {
+      status?: string;
+      progress?: number;
+    }
+  ) {
+    const orgId = await this.getOrganizationId();
+    if (!orgId) return;
+
+    const recTag = `rec:${recommendationId}`;
+    const { data: linkedItems } = await supabase
+      .from('action_items')
+      .select('id, tags')
+      .eq('organization_id', orgId)
+      .contains('tags', [recTag]);
+
+    if (!linkedItems || linkedItems.length === 0) return;
+
+    await Promise.all(
+      linkedItems.map((item: any) =>
+        supabase
+          .from('action_items')
+          .update({
+            ...(options?.status ? { status: options.status } : {}),
+            ...(typeof options?.progress === 'number' ? { progress: options.progress } : {}),
+            tags: replaceTags(item.tags, [recTag, ...nextTags])
+          })
+          .eq('id', item.id)
+          .eq('organization_id', orgId)
+      )
+    );
   }
 
   async generateRecommendations(): Promise<Recommendation[]> {
@@ -700,6 +741,13 @@ export class RecommendationsEngine {
       .eq('id', id)
       .eq('organization_id', orgId);
 
+    if (!error) {
+      await this.syncLinkedActionItems(id, ['aim-source:recommendation', 'aim-outcome:monitoring', 'aim-verification:pending'], {
+        status: 'in_progress',
+        progress: 35,
+      });
+    }
+
     return !error;
   }
 
@@ -734,6 +782,21 @@ export class RecommendationsEngine {
       .eq('id', id)
       .eq('organization_id', orgId);
 
+    if (!error) {
+      await this.syncLinkedActionItems(
+        id,
+        [
+          'aim-source:recommendation',
+          actualImpact ? 'aim-outcome:captured' : 'aim-outcome:awaiting_verification',
+          actualImpact ? 'aim-verification:complete' : 'aim-verification:pending',
+        ],
+        {
+          status: 'completed',
+          progress: 100,
+        }
+      );
+    }
+
     return !error;
   }
 
@@ -764,6 +827,12 @@ export class RecommendationsEngine {
       })
       .eq('id', id)
       .eq('organization_id', orgId);
+
+    if (!error) {
+      await this.syncLinkedActionItems(id, ['aim-source:recommendation', 'aim-outcome:at_risk', 'aim-verification:pending'], {
+        status: 'on_hold',
+      });
+    }
 
     return !error;
   }

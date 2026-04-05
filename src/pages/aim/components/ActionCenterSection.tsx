@@ -57,6 +57,36 @@ const formatShortDate = (value?: string | null) => {
   return parsed.toISOString().split('T')[0];
 };
 
+function getOutcomeStateFromTags(tags: string[] | null | undefined): Action['outcomeState'] | null {
+  if (!Array.isArray(tags)) return null;
+  if (tags.includes('aim-outcome:captured')) return 'Captured';
+  if (tags.includes('aim-outcome:awaiting_verification')) return 'Awaiting Verification';
+  if (tags.includes('aim-outcome:monitoring')) return 'Monitoring';
+  if (tags.includes('aim-outcome:at_risk')) return 'At Risk';
+  if (tags.includes('aim-outcome:baseline_ready')) return 'Baseline Ready';
+  return null;
+}
+
+function getOutcomeDetailFromTags(tags: string[] | null | undefined): string | null {
+  if (!Array.isArray(tags)) return null;
+  if (tags.includes('aim-outcome:captured')) {
+    return 'AIM has a recorded result for this execution path. Review the captured impact to understand what worked.';
+  }
+  if (tags.includes('aim-outcome:awaiting_verification')) {
+    return 'Execution is complete, but AIM is still waiting for KPI confirmation or realized impact notes.';
+  }
+  if (tags.includes('aim-outcome:monitoring')) {
+    return 'Execution is underway. AIM is monitoring for the first measurable shift against the expected impact.';
+  }
+  if (tags.includes('aim-outcome:at_risk')) {
+    return 'This linked action is blocked, overdue, or dismissed. Reconfirm ownership before the signal deteriorates further.';
+  }
+  if (tags.includes('aim-outcome:baseline_ready')) {
+    return 'This item is linked to AIM and ready to start. Capture baseline context before execution begins.';
+  }
+  return null;
+}
+
 async function getOrganizationId(userId: string): Promise<string | null> {
   const { data: profile } = await supabase
     .from('user_profiles')
@@ -161,19 +191,28 @@ const ActionCenterSection: React.FC = () => {
 
           let outcomeState: Action['outcomeState'] = 'Baseline Ready';
           let outcomeDetail = 'Execution has not started yet. Capture first movement to validate impact.';
+          const persistedOutcomeState = getOutcomeStateFromTags(tags);
+          const persistedOutcomeDetail = getOutcomeDetailFromTags(tags);
+
+          if (persistedOutcomeState) {
+            outcomeState = persistedOutcomeState;
+            if (persistedOutcomeDetail) {
+              outcomeDetail = persistedOutcomeDetail;
+            }
+          }
 
           if (linkedRecommendation?.actual_impact) {
             outcomeState = 'Captured';
             outcomeDetail = linkedRecommendation.actual_impact;
-          } else if (item.status === 'completed' || linkedRecommendation?.status === 'completed') {
+          } else if (!persistedOutcomeState && (item.status === 'completed' || linkedRecommendation?.status === 'completed')) {
             outcomeState = 'Awaiting Verification';
             outcomeDetail = linkedRecommendation?.implementation_notes
               ? linkedRecommendation.implementation_notes
               : 'Work is complete. Verify KPI movement or document realized impact to close the loop.';
-          } else if (isOverdue) {
+          } else if (!persistedOutcomeState && isOverdue) {
             outcomeState = 'At Risk';
             outcomeDetail = `Past due since ${formatShortDate(dueDateValue)}. Reconfirm owner and next milestone.`;
-          } else if (item.status === 'in_progress') {
+          } else if (!persistedOutcomeState && item.status === 'in_progress') {
             outcomeState = 'Monitoring';
             outcomeDetail = linkedRecommendation
               ? `Linked to "${linkedRecommendation.title}". Monitor execution progress against expected impact.`
