@@ -32,7 +32,7 @@ const AIMPage: React.FC = () => {
   const aimStats = useAIMData();
   const [activeSection, setActiveSection] = useState<Section>('overview');
   const [isQuickAskOpen, setIsQuickAskOpen] = useState(false);
-  const [isRailMinimized, setIsRailMinimized] = useState(true);
+  const [isRailMinimized, setIsRailMinimized] = useState(false);
   const [briefingLens, setBriefingLens] = useState<BriefingLens>('operations');
 
   useEffect(() => {
@@ -239,18 +239,16 @@ const AIMPage: React.FC = () => {
   ];
 
   const isFocusSection = activeSection === 'ask';
-  const workspaceGridClass = isFocusSection
+  const workspaceGridClass = isFocusSection || isRailMinimized
     ? 'max-w-[1400px]'
-    : isRailMinimized
-      ? 'max-w-[1700px] lg:grid-cols-[minmax(0,1fr)_104px]'
-      : 'max-w-[1700px] lg:grid-cols-[minmax(0,1fr)_360px]';
+    : 'max-w-[1700px] lg:grid-cols-[minmax(0,1fr)_340px]';
 
   return (
     <div className="flex h-screen overflow-hidden bg-[radial-gradient(circle_at_top_left,_rgba(45,212,191,0.08),_transparent_18%),radial-gradient(circle_at_top_right,_rgba(59,130,246,0.08),_transparent_16%),linear-gradient(180deg,_#f7fbfc,_#edf5f7_40%,_#f8fafc)]">
       <div className="w-[292px] bg-[radial-gradient(circle_at_top,_rgba(45,212,191,0.16),_transparent_24%),linear-gradient(180deg,_#0f172a,_#112235_55%,_#0f172a)] border-r border-white/8 shadow-[0_25px_80px_rgba(15,23,42,0.28)] flex flex-col">
         <div className="p-6 border-b border-white/8">
           <div className="flex items-center gap-3 mb-6">
-            <div className="w-12 h-12 bg-gradient-to-br from-ai-300 via-ai-400 to-cyan-500 rounded-[18px] flex items-center justify-center shadow-[0_18px_40px_rgba(45,212,191,0.28)]">
+            <div className="w-12 h-12 bg-gradient-to-br from-ai-300 via-ai-400 to-ai-500 rounded-[18px] flex items-center justify-center shadow-[0_18px_40px_rgba(45,212,191,0.28)]">
               <i className="ri-brain-line text-2xl text-white"></i>
             </div>
             <div>
@@ -463,60 +461,30 @@ const AIMPage: React.FC = () => {
             {renderSection()}
           </div>
 
-          {!isFocusSection && (
+          {!isFocusSection && !isRailMinimized && (
             <aside className="hidden lg:block">
               <div className="sticky top-8 space-y-5">
-                {isRailMinimized ? (
-                  <div className="flex justify-end">
-                    <div className="w-[88px] rounded-[30px] border border-slate-200/80 bg-[linear-gradient(180deg,_rgba(255,255,255,0.98),_rgba(248,250,252,0.98))] p-3 shadow-[0_24px_70px_rgba(15,23,42,0.08)]">
-                      <div className="flex flex-col items-center gap-3">
-                        <button
-                          onClick={() => {
-                            setIsRailMinimized(false);
-                            setIsQuickAskOpen(true);
-                          }}
-                          className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-teal-500 to-cyan-600 text-white shadow-[0_14px_30px_rgba(20,184,166,0.22)] transition hover:translate-y-[-1px] cursor-pointer"
-                          title="Open Quick Ask"
-                        >
-                          <i className="ri-chat-voice-line text-xl"></i>
-                        </button>
-                        <button
-                          onClick={() => setIsRailMinimized(false)}
-                          className="flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 text-slate-600 transition hover:bg-slate-100 cursor-pointer"
-                          title="Expand rail"
-                        >
-                          <i className="ri-layout-right-2-line text-lg"></i>
-                        </button>
-                        <div className="pt-2 text-center">
-                          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400 [writing-mode:vertical-rl] rotate-180">
-                            AIM Dock
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="rounded-[32px] border border-slate-200/80 bg-[linear-gradient(180deg,_rgba(255,255,255,0.98),_rgba(248,250,252,0.98))] p-6 shadow-[0_24px_70px_rgba(15,23,42,0.08)]">
+                  <div className="rounded-[32px] border border-brand-200/80 bg-[linear-gradient(180deg,_rgba(255,255,255,0.98),_rgba(248,250,252,0.98))] p-6 shadow-[0_24px_70px_rgba(15,23,42,0.08)]">
                     <div className="flex items-center justify-between">
                       <div>
-                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Mission Control</div>
-                        <h3 className="mt-2 text-xl font-bold tracking-tight text-slate-950">Quick Ask</h3>
-                        <p className="mt-2 text-sm leading-6 text-slate-600">Use AIM as a live operational copilot without leaving the current briefing.</p>
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-500">Mission Control</div>
+                        <h3 className="mt-2 text-xl font-bold tracking-tight text-brand-900">Quick Ask</h3>
+                        <p className="mt-2 text-sm leading-6 text-brand-600">Use AIM as a live operational copilot without leaving the current briefing.</p>
                       </div>
                       <div className="flex items-center gap-2">
                         <button
                           onClick={() => setIsQuickAskOpen(!isQuickAskOpen)}
-                          className="w-10 h-10 flex items-center justify-center hover:bg-slate-100 rounded-2xl transition-colors cursor-pointer"
+                          className="w-10 h-10 flex items-center justify-center hover:bg-brand-100 rounded-2xl transition-colors cursor-pointer"
                           title={isQuickAskOpen ? 'Close Quick Ask' : 'Open Quick Ask'}
                         >
-                          <i className={`ri-${isQuickAskOpen ? 'subtract' : 'add'}-line text-slate-600 text-lg`}></i>
+                          <i className={`ri-${isQuickAskOpen ? 'subtract' : 'add'}-line text-brand-600 text-lg`}></i>
                         </button>
                         <button
                           onClick={() => setIsRailMinimized(true)}
-                          className="w-10 h-10 flex items-center justify-center hover:bg-slate-100 rounded-2xl transition-colors cursor-pointer"
+                          className="w-10 h-10 flex items-center justify-center hover:bg-brand-100 rounded-2xl transition-colors cursor-pointer"
                           title="Minimize rail"
                         >
-                          <i className="ri-side-bar-line text-slate-600 text-lg"></i>
+                          <i className="ri-side-bar-line text-brand-600 text-lg"></i>
                         </button>
                       </div>
                     </div>
@@ -526,14 +494,14 @@ const AIMPage: React.FC = () => {
                         <EnhancedQueryEngine compact />
                       ) : (
                         <div className="space-y-4">
-                          <div className="rounded-[24px] border border-slate-200 bg-[radial-gradient(circle_at_top,_rgba(45,212,191,0.12),_transparent_35%),linear-gradient(180deg,_#ffffff,_#f8fafc)] px-5 py-8 text-center">
+                          <div className="rounded-[24px] border border-brand-200 bg-[radial-gradient(circle_at_top,_rgba(45,212,191,0.12),_transparent_35%),linear-gradient(180deg,_#ffffff,_#f8fafc)] px-5 py-8 text-center">
                             <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-[20px] bg-gradient-to-br from-ai-100 to-ai-200 shadow-[0_14px_34px_rgba(45,212,191,0.14)]">
                               <i className="ri-chat-3-line text-3xl text-ai-600"></i>
                             </div>
-                            <p className="mt-4 text-sm font-medium text-slate-700">Ask AIM about risk, throughput, performance, or action priorities.</p>
+                            <p className="mt-4 text-sm font-medium text-brand-700">Ask AIM about risk, throughput, performance, or action priorities.</p>
                             <button
                               onClick={() => setIsQuickAskOpen(true)}
-                              className="mt-5 inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-teal-500 to-cyan-600 px-5 py-3 text-sm font-semibold text-white shadow-[0_14px_30px_rgba(20,184,166,0.22)] transition hover:translate-y-[-1px]"
+                              className="mt-5 inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-ai-500 to-ai-600 px-5 py-3 text-sm font-semibold text-white shadow-[0_14px_30px_rgba(20,184,166,0.22)] transition hover:translate-y-[-1px]"
                             >
                               <i className="ri-chat-voice-line"></i>
                               Launch Quick Ask
@@ -541,13 +509,13 @@ const AIMPage: React.FC = () => {
                           </div>
 
                           <div className="space-y-3">
-                            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Intelligence Metrics</div>
+                            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-500">Intelligence Metrics</div>
                             {aimStats.loading ? (
                               <div className="space-y-3">
                                 {[1, 2, 3].map((i) => (
-                                  <div key={i} className="rounded-[24px] border border-slate-200 bg-white p-5">
-                                    <div className="mb-2 h-7 w-20 animate-pulse rounded bg-slate-200"></div>
-                                    <div className="h-3 w-32 animate-pulse rounded bg-slate-200"></div>
+                                  <div key={i} className="rounded-[24px] border border-brand-200 bg-white p-5">
+                                    <div className="mb-2 h-7 w-20 animate-pulse rounded bg-brand-200"></div>
+                                    <div className="h-3 w-32 animate-pulse rounded bg-brand-200"></div>
                                   </div>
                                 ))}
                               </div>
@@ -559,13 +527,13 @@ const AIMPage: React.FC = () => {
                                       <div className="text-3xl font-bold text-ai-600 mb-1">
                                         {aimStats.aiConfidence > 0 ? `${aimStats.aiConfidence}%` : 'Calibrating'}
                                       </div>
-                                      <div className="text-xs text-slate-600 font-medium">AI Confidence Score</div>
+                                      <div className="text-xs text-brand-600 font-medium">AI Confidence Score</div>
                                     </div>
                                     <span className="rounded-full bg-ai-600/10 px-2.5 py-1 text-[11px] font-semibold text-ai-700">
                                       {confidenceState}
                                     </span>
                                   </div>
-                                  <p className="mt-3 text-xs leading-5 text-slate-600">
+                                  <p className="mt-3 text-xs leading-5 text-brand-600">
                                     Confidence blends recommendation evidence, model accuracy, and live signal quality.
                                   </p>
                                 </div>
@@ -573,8 +541,8 @@ const AIMPage: React.FC = () => {
                                   <div className="text-3xl font-bold text-sapphire-600 mb-1">
                                     {aimStats.predictedImpact > 0 ? formatCurrency(aimStats.predictedImpact) : 'Building'}
                                   </div>
-                                  <div className="text-xs text-slate-600 font-medium">Predicted Impact</div>
-                                  <p className="mt-3 text-xs leading-5 text-slate-600">
+                                  <div className="text-xs text-brand-600 font-medium">Predicted Impact</div>
+                                  <p className="mt-3 text-xs leading-5 text-brand-600">
                                     {impactState}
                                   </p>
                                 </div>
@@ -582,8 +550,8 @@ const AIMPage: React.FC = () => {
                                   <div className="text-3xl font-bold text-emerald-600 mb-1">
                                     {aimStats.alertLeadTime > 0 ? `${aimStats.alertLeadTime} days` : 'Standby'}
                                   </div>
-                                  <div className="text-xs text-slate-600 font-medium">Alert Lead Time</div>
-                                  <p className="mt-3 text-xs leading-5 text-slate-600">
+                                  <div className="text-xs text-brand-600 font-medium">Alert Lead Time</div>
+                                  <p className="mt-3 text-xs leading-5 text-brand-600">
                                     {leadTimeState}
                                   </p>
                                 </div>
@@ -594,7 +562,6 @@ const AIMPage: React.FC = () => {
                       )}
                     </div>
                   </div>
-                )}
               </div>
             </aside>
           )}
