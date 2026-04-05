@@ -13,6 +13,7 @@ import { LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
 import { exportToCSV, exportToJSON } from '../../../utils/exportUtils';
 import { addToast } from '../../../hooks/useToast';
 import { AIMEmptyState, AIMMetricTiles, AIMPanel, AIMSectionIntro } from './AIMSectionSystem';
+import { toForecastScenario } from '../../../services/intelligenceObjects';
 
 interface Metric {
   id: string;
@@ -268,6 +269,8 @@ const ImpactForecastsSection: React.FC = () => {
   };
 
   const activeScenario = scenarioCards.find((card) => card.id === selectedScenario) ?? scenarioCards[0];
+  const activeScenarioRecord = scenarios.find((scenario) => scenario.id === selectedScenario) ?? scenarios[0] ?? null;
+  const activeForecastBrief = activeScenarioRecord ? toForecastScenario(activeScenarioRecord) : null;
   const activeTheme = SCENARIO_THEME[activeScenario?.id] || SCENARIO_THEME.balanced;
   const selectedMetricDetails = metrics.find((metric) => metric.id === selectedMetric) ?? null;
   const formatMetricValue = (value: number) => {
@@ -374,19 +377,19 @@ const ImpactForecastsSection: React.FC = () => {
         items={[
           {
             label: 'Selected Scenario',
-            value: scenarioCards.find(card => card.id === selectedScenario)?.label ?? 'Balanced Improvement',
-            detail: scenarioCards.find(card => card.id === selectedScenario)?.timeline ?? '8 months',
+            value: activeForecastBrief?.name ?? scenarioCards.find(card => card.id === selectedScenario)?.label ?? 'Balanced Improvement',
+            detail: activeForecastBrief?.timeline ?? scenarioCards.find(card => card.id === selectedScenario)?.timeline ?? '8 months',
           },
           {
             label: 'Modeled Annual Upside',
-            value: scenarioCards.find(card => card.id === selectedScenario)?.impact ?? '$0K',
+            value: activeForecastBrief?.projectedImpact ?? scenarioCards.find(card => card.id === selectedScenario)?.impact ?? '$0K',
             detail: scenarioCards.find(card => card.id === selectedScenario)?.roi ?? '0% ROI',
             accent: 'text-emerald-600',
           },
           {
             label: 'Execution Posture',
-            value: `${scenarioCards.find(card => card.id === selectedScenario)?.risk ?? 'Low'} risk`,
-            detail: `Investment ${scenarioCards.find(card => card.id === selectedScenario)?.investment ?? '$0K'}`,
+            value: `${activeForecastBrief?.risk ?? scenarioCards.find(card => card.id === selectedScenario)?.risk ?? 'Low'} risk`,
+            detail: `Investment ${activeForecastBrief?.investment ?? scenarioCards.find(card => card.id === selectedScenario)?.investment ?? '$0K'}`,
           },
           {
             label: 'Net Annual Benefit',
@@ -719,7 +722,7 @@ const ImpactForecastsSection: React.FC = () => {
             })}
           </div>
 
-          {activeScenario && (
+          {activeScenario && activeForecastBrief && (
             <div className={`rounded-[28px] border p-6 ${activeTheme.activeShell}`}>
               <div className="flex items-center gap-3">
                 <div className={`flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br ${activeTheme.icon}`}>
@@ -735,20 +738,32 @@ const ImpactForecastsSection: React.FC = () => {
                 {activeScenario.description}
               </p>
 
+              <div className="mt-4 flex flex-wrap gap-2">
+                <span className="rounded-full border border-slate-200 bg-white/80 px-3 py-1 text-[11px] font-semibold text-slate-600">
+                  Readiness: {activeForecastBrief.evidence.decisionReadiness}
+                </span>
+                <span className="rounded-full border border-slate-200 bg-white/80 px-3 py-1 text-[11px] font-semibold text-slate-600">
+                  Provenance: {activeForecastBrief.evidence.sourceLabel}
+                </span>
+                <span className="rounded-full border border-slate-200 bg-white/80 px-3 py-1 text-[11px] font-semibold text-slate-600">
+                  Confidence basis: {activeForecastBrief.evidence.confidenceState}
+                </span>
+              </div>
+
               <div className="mt-6 grid gap-3 sm:grid-cols-2">
                 <div className="rounded-2xl bg-white/80 px-4 py-4">
                   <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Modeled annual upside</div>
-                  <div className={`mt-2 text-3xl font-bold ${activeTheme.accent}`}>{activeScenario.impact}</div>
+                  <div className={`mt-2 text-3xl font-bold ${activeTheme.accent}`}>{activeForecastBrief.projectedImpact}</div>
                   <div className="mt-1 text-xs text-slate-500">{activeScenario.roi}</div>
                 </div>
                 <div className="rounded-2xl bg-white/80 px-4 py-4">
                   <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Delivery confidence</div>
-                  <div className={`mt-2 text-3xl font-bold ${activeTheme.accent}`}>{activeScenario.probability}%</div>
+                  <div className={`mt-2 text-3xl font-bold ${activeTheme.accent}`}>{activeForecastBrief.confidenceScore}%</div>
                   <div className="mt-1 text-xs text-slate-500">{activeScenario.timeline}</div>
                 </div>
                 <div className="rounded-2xl bg-white/80 px-4 py-4">
                   <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Investment level</div>
-                  <div className="mt-2 text-3xl font-bold text-slate-900">{activeScenario.investment}</div>
+                  <div className="mt-2 text-3xl font-bold text-slate-900">{activeForecastBrief.investment}</div>
                   <div className="mt-1 text-xs text-slate-500">Estimated commitment required</div>
                 </div>
                 <div className="rounded-2xl bg-white/80 px-4 py-4">
@@ -756,6 +771,9 @@ const ImpactForecastsSection: React.FC = () => {
                   <div className="mt-2 text-3xl font-bold text-slate-900">{activeScenario.risk}</div>
                   <div className="mt-1 text-xs text-slate-500">Execution pressure and change load</div>
                 </div>
+                <p className="mt-4 text-sm leading-6 text-slate-600">
+                  {activeForecastBrief.evidence.evidenceSummary}
+                </p>
               </div>
             </div>
           )}

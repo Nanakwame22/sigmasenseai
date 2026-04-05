@@ -9,6 +9,7 @@ import {
 } from '../../../services/decisionSupportEngine';
 import type { DecisionScenario, RecommendationJustification, TradeOffAnalysis, ConfidenceFactor } from '../../../services/decisionSupportEngine';
 import { AIMEmptyState, AIMMetricTiles, AIMPanel, AIMSectionIntro } from './AIMSectionSystem';
+import { toDecisionBrief } from '../../../services/intelligenceObjects';
 
 const RISK_THEME: Record<string, string> = {
   Low: 'bg-emerald-100 text-emerald-700',
@@ -93,6 +94,11 @@ const DecisionSupportSection: React.FC = () => {
   };
 
   const activeScenario = scenarios.find((scenario) => scenario.id === selectedScenarios[0]) || scenarios[0] || null;
+  const activeDecisionBrief = activeScenario
+    ? toDecisionBrief(activeScenario, {
+        confidenceScore: confidenceBreakdown?.overallScore ?? activeScenario.score,
+      })
+    : null;
   const activeScenarioTheme = activeScenario ? (SCENARIO_THEME[activeScenario.id] || SCENARIO_THEME['scenario-2']) : SCENARIO_THEME['scenario-2'];
   const hasScenarioComparison = scenarios.length > 0 && !!activeScenario;
   const hasTradeOffContent = Boolean(
@@ -140,30 +146,30 @@ const DecisionSupportSection: React.FC = () => {
         }
       />
 
-      {hasScenarioComparison && activeScenario && (
+      {hasScenarioComparison && activeScenario && activeDecisionBrief && (
         <AIMMetricTiles
           items={[
             {
               label: 'Current Recommendation',
-              value: activeScenario.name,
-              detail: activeScenario.timeline,
+              value: activeDecisionBrief.recommendation,
+              detail: activeDecisionBrief.timeline,
             },
             {
               label: 'Decision Score',
-              value: `${activeScenario.score}/100`,
-              detail: `${activeScenario.risk} execution risk`,
-              accent: activeScenario.score >= 80 ? 'text-teal-600' : activeScenario.score >= 65 ? 'text-amber-600' : 'text-red-600',
+              value: `${activeDecisionBrief.score}/100`,
+              detail: `${activeDecisionBrief.risk} execution risk`,
+              accent: activeDecisionBrief.score >= 80 ? 'text-teal-600' : activeDecisionBrief.score >= 65 ? 'text-amber-600' : 'text-red-600',
             },
             {
               label: 'Modeled Annual Impact',
-              value: activeScenario.impact,
+              value: activeDecisionBrief.impact,
               detail: `${activeScenario.roi}% ROI`,
               accent: activeScenarioTheme.accent,
             },
             {
               label: 'Confidence',
-              value: confidenceBreakdown ? `${confidenceBreakdown.overallScore}%` : 'Pending',
-              detail: 'Evidence-backed decision confidence',
+              value: `${activeDecisionBrief.confidenceScore}%`,
+              detail: activeDecisionBrief.evidence.decisionReadiness,
             },
           ]}
         />
@@ -237,7 +243,7 @@ const DecisionSupportSection: React.FC = () => {
               })}
             </div>
 
-            {activeScenario && (
+            {activeScenario && activeDecisionBrief && (
               <div className={`rounded-[28px] border p-6 ${activeScenarioTheme.activeShell}`}>
                 <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Recommended posture</div>
                 <h3 className="mt-2 text-3xl font-bold text-slate-900">{activeScenario.name}</h3>
@@ -256,6 +262,18 @@ const DecisionSupportSection: React.FC = () => {
                   </div>
                 </div>
 
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <span className="rounded-full border border-slate-200 bg-white/80 px-3 py-1 text-[11px] font-semibold text-slate-600">
+                    Readiness: {activeDecisionBrief.evidence.decisionReadiness}
+                  </span>
+                  <span className="rounded-full border border-slate-200 bg-white/80 px-3 py-1 text-[11px] font-semibold text-slate-600">
+                    Provenance: {activeDecisionBrief.evidence.sourceLabel}
+                  </span>
+                  <span className="rounded-full border border-slate-200 bg-white/80 px-3 py-1 text-[11px] font-semibold text-slate-600">
+                    Confidence basis: {activeDecisionBrief.evidence.confidenceState}
+                  </span>
+                </div>
+
                 <div className="mt-6 rounded-[22px] bg-white/80 p-5">
                   <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Why AIM prefers it</div>
                   <div className="mt-4 space-y-3">
@@ -266,6 +284,9 @@ const DecisionSupportSection: React.FC = () => {
                       </div>
                     ))}
                   </div>
+                  <p className="mt-4 text-sm leading-6 text-slate-600">
+                    {activeDecisionBrief.evidence.evidenceSummary}
+                  </p>
                 </div>
               </div>
             )}

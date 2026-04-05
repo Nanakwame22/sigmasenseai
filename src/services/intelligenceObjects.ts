@@ -1,5 +1,7 @@
 import type { Alert } from './alertMonitoring';
 import type { Recommendation } from './recommendationsEngine';
+import type { DecisionScenario } from './decisionSupportEngine';
+import type { ImpactScenario } from './impactForecastEngine';
 import {
   buildAIMEvidenceContract,
   formatIntelligenceFreshnessLabel,
@@ -68,6 +70,9 @@ export interface CanonicalDecisionBrief {
   score: number;
   confidenceScore: number;
   evidence: IntelligenceEvidenceContract;
+  risk: string;
+  impact: string;
+  timeline?: string;
 }
 
 export interface CanonicalForecastScenario {
@@ -77,6 +82,9 @@ export interface CanonicalForecastScenario {
   projectedImpact: string;
   confidenceScore: number;
   evidence: IntelligenceEvidenceContract;
+  risk: string;
+  investment?: string;
+  timeline?: string;
 }
 
 function getRecommendationSourceLabel(rec: Recommendation): IntelligenceSourceLabel {
@@ -183,5 +191,107 @@ export function toAlertSignal(alert: Alert): CanonicalAlertSignal {
     recommendedActions: alert.actions || [],
     evidence,
     createdAt: alert.created_at,
+  };
+}
+
+export function toDecisionBrief(
+  scenario: DecisionScenario,
+  input?: {
+    confidenceScore?: number;
+    latestAt?: string | null;
+    sourceLabel?: IntelligenceSourceLabel;
+  }
+): CanonicalDecisionBrief {
+  const confidenceScore = input?.confidenceScore ?? Math.min(95, Math.max(35, scenario.score));
+  const decisionReadiness: IntelligenceReadiness =
+    confidenceScore >= 80 && scenario.score >= 75
+      ? 'Action-ready'
+      : confidenceScore >= 65
+        ? 'Needs review'
+        : 'Directional';
+
+  return {
+    id: scenario.id,
+    kind: 'decision',
+    title: scenario.name,
+    recommendation: scenario.name,
+    score: scenario.score,
+    confidenceScore,
+    risk: scenario.risk,
+    impact: scenario.impact,
+    timeline: scenario.timeline,
+    evidence: buildAIMEvidenceContract({
+      latestAt: input?.latestAt ?? new Date().toISOString(),
+      sourceLabel: input?.sourceLabel ?? 'Derived',
+      decisionReadiness,
+      evidenceSignals: 4,
+      totalSignals: 5,
+      confidenceScore,
+      summary: `AIM assembled this decision brief from live recommendations, alerts, tracked work, and scenario trade-off scoring for ${scenario.name}.`,
+      missingEvidence:
+        confidenceScore >= 80
+          ? ['Outcome verification after execution']
+          : ['More target-backed metric coverage', 'Longer outcome history', 'Additional execution proof'],
+      assumptions: [
+        `Decision score ${scenario.score}/100`,
+        `${scenario.risk} execution risk`,
+        `Modeled impact ${scenario.impact}`,
+      ],
+    }),
+  };
+}
+
+export function toForecastScenario(
+  scenario: ImpactScenario,
+  input?: {
+    latestAt?: string | null;
+    sourceLabel?: IntelligenceSourceLabel;
+  }
+): CanonicalForecastScenario {
+  const confidenceScore = scenario.probability || 0;
+  const decisionReadiness: IntelligenceReadiness =
+    confidenceScore >= 80
+      ? 'Needs review'
+      : confidenceScore >= 60
+        ? 'Directional'
+        : 'Monitor only';
+
+  return {
+    id: scenario.id,
+    kind: 'forecast',
+    name: scenario.name,
+    projectedImpact:
+      scenario.annualImpact >= 1000000
+        ? `$${(scenario.annualImpact / 1000000).toFixed(1)}M`
+        : scenario.annualImpact >= 1000
+          ? `$${Math.round(scenario.annualImpact / 1000)}K`
+          : `$${Math.round(scenario.annualImpact)}`,
+    confidenceScore,
+    risk: scenario.risk,
+    investment:
+      scenario.investment >= 1000000
+        ? `$${(scenario.investment / 1000000).toFixed(1)}M`
+        : scenario.investment >= 1000
+          ? `$${Math.round(scenario.investment / 1000)}K`
+          : `$${Math.round(scenario.investment)}`,
+    timeline: scenario.timeline,
+    evidence: buildAIMEvidenceContract({
+      latestAt: input?.latestAt ?? new Date().toISOString(),
+      sourceLabel: input?.sourceLabel ?? 'Derived',
+      decisionReadiness,
+      evidenceSignals: 3,
+      totalSignals: 5,
+      confidenceScore,
+      summary: `AIM modeled this forecast scenario from live KPI baselines, current recommendation pressure, open alerts, and execution posture assumptions.`,
+      missingEvidence:
+        confidenceScore >= 80
+          ? ['Outcome validation against realized KPI movement']
+          : ['More baseline history', 'More intervention proof', 'Longer forecast validation window'],
+      assumptions: [
+        `${scenario.risk} risk posture`,
+        `${confidenceScore}% delivery confidence`,
+        scenario.timeline,
+      ],
+    }),
   };
 }
