@@ -31,6 +31,7 @@ const STATUS_THEME: Record<string, { badge: string; bar: string }> = {
 };
 
 const PRIORITY_THEME: Record<string, string> = {
+  Critical: 'bg-red-100 text-red-700',
   High: 'bg-red-100 text-red-700',
   Medium: 'bg-amber-100 text-amber-700',
   Low: 'bg-slate-100 text-slate-700',
@@ -200,8 +201,14 @@ const ActionCenterSection: React.FC = () => {
       // Convert action items
       if (actionItems) {
         actionItems.forEach(item => {
-          const progress = item.status === 'completed' ? 100 : 
-                          item.status === 'in_progress' ? 50 : 0;
+          const progress =
+            typeof item.progress === 'number' && Number.isFinite(item.progress)
+              ? item.progress
+              : item.status === 'completed'
+                ? 100
+                : item.status === 'in_progress'
+                  ? 50
+                  : 0;
           
           const impactValue = item.impact_score || 0;
           const tags: string[] = Array.isArray(item.tags) ? item.tags : [];
@@ -253,8 +260,14 @@ const ActionCenterSection: React.FC = () => {
             status: item.status === 'completed' ? 'Completed' :
                    item.status === 'in_progress' ? 'In Progress' :
                    item.status === 'on_hold' ? 'On Hold' : 'Not Started',
-            priority: item.priority === 'high' ? 'High' :
-                     item.priority === 'medium' ? 'Medium' : 'Low',
+            priority:
+              item.priority === 'critical'
+                ? 'Critical'
+                : item.priority === 'high'
+                  ? 'High'
+                  : item.priority === 'medium'
+                    ? 'Medium'
+                    : 'Low',
             owner: item.user_profiles?.full_name || 'Unassigned',
             ownerId: item.assigned_to,
             dueDate: formatShortDate(dueDateValue),
@@ -643,7 +656,7 @@ const ActionCenterSection: React.FC = () => {
           <div className="flex items-center gap-2">
             <span className="text-sm font-medium text-slate-700">Priority:</span>
             <div className="flex gap-2">
-              {['all', 'High', 'Medium', 'Low'].map(priority => (
+              {['all', 'Critical', 'High', 'Medium', 'Low'].map(priority => (
                 <button
                   key={priority}
                   onClick={() => setFilterPriority(priority)}
