@@ -141,7 +141,7 @@ export default function DashboardLayout() {
       label: 'ANALYTICS & INSIGHTS',
       icon: 'ri-lightbulb-line',
       submenu: [
-        { label: 'AIM (AI Insights)', path: '/dashboard/aim', icon: 'ri-robot-line' },
+        { label: 'AIM — Intelligence Engine', path: '/dashboard/aim', icon: 'ri-robot-line' },
         { label: 'Advanced Forecasting', path: '/dashboard/advanced-forecasting', icon: 'ri-line-chart-line' },
         { label: 'Anomaly Detection', path: '/dashboard/anomaly-detection', icon: 'ri-alert-line' },
         { label: 'Root Cause Analysis', path: '/dashboard/root-cause', icon: 'ri-search-line' },
@@ -292,18 +292,35 @@ export default function DashboardLayout() {
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Top Bar - Premium Design */}
-        <header className="bg-white border-b border-border px-8 py-4 flex items-center justify-between shadow-elevation-1">
-          <div className="flex items-center space-x-4">
-            <h1 className="text-heading-2 text-brand-900">
-              {menuItems
-                .flatMap((section) => section.submenu || [])
-                .find((item) => item.path === location.pathname)?.label || 'Dashboard'}
-            </h1>
-          </div>
+        {/* Top Bar */}
+        <header className="bg-white border-b border-border px-8 flex items-center justify-between shadow-elevation-1 h-16 shrink-0">
+          {(() => {
+            const currentItem = menuItems
+              .flatMap((section) => section.submenu || [])
+              .find((item) => item.path === location.pathname);
+            const isAIM = location.pathname === '/dashboard/aim';
+            return (
+              <div className="flex items-center gap-3">
+                {currentItem && (
+                  <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${isAIM ? 'bg-gradient-to-br from-ai-500 to-ai-600 shadow-glow-sm' : 'bg-brand-100'}`}>
+                    <i className={`${currentItem.icon} text-sm ${isAIM ? 'text-white' : 'text-brand-600'}`}></i>
+                  </div>
+                )}
+                <h1 className="text-base font-bold text-brand-900 tracking-tight">
+                  {currentItem?.label || 'Dashboard'}
+                </h1>
+                {isAIM && (
+                  <span className="flex items-center gap-1.5 px-2 py-0.5 bg-ai-50 border border-ai-200 rounded-full">
+                    <span className="w-1.5 h-1.5 bg-ai-400 rounded-full animate-pulse"></span>
+                    <span className="text-xs text-ai-600 font-medium">Live</span>
+                  </span>
+                )}
+              </div>
+            );
+          })()}
 
-          <div className="flex items-center space-x-4">
-            {/* Ask Sigma Button - AI Highlight */}
+          <div className="flex items-center gap-3">
+            {/* Ask Sigma Button */}
             <button
               onClick={() => setShowAskSigma(true)}
               className="btn-ai-highlight flex items-center space-x-2"
@@ -319,7 +336,7 @@ export default function DashboardLayout() {
             <div className="relative">
               <button
                 onClick={() => setShowUserMenu(!showUserMenu)}
-                className="w-10 h-10 bg-gradient-to-br from-sapphire-500 to-sapphire-600 rounded-full flex items-center justify-center text-white font-semibold shadow-elevation-2 hover:shadow-elevation-3 transition-smooth cursor-pointer"
+                className="w-9 h-9 bg-gradient-to-br from-sapphire-500 to-sapphire-600 rounded-full flex items-center justify-center text-white font-semibold shadow-elevation-2 hover:shadow-elevation-3 transition-smooth cursor-pointer text-sm"
               >
                 {user?.email?.[0].toUpperCase() || 'U'}
               </button>
@@ -330,7 +347,7 @@ export default function DashboardLayout() {
                     <p className="text-sm font-semibold text-brand-900 truncate">
                       {user?.email?.split('@')[0] || 'User'}
                     </p>
-                    <p className="text-xs text-brand-600 truncate">{user?.email}</p>
+                    <p className="text-xs text-brand-400 truncate">{user?.email}</p>
                   </div>
                   <Link
                     to="/dashboard/organization"
