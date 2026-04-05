@@ -555,9 +555,25 @@ function getOperationalMetricCopy(pattern: DataPattern) {
   }
 
   if (pattern.type === 'high_variability') {
+    if (metricName === 'ED Wait Time') {
+      return {
+        title: 'Stabilize ED flow before wait-time swings worsen',
+        description: `ED Wait Time is showing unstable movement (CV ${cv.toFixed(1)}%). The swings are large enough to make staffing and throughput planning unreliable, so tighten the highest-variance flow step before the next operating cycle.`,
+        actions: [
+          'Review whether triage, bed placement, or intake sequencing is driving the volatility.',
+          'Identify the shift windows with the largest wait-time spikes and assign an immediate flow response.',
+          'Standardize the highest-variance step in the ED pathway before the next refresh.',
+          'Verify whether wait-time spread narrows after the intervention.'
+        ],
+      };
+    }
+
     if (metricName === 'LOS Average Hours' || metricName === 'Discharges Pending') {
       return {
-        title: `Stabilize variability in ${metricName}`,
+        title:
+          metricName === 'LOS Average Hours'
+            ? 'Tighten inpatient throughput to reduce LOS swings'
+            : 'Steady discharge flow to reduce backlog swings',
         description: `${metricName} is showing unstable movement (CV ${cv.toFixed(1)}%). The signal is fluctuating enough to make planning unreliable, so focus on process consistency before the next operating cycle.`,
         actions: [
           'Review the last few shifts for inconsistent execution or handoff patterns.',
@@ -1479,7 +1495,7 @@ export class RecommendationsEngine {
         return {
           ...baseRecommendation,
           id: crypto.randomUUID(),
-          title: `Stabilize ${pattern.data.metric.name} variation`,
+          title: `Reduce operating volatility in ${pattern.data.metric.name}`,
           description: `${pattern.data.metric.name} shows high variability (Coefficient of Variation: ${pattern.data.cv}%). High variability indicates an unstable process that produces inconsistent results.`,
           category: isCompositeRiskMetric(pattern.data.metric.name) ? 'risk' : 'quality',
           priority: pattern.severity,
