@@ -244,10 +244,17 @@ function canBypassCooldown(rec: Recommendation | { source_data?: any; confidence
   return isAlertPressureRecommendation(rec) && (rec.confidence_score || 0) >= 68;
 }
 
+function isRecommendationOrgColumnError(error: { message?: string } | null | undefined) {
+  return typeof error?.message === 'string' && error.message.includes("organization_id");
+}
+
 function buildRecommendationInsertVariants(rec: Recommendation) {
   const fullPayload = { ...rec };
   const withoutId = { ...fullPayload };
   delete (withoutId as any).id;
+
+  const withoutOrganizationId = { ...withoutId };
+  delete (withoutOrganizationId as any).organization_id;
 
   const withoutRichMetadata = {
     user_id: rec.user_id,
@@ -264,6 +271,9 @@ function buildRecommendationInsertVariants(rec: Recommendation) {
     updated_at: rec.updated_at,
   };
 
+  const withoutRichMetadataOrg = { ...withoutRichMetadata };
+  delete (withoutRichMetadataOrg as any).organization_id;
+
   const minimalPayload = {
     user_id: rec.user_id,
     organization_id: rec.organization_id,
@@ -274,12 +284,16 @@ function buildRecommendationInsertVariants(rec: Recommendation) {
     updated_at: rec.updated_at,
   };
 
-  return [fullPayload, withoutId, withoutRichMetadata, minimalPayload];
+  const minimalPayloadOrg = { ...minimalPayload };
+  delete (minimalPayloadOrg as any).organization_id;
+
+  return [fullPayload, withoutId, withoutOrganizationId, withoutRichMetadata, withoutRichMetadataOrg, minimalPayload, minimalPayloadOrg];
 }
 
 export class RecommendationsEngine {
   private userId: string;
   private organizationId: string | null = null;
+  private recommendationScope: 'organization' | 'user' = 'organization';
 
   constructor(userId: string, organizationId?: string | null) {
     this.userId = userId;
@@ -346,6 +360,98 @@ export class RecommendationsEngine {
     );
   }
 
+  private recommendationQuery() {
+    return supabase.from('recommendations').select('*');
+  }
+
+  private async getRecommendationsByScope(extra?: (query: any) => any): Promise<Recommendation[]> {
+    const orgId = await this.getOrganizationId();
+    if (!orgId && !this.userId) return [];
+
+    const apply = (query: any) => (extra ? extra(query) : query);
+
+    if (this.recommendationScope === 'organization' && orgId) {
+      const { data, error } = await apply(this.recommendationQuery().eq('organization_id', orgId)).order('created_at', { ascending: false });
+      if (!error) return (data || []) as Recommendation[];
+      if (!isRecommendationOrgColumnError(error)) {
+        console.error('Error fetching recommendations:', error);
+        return [];
+      }
+      this.recommendationScope = 'user';
+    }
+
+    const { data, error } = await apply(this.recommendationQuery().eq('user_id', this.userId)).order('created_at', { ascending: false });
+    if (error) {
+      console.error('Error fetching recommendations:', error);
+      return [];
+    }
+    return (data || []) as Recommendation[];
+  }
+
+  private async getRecommendationById(id: string): Promise<Recommendation | null> {
+    const orgId = await this.getOrganizationId();
+
+    if (this.recommendationScope === 'organization' && orgId) {
+      const { data, error } = await supabase
+        .from('recommendations')
+        .select('*')
+        .eq('id', id)
+        .eq('organization_id', orgId)
+        .maybeSingle();
+
+      if (!error) return (data as Recommendation | null) || null;
+      if (!isRecommendationOrgColumnError(error)) {
+        console.error('Error fetching recommendation:', error);
+        return null;
+      }
+      this.recommendationScope = 'user';
+    }
+
+    const { data, error } = await supabase
+      .from('recommendations')
+      .select('*')
+      .eq('id', id)
+      .eq('user_id', this.userId)
+      .maybeSingle();
+
+    if (error) {
+      console.error('Error fetching recommendation:', error);
+      return null;
+    }
+
+    return (data as Recommendation | null) || null;
+  }
+
+  private async updateRecommendationById(id: string, updates: Record<string, any>) {
+    const orgId = await this.getOrganizationId();
+
+    if (this.recommendationScope === 'organization' && orgId) {
+      const { data, error } = await supabase
+        .from('recommendations')
+        .update(updates)
+        .eq('id', id)
+        .eq('organization_id', orgId)
+        .select()
+        .maybeSingle();
+
+      if (!error) return { data: (data as Recommendation | null) || null, error: null };
+      if (!isRecommendationOrgColumnError(error)) {
+        return { data: null, error };
+      }
+      this.recommendationScope = 'user';
+    }
+
+    const { data, error } = await supabase
+      .from('recommendations')
+      .update(updates)
+      .eq('id', id)
+      .eq('user_id', this.userId)
+      .select()
+      .maybeSingle();
+
+    return { data: (data as Recommendation | null) || null, error };
+  }
+
   async generateRecommendations(): Promise<Recommendation[]> {
     const patterns = await this.analyzeDataPatterns();
     const orgId = await this.getOrganizationId();
@@ -391,21 +497,9 @@ export class RecommendationsEngine {
         Date.now() - RECOMMENDATION_RECENT_DUPLICATE_WINDOW_DAYS * 24 * 60 * 60 * 1000
       ).toISOString();
 
-      const { data: recentExisting } = await supabase
-        .from('recommendations')
-        .select('id, title, status, created_at, dismissed_at, completed_at, source_data')
-        .eq('organization_id', orgId)
-        .gte('created_at', cutoffIso);
-
-      const { data: historicalExisting } = await supabase
-        .from('recommendations')
-        .select('id, title, description, category, priority, impact_score, effort_score, confidence_score, status, recommended_actions, expected_impact, actual_impact, implementation_notes, assigned_to, due_date, completed_at, dismissed_at, dismissed_reason, created_at, updated_at, source_data')
-        .eq('organization_id', orgId)
-        .order('created_at', { ascending: false })
-        .limit(250);
-
+      const recentExisting = await this.getRecommendationsByScope((query) => query.gte('created_at', cutoffIso));
+      const allExisting = await this.getRecommendationsByScope((query) => query.limit(250));
       const existing = recentExisting || [];
-      const allExisting = (historicalExisting || []) as Recommendation[];
 
       const activeSignatures = new Set(
         existing
@@ -498,9 +592,7 @@ export class RecommendationsEngine {
           note: item.next.description,
         });
 
-        const { data: reactivated, error: reactivateError } = await supabase
-          .from('recommendations')
-          .update({
+        const { data: reactivated, error: reactivateError } = await this.updateRecommendationById(item.existing.id, {
             title: item.next.title,
             description: item.next.description,
             category: item.next.category,
@@ -520,11 +612,7 @@ export class RecommendationsEngine {
             dismissed_reason: null,
             updated_at: new Date().toISOString(),
             source_data: nextSourceData,
-          })
-          .eq('id', item.existing.id)
-          .eq('organization_id', orgId)
-          .select()
-          .maybeSingle();
+          });
 
         if (!reactivateError && reactivated) {
           reactivatedResults.push(reactivated as Recommendation);
@@ -1096,38 +1184,17 @@ export class RecommendationsEngine {
     category?: string;
     priority?: string;
   }): Promise<Recommendation[]> {
-    const orgId = await this.getOrganizationId();
-    if (!orgId) return [];
-
-    let query = supabase
-      .from('recommendations')
-      .select('*')
-      .eq('organization_id', orgId);
-
-    if (filters?.status) query = query.eq('status', filters.status);
-    if (filters?.category) query = query.eq('category', filters.category);
-    if (filters?.priority) query = query.eq('priority', filters.priority);
-
-    const { data, error } = await query.order('created_at', { ascending: false });
-
-    if (error) {
-      console.error('Error fetching recommendations:', error);
-      return [];
-    }
-
-    return data || [];
+    return this.getRecommendationsByScope((query) => {
+      let next = query;
+      if (filters?.status) next = next.eq('status', filters.status);
+      if (filters?.category) next = next.eq('category', filters.category);
+      if (filters?.priority) next = next.eq('priority', filters.priority);
+      return next;
+    });
   }
 
   async startRecommendation(id: string, assignedTo?: string): Promise<boolean> {
-    const orgId = await this.getOrganizationId();
-    if (!orgId) return false;
-
-    const { data: existing } = await supabase
-      .from('recommendations')
-      .select('source_data')
-      .eq('id', id)
-      .eq('organization_id', orgId)
-      .maybeSingle();
+    const existing = await this.getRecommendationById(id);
 
     const updates: any = {
       status: 'in_progress',
@@ -1140,11 +1207,7 @@ export class RecommendationsEngine {
     };
     if (assignedTo) updates.assigned_to = assignedTo;
 
-    const { error } = await supabase
-      .from('recommendations')
-      .update(updates)
-      .eq('id', id)
-      .eq('organization_id', orgId);
+    const { error } = await this.updateRecommendationById(id, updates);
 
     if (!error) {
       await this.syncLinkedActionItems(id, ['aim-source:recommendation', 'aim-outcome:monitoring', 'aim-verification:pending'], {
@@ -1157,15 +1220,7 @@ export class RecommendationsEngine {
   }
 
   async completeRecommendation(id: string, actualImpact?: string, notes?: string): Promise<boolean> {
-    const orgId = await this.getOrganizationId();
-    if (!orgId) return false;
-
-    const { data: existing } = await supabase
-      .from('recommendations')
-      .select('source_data')
-      .eq('id', id)
-      .eq('organization_id', orgId)
-      .maybeSingle();
+    const existing = await this.getRecommendationById(id);
 
     const updates: any = {
       status: 'completed',
@@ -1181,11 +1236,7 @@ export class RecommendationsEngine {
     if (actualImpact) updates.actual_impact = actualImpact;
     if (notes) updates.implementation_notes = notes;
 
-    const { error } = await supabase
-      .from('recommendations')
-      .update(updates)
-      .eq('id', id)
-      .eq('organization_id', orgId);
+    const { error } = await this.updateRecommendationById(id, updates);
 
     if (!error) {
       await this.syncLinkedActionItems(
@@ -1206,19 +1257,9 @@ export class RecommendationsEngine {
   }
 
   async dismissRecommendation(id: string, reason?: string): Promise<boolean> {
-    const orgId = await this.getOrganizationId();
-    if (!orgId) return false;
+    const existing = await this.getRecommendationById(id);
 
-    const { data: existing } = await supabase
-      .from('recommendations')
-      .select('source_data')
-      .eq('id', id)
-      .eq('organization_id', orgId)
-      .maybeSingle();
-
-    const { error } = await supabase
-      .from('recommendations')
-      .update({
+    const { error } = await this.updateRecommendationById(id, {
         status: 'dismissed',
         dismissed_at: new Date().toISOString(),
         dismissed_reason: reason,
@@ -1229,9 +1270,7 @@ export class RecommendationsEngine {
           actor_id: this.userId,
           note: reason
         })
-      })
-      .eq('id', id)
-      .eq('organization_id', orgId);
+      });
 
     if (!error) {
       await this.syncLinkedActionItems(id, ['aim-source:recommendation', 'aim-outcome:at_risk', 'aim-verification:pending'], {
@@ -1254,18 +1293,14 @@ export class RecommendationsEngine {
     avgImpactScore: number;
     avgEffortScore: number;
   }> {
-    const orgId = await this.getOrganizationId();
-    if (!orgId) {
+    if (!this.userId) {
       return {
         total: 0, open: 0, pending: 0, inProgress: 0, completed: 0, dismissed: 0,
         byCategory: {}, byPriority: {}, avgImpactScore: 0, avgEffortScore: 0
       };
     }
 
-    const { data: recommendations } = await supabase
-      .from('recommendations')
-      .select('*')
-      .eq('organization_id', orgId);
+    const recommendations = await this.getRecommendationsByScope();
 
     if (!recommendations || recommendations.length === 0) {
       return {
