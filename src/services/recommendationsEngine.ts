@@ -244,6 +244,39 @@ function canBypassCooldown(rec: Recommendation | { source_data?: any; confidence
   return isAlertPressureRecommendation(rec) && (rec.confidence_score || 0) >= 68;
 }
 
+function buildRecommendationInsertVariants(rec: Recommendation) {
+  const fullPayload = { ...rec };
+  const withoutId = { ...fullPayload };
+  delete (withoutId as any).id;
+
+  const withoutRichMetadata = {
+    user_id: rec.user_id,
+    organization_id: rec.organization_id,
+    title: rec.title,
+    description: rec.description,
+    category: rec.category,
+    priority: rec.priority,
+    impact_score: rec.impact_score,
+    effort_score: rec.effort_score,
+    confidence_score: rec.confidence_score,
+    status: rec.status,
+    created_at: rec.created_at,
+    updated_at: rec.updated_at,
+  };
+
+  const minimalPayload = {
+    user_id: rec.user_id,
+    organization_id: rec.organization_id,
+    title: rec.title,
+    description: rec.description,
+    status: rec.status,
+    created_at: rec.created_at,
+    updated_at: rec.updated_at,
+  };
+
+  return [fullPayload, withoutId, withoutRichMetadata, minimalPayload];
+}
+
 export class RecommendationsEngine {
   private userId: string;
   private organizationId: string | null = null;
@@ -501,15 +534,35 @@ export class RecommendationsEngine {
 
       let insertedResults: Recommendation[] = [];
       if (recommendationsToInsert.length > 0) {
-        const { data, error } = await supabase
-          .from('recommendations')
-          .insert(recommendationsToInsert)
-          .select();
+        let insertErrorMessage = '';
+        for (const recommendation of recommendationsToInsert) {
+          let insertedRow: Recommendation | null = null;
+          let lastError: any = null;
 
-        if (error) {
-          console.error('Error saving recommendations:', error);
-          if (reactivatedResults.length > 0) {
-            return reactivatedResults;
+          for (const payload of buildRecommendationInsertVariants(recommendation)) {
+            const { data, error } = await supabase
+              .from('recommendations')
+              .insert(payload)
+              .select()
+              .maybeSingle();
+
+            if (!error && data) {
+              insertedRow = data as Recommendation;
+              break;
+            }
+
+            lastError = error;
+          }
+
+          if (insertedRow) {
+            insertedResults.push(insertedRow);
+            continue;
+          }
+
+          insertErrorMessage = lastError?.message || 'Unknown persistence error';
+          console.error('Error saving recommendation:', lastError);
+          if (reactivatedResults.length > 0 || insertedResults.length > 0) {
+            return [...reactivatedResults, ...insertedResults];
           }
           throw new RecommendationGenerationError(
             'persistence_failed',
@@ -517,12 +570,10 @@ export class RecommendationsEngine {
             {
               ...diagnostics,
               attemptedInsert: recommendationsToInsert.length,
-              insertError: error.message,
+              insertError: insertErrorMessage,
             }
           );
         }
-
-        insertedResults = (data || []) as Recommendation[];
       }
       diagnostics.inserted = insertedResults.length;
 
