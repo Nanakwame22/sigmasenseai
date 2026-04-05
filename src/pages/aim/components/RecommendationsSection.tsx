@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { RecommendationsEngine } from '../../../services/recommendationsEngine';
+import { RecommendationGenerationError, RecommendationsEngine } from '../../../services/recommendationsEngine';
 import type { Recommendation } from '../../../services/recommendationsEngine';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useAIMData } from '../../../hooks/useAIMData';
@@ -265,7 +265,16 @@ export default function RecommendationsSection() {
       }
     } catch (error) {
       console.error('Error generating recommendations:', error);
-      addToast('Failed to generate recommendations', 'error');
+      if (error instanceof RecommendationGenerationError) {
+        addToast(
+          error.code === 'persistence_failed'
+            ? 'AIM found recommendation candidates but could not save them. Check recommendation persistence.'
+            : 'AIM found recommendation candidates but could not activate any live recommendation records.',
+          'error'
+        );
+      } else {
+        addToast('Failed to generate recommendations', 'error');
+      }
     } finally {
       setGenerating(false);
     }

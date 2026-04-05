@@ -27,6 +27,22 @@ export interface Recommendation {
   updated_at: string;
 }
 
+export class RecommendationGenerationError extends Error {
+  code: 'persistence_failed' | 'reactivation_failed';
+  diagnostics: Record<string, unknown>;
+
+  constructor(
+    code: 'persistence_failed' | 'reactivation_failed',
+    message: string,
+    diagnostics: Record<string, unknown> = {}
+  ) {
+    super(message);
+    this.name = 'RecommendationGenerationError';
+    this.code = code;
+    this.diagnostics = diagnostics;
+  }
+}
+
 interface RecommendationLifecycleEvent {
   event: 'generated' | 'started' | 'completed' | 'dismissed';
   at: string;
@@ -302,6 +318,14 @@ export class RecommendationsEngine {
     const orgId = await this.getOrganizationId();
     if (!orgId) return [];
     const recommendations: Recommendation[] = [];
+    const diagnostics = {
+      patternsAnalyzed: patterns.length,
+      alertPressurePatterns: patterns.filter((pattern) => pattern.type === 'active_alert_pressure').length,
+      createdCandidates: 0,
+      candidateRecommendations: 0,
+      reactivated: 0,
+      inserted: 0,
+    };
 
     for (const pattern of patterns) {
       const recommendation = this.createRecommendation(pattern, orgId);
@@ -309,6 +333,7 @@ export class RecommendationsEngine {
         recommendations.push(recommendation);
       }
     }
+    diagnostics.createdCandidates = recommendations.length;
 
     if (recommendations.length === 0) {
       const directionalWatchPattern = [...patterns]
@@ -390,6 +415,7 @@ export class RecommendationsEngine {
         if (!allowAlertRepromotion && recentlyCompletedSignatures.has(signature)) return false;
         return true;
       });
+      diagnostics.candidateRecommendations = candidateRecommendations.length;
 
       if (candidateRecommendations.length === 0) {
         return [];
@@ -471,6 +497,7 @@ export class RecommendationsEngine {
           reactivatedResults.push(reactivated as Recommendation);
         }
       }
+      diagnostics.reactivated = reactivatedResults.length;
 
       let insertedResults: Recommendation[] = [];
       if (recommendationsToInsert.length > 0) {
@@ -481,10 +508,34 @@ export class RecommendationsEngine {
 
         if (error) {
           console.error('Error saving recommendations:', error);
-          return reactivatedResults;
+          if (reactivatedResults.length > 0) {
+            return reactivatedResults;
+          }
+          throw new RecommendationGenerationError(
+            'persistence_failed',
+            'AIM found promotable recommendation signals but could not persist them.',
+            {
+              ...diagnostics,
+              attemptedInsert: recommendationsToInsert.length,
+              insertError: error.message,
+            }
+          );
         }
 
         insertedResults = (data || []) as Recommendation[];
+      }
+      diagnostics.inserted = insertedResults.length;
+
+      if (
+        candidateRecommendations.length > 0 &&
+        reactivatedResults.length === 0 &&
+        insertedResults.length === 0
+      ) {
+        throw new RecommendationGenerationError(
+          'reactivation_failed',
+          'AIM found promotable recommendation signals but could not activate any live recommendation records.',
+          diagnostics
+        );
       }
 
       return [...reactivatedResults, ...insertedResults];
