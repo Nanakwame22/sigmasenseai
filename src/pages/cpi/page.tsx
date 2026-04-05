@@ -22,10 +22,10 @@ export default function CPIPage() {
   const [activeTab, setActiveTab] = useState<Tab>('command');
 
   return (
-    <div className="min-h-screen bg-slate-50 font-sans">
+    <div className="min-h-screen bg-background font-sans">
       <CPIHeader />
 
-      <div className="bg-white border-b border-slate-100 sticky top-0 z-40">
+      <div className="bg-white border-b border-border sticky top-0 z-40 shadow-elevation-1">
         <div className="max-w-[1600px] mx-auto px-8">
           <div className="flex items-center space-x-1 overflow-x-auto">
             {tabs.map((tab) => (
@@ -34,14 +34,18 @@ export default function CPIPage() {
                 onClick={() => setActiveTab(tab.id)}
                 className={`flex items-center space-x-2 px-4 py-4 text-sm font-semibold border-b-2 transition-all duration-200 cursor-pointer whitespace-nowrap ${
                   activeTab === tab.id
-                    ? 'border-teal-600 text-teal-600'
-                    : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+                    ? 'border-ai-600 text-ai-700'
+                    : 'border-transparent text-brand-400 hover:text-brand-700 hover:border-brand-200'
                 }`}
               >
                 <i className={`${tab.icon} text-base`}></i>
                 <span>{tab.label}</span>
                 {tab.badge && (
-                  <span className={`text-xs font-semibold px-1.5 py-0.5 rounded-full ${tab.badgeColor}`}>
+                  <span className={`text-xs font-semibold px-1.5 py-0.5 rounded-full ${
+                    tab.id === 'security'
+                      ? 'bg-ai-100 text-ai-700'
+                      : 'bg-emerald-100 text-emerald-700'
+                  }`}>
                     {tab.badge}
                   </span>
                 )}
@@ -74,8 +78,8 @@ export default function CPIPage() {
           <div className="max-w-2xl mx-auto space-y-6">
             {/* Section header */}
             <div className="flex items-center space-x-3 mb-2">
-              <div className="w-10 h-10 flex items-center justify-center bg-teal-50 rounded-xl">
-                <i className="ri-shield-keyhole-line text-teal-600 text-xl"></i>
+              <div className="w-10 h-10 flex items-center justify-center bg-ai-50 rounded-xl border border-ai-100">
+                <i className="ri-shield-keyhole-line text-ai-600 text-xl"></i>
               </div>
               <div>
                 <h2 className="text-lg font-bold text-slate-900">HIPAA Technical Safeguards</h2>

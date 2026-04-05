@@ -146,19 +146,21 @@ function DomainCard({ domain, config, onTakeAction }: { domain: CPIDomainSnapsho
   return (
     <div
       onClick={() => setExpanded(!expanded)}
-      className={`relative rounded-xl border transition-all duration-300 cursor-pointer hover:-translate-y-0.5 ${
-        expanded ? `${colors.bg} ${colors.border} col-span-2` : 'bg-white border-slate-100 hover:border-slate-200'
+      className={`relative rounded-premium border transition-all duration-300 cursor-pointer hover:-translate-y-0.5 ${
+        expanded
+          ? `${colors.bg} ${colors.border} col-span-2 shadow-elevation-3`
+          : 'bg-white border-border hover:border-brand-200 shadow-elevation-1 hover:shadow-elevation-2'
       }`}
     >
       <div className="p-4">
         <div className="flex items-start justify-between mb-3">
           <div className="flex items-center space-x-2.5">
-            <div className={`w-9 h-9 flex items-center justify-center rounded-lg ${expanded ? `${colors.bg} border ${colors.border}` : 'bg-slate-50'}`}>
-              <i className={`${config.icon} text-lg ${expanded ? colors.icon : 'text-slate-500'}`}></i>
+            <div className={`w-9 h-9 flex items-center justify-center rounded-premium ${expanded ? `${colors.bg} border ${colors.border}` : 'bg-background border border-border'}`}>
+              <i className={`${config.icon} text-lg ${expanded ? colors.icon : 'text-brand-500'}`}></i>
             </div>
             <div>
-              <h3 className="text-sm font-bold text-slate-900 leading-tight">{config.name}</h3>
-              <span className={`text-xs font-medium px-1.5 py-0.5 rounded-full ${colors.badge}`}>{statusLabel}</span>
+              <h3 className="text-sm font-bold text-brand-900 leading-tight">{config.name}</h3>
+              <span className={`text-xs font-semibold px-1.5 py-0.5 rounded-full ${colors.badge}`}>{statusLabel}</span>
             </div>
           </div>
           <div className="flex items-center space-x-2">
@@ -167,26 +169,26 @@ function DomainCard({ domain, config, onTakeAction }: { domain: CPIDomainSnapsho
                 <span className="text-xs font-bold text-rose-600">{domain.alerts_count}</span>
               </div>
             )}
-            <i className={`ri-arrow-${expanded ? 'up' : 'down'}-s-line text-slate-400 text-sm`}></i>
+            <i className={`ri-arrow-${expanded ? 'up' : 'down'}-s-line text-brand-300 text-sm`}></i>
           </div>
         </div>
 
         <div className="mb-3">
           <div className="flex items-center justify-between mb-1">
-            <span className="text-xs text-slate-500">Risk Index</span>
+            <span className="text-xs text-brand-400 font-medium">Risk Index</span>
             <span className={`text-sm font-bold ${colors.icon}`}>{domain.risk_score}</span>
           </div>
-          <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+          <div className="h-1.5 bg-brand-100 rounded-full overflow-hidden">
             <div className={`h-full rounded-full transition-all duration-700 ${colors.bar}`} style={{ width: `${domain.risk_score}%` }}></div>
           </div>
         </div>
 
-        <div className="flex items-start space-x-2 p-2.5 bg-slate-50 rounded-lg">
-          <i className="ri-sparkling-2-line text-teal-500 text-sm mt-0.5 flex-shrink-0"></i>
-          <p className="text-xs text-slate-600 leading-relaxed">{domain.predictive_insight}</p>
+        <div className="flex items-start space-x-2 p-2.5 bg-background rounded-premium border border-border">
+          <i className="ri-sparkling-2-line text-ai-500 text-sm mt-0.5 flex-shrink-0"></i>
+          <p className="text-xs text-brand-600 leading-relaxed">{domain.predictive_insight}</p>
         </div>
 
-        <div className="mt-3 flex flex-wrap gap-2">
+        <div className="mt-3 flex flex-wrap gap-1.5">
           <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold ${freshnessClasses}`}>
             {domain.freshness_label || `Updated ${timeLabel}`}
           </span>
@@ -198,25 +200,25 @@ function DomainCard({ domain, config, onTakeAction }: { domain: CPIDomainSnapsho
         </div>
 
         {expanded && domain.evidence_summary && (
-          <div className="mt-3 rounded-lg border border-slate-200 bg-white/70 p-3">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Evidence</p>
-            <p className="mt-1 text-xs leading-relaxed text-slate-600">{domain.evidence_summary}</p>
+          <div className="mt-3 rounded-premium border border-border bg-white/80 p-3">
+            <p className="text-[11px] font-bold uppercase tracking-widest text-brand-400">Evidence</p>
+            <p className="mt-1 text-xs leading-relaxed text-brand-600">{domain.evidence_summary}</p>
           </div>
         )}
 
         {expanded && (
-          <div className="mt-4 pt-4 border-t border-slate-100">
+          <div className="mt-4 pt-4 border-t border-border">
             <div className="grid grid-cols-3 gap-3">
               {config.metricDefs.map((def, i) => {
                 const value = domain.metrics[def.valueKey] as string | undefined;
                 const delta = domain.metrics[def.deltaKey] as string | undefined;
                 const isPositive = domain.metrics[def.positiveKey] as boolean | undefined;
                 return (
-                  <div key={i} className="bg-white rounded-lg p-3 border border-slate-100">
-                    <div className="text-xs text-slate-500 mb-1">{def.label}</div>
-                    <div className="text-lg font-bold text-slate-900">{value ?? '—'}</div>
+                  <div key={i} className="bg-white rounded-premium p-3 border border-border shadow-elevation-1">
+                    <div className="text-xs text-brand-400 font-medium mb-1">{def.label}</div>
+                    <div className="text-lg font-bold text-brand-900">{value ?? '—'}</div>
                     {delta && (
-                      <div className={`flex items-center space-x-0.5 text-xs font-medium ${isPositive ? 'text-emerald-600' : 'text-rose-500'}`}>
+                      <div className={`flex items-center space-x-0.5 text-xs font-semibold ${isPositive ? 'text-emerald-600' : 'text-rose-500'}`}>
                         <i className={`${isPositive ? 'ri-arrow-up-line' : 'ri-arrow-down-line'} text-xs`}></i>
                         <span>{delta}</span>
                       </div>
@@ -226,10 +228,10 @@ function DomainCard({ domain, config, onTakeAction }: { domain: CPIDomainSnapsho
               })}
             </div>
             <div className="mt-3 flex items-center justify-between">
-              <span className="text-xs text-slate-400">{domain.freshness_label || `Live data · Updated ${timeLabel}`}</span>
+              <span className="text-xs text-brand-300">{domain.freshness_label || `Live · Updated ${timeLabel}`}</span>
               <button
                 onClick={(e) => { e.stopPropagation(); onTakeAction(); }}
-                className="flex items-center space-x-1.5 px-3 py-1.5 bg-teal-600 text-white text-xs font-semibold rounded-lg hover:bg-teal-700 transition-colors cursor-pointer whitespace-nowrap">
+                className="flex items-center space-x-1.5 px-3 py-1.5 bg-gradient-to-r from-ai-500 to-ai-600 text-white text-xs font-bold rounded-premium hover:from-ai-600 hover:to-ai-700 transition-all shadow-glow-sm cursor-pointer whitespace-nowrap">
                 <i className="ri-arrow-right-circle-line text-sm"></i>
                 <span>Take Action</span>
               </button>
@@ -262,19 +264,19 @@ export default function OperationalDomains() {
       <div>
         <div className="flex items-center justify-between mb-5">
           <div>
-            <h2 className="text-lg font-bold text-slate-900">Operational Domains</h2>
-            <p className="text-sm text-slate-500 mt-0.5">Loading live data from Supabase...</p>
+            <h2 className="text-base font-bold text-brand-900">Operational Domains</h2>
+            <p className="text-sm text-brand-400 mt-0.5">Loading live data...</p>
           </div>
         </div>
         <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
           {Array.from({ length: 8 }).map((_, i) => (
-            <div key={i} className="bg-white rounded-xl border border-slate-100 p-4 animate-pulse">
+            <div key={i} className="bg-white rounded-premium border border-border p-4 animate-pulse shadow-elevation-1">
               <div className="flex items-center space-x-2.5 mb-3">
-                <div className="w-9 h-9 bg-slate-100 rounded-lg"></div>
-                <div className="flex-1"><div className="h-3 bg-slate-100 rounded mb-1.5"></div><div className="h-2.5 bg-slate-100 rounded w-3/4"></div></div>
+                <div className="w-9 h-9 bg-brand-100 rounded-premium"></div>
+                <div className="flex-1"><div className="h-3 bg-brand-100 rounded mb-1.5"></div><div className="h-2.5 bg-brand-100 rounded w-3/4"></div></div>
               </div>
-              <div className="h-1.5 bg-slate-100 rounded-full mb-3"></div>
-              <div className="h-10 bg-slate-50 rounded-lg"></div>
+              <div className="h-1.5 bg-brand-100 rounded-full mb-3"></div>
+              <div className="h-10 bg-background rounded-premium"></div>
             </div>
           ))}
         </div>
@@ -286,8 +288,8 @@ export default function OperationalDomains() {
     <div>
       <div className="flex items-center justify-between mb-5">
         <div>
-          <h2 className="text-lg font-bold text-slate-900">Operational Domains</h2>
-          <p className="text-sm text-slate-500 mt-0.5">Live status across all healthcare operational areas</p>
+          <h2 className="text-base font-bold text-brand-900">Operational Domains</h2>
+          <p className="text-sm text-brand-400 mt-0.5">Live status across all healthcare operational areas</p>
         </div>
         <div className="flex items-center space-x-2">
           {criticalCount > 0 && (
