@@ -217,6 +217,10 @@ function isAlertPressureRecommendation(rec: Recommendation | { source_data?: any
   return rec.source_data?.pattern_type === 'active_alert_pressure';
 }
 
+function canBypassCooldown(rec: Recommendation | { source_data?: any; confidence_score?: number }) {
+  return isAlertPressureRecommendation(rec) && (rec.confidence_score || 0) >= 68;
+}
+
 export class RecommendationsEngine {
   private userId: string;
   private organizationId: string | null = null;
@@ -300,28 +304,35 @@ export class RecommendationsEngine {
     }
 
     if (recommendations.length > 0) {
-      const signatures = recommendations
-        .map((rec) => rec.source_data?.signature)
-        .filter(Boolean);
       const cutoffIso = new Date(
         Date.now() - RECOMMENDATION_RECENT_DUPLICATE_WINDOW_DAYS * 24 * 60 * 60 * 1000
       ).toISOString();
 
-      const { data: existing } = await supabase
+      const { data: recentExisting } = await supabase
         .from('recommendations')
         .select('id, title, status, created_at, dismissed_at, completed_at, source_data')
         .eq('organization_id', orgId)
         .gte('created_at', cutoffIso);
 
+      const { data: historicalExisting } = await supabase
+        .from('recommendations')
+        .select('id, title, description, category, priority, impact_score, effort_score, confidence_score, status, recommended_actions, expected_impact, actual_impact, implementation_notes, assigned_to, due_date, completed_at, dismissed_at, dismissed_reason, created_at, updated_at, source_data')
+        .eq('organization_id', orgId)
+        .order('created_at', { ascending: false })
+        .limit(250);
+
+      const existing = recentExisting || [];
+      const allExisting = (historicalExisting || []) as Recommendation[];
+
       const activeSignatures = new Set(
-        (existing || [])
+        existing
           .filter((rec) => ['pending', 'in_progress'].includes(rec.status))
           .map((rec) => rec.source_data?.signature)
           .filter(Boolean)
       );
 
       const coolingDismissedSignatures = new Set(
-        (existing || [])
+        existing
           .filter((rec) => {
             if (rec.status !== 'dismissed') return false;
             const dismissedAt = rec.dismissed_at || rec.updated_at || rec.created_at;
@@ -332,7 +343,7 @@ export class RecommendationsEngine {
       );
 
       const recentlyCompletedSignatures = new Set(
-        (existing || [])
+        existing
           .filter((rec) => {
             if (rec.status !== 'completed') return false;
             const completedAt = rec.completed_at || rec.updated_at || rec.created_at;
@@ -343,35 +354,115 @@ export class RecommendationsEngine {
       );
 
       const seenSignatures = new Set<string>();
-      const uniqueRecommendations = recommendations.filter((rec) => {
+      const candidateRecommendations = recommendations.filter((rec) => {
         const signature = rec.source_data?.signature;
         if (!signature) return true;
         if (seenSignatures.has(signature)) return false;
         seenSignatures.add(signature);
         if (activeSignatures.has(signature)) return false;
-        const allowAlertRepromotion =
-          isAlertPressureRecommendation(rec) &&
-          (rec.confidence_score || 0) >= 75;
+        const allowAlertRepromotion = canBypassCooldown(rec);
         if (!allowAlertRepromotion && coolingDismissedSignatures.has(signature)) return false;
         if (!allowAlertRepromotion && recentlyCompletedSignatures.has(signature)) return false;
         return true;
       });
 
-      if (uniqueRecommendations.length === 0) {
+      if (candidateRecommendations.length === 0) {
         return [];
       }
 
-      const { data, error } = await supabase
-        .from('recommendations')
-        .insert(uniqueRecommendations)
-        .select();
-
-      if (error) {
-        console.error('Error saving recommendations:', error);
-        return [];
+      const reopenableBySignature = new Map<string, Recommendation>();
+      const reopenableByTitle = new Map<string, Recommendation>();
+      for (const rec of allExisting) {
+        if (rec.status === 'pending' || rec.status === 'in_progress') continue;
+        const signature = rec.source_data?.signature;
+        if (signature && !reopenableBySignature.has(signature)) {
+          reopenableBySignature.set(signature, rec);
+        }
+        if (rec.title && !reopenableByTitle.has(rec.title)) {
+          reopenableByTitle.set(rec.title, rec);
+        }
       }
 
-      return data || [];
+      const recommendationsToReactivate: Array<{
+        existing: Recommendation;
+        next: Recommendation;
+      }> = [];
+      const recommendationsToInsert: Recommendation[] = [];
+
+      for (const rec of candidateRecommendations) {
+        const signature = rec.source_data?.signature;
+        const existingMatch =
+          (signature ? reopenableBySignature.get(signature) : undefined) ||
+          reopenableByTitle.get(rec.title);
+
+        if (existingMatch) {
+          recommendationsToReactivate.push({ existing: existingMatch, next: rec });
+          if (signature) reopenableBySignature.delete(signature);
+          reopenableByTitle.delete(rec.title);
+          continue;
+        }
+
+        recommendationsToInsert.push(rec);
+      }
+
+      const reactivatedResults: Recommendation[] = [];
+      for (const item of recommendationsToReactivate) {
+        const nextSourceData = appendLifecycleEvent(item.next.source_data, {
+          event: 'generated',
+          at: new Date().toISOString(),
+          actor_id: this.userId,
+          note: item.next.description,
+        });
+
+        const { data: reactivated, error: reactivateError } = await supabase
+          .from('recommendations')
+          .update({
+            title: item.next.title,
+            description: item.next.description,
+            category: item.next.category,
+            priority: item.next.priority,
+            impact_score: item.next.impact_score,
+            effort_score: item.next.effort_score,
+            confidence_score: item.next.confidence_score,
+            status: 'pending',
+            recommended_actions: item.next.recommended_actions,
+            expected_impact: item.next.expected_impact,
+            actual_impact: null,
+            implementation_notes: null,
+            assigned_to: null,
+            due_date: null,
+            completed_at: null,
+            dismissed_at: null,
+            dismissed_reason: null,
+            updated_at: new Date().toISOString(),
+            source_data: nextSourceData,
+          })
+          .eq('id', item.existing.id)
+          .eq('organization_id', orgId)
+          .select()
+          .maybeSingle();
+
+        if (!reactivateError && reactivated) {
+          reactivatedResults.push(reactivated as Recommendation);
+        }
+      }
+
+      let insertedResults: Recommendation[] = [];
+      if (recommendationsToInsert.length > 0) {
+        const { data, error } = await supabase
+          .from('recommendations')
+          .insert(recommendationsToInsert)
+          .select();
+
+        if (error) {
+          console.error('Error saving recommendations:', error);
+          return reactivatedResults;
+        }
+
+        insertedResults = (data || []) as Recommendation[];
+      }
+
+      return [...reactivatedResults, ...insertedResults];
     }
 
     return [];
