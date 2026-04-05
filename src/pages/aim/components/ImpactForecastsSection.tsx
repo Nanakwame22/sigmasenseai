@@ -337,6 +337,80 @@ const ImpactForecastsSection: React.FC = () => {
     if (unit.includes('count')) return `${numeric.toFixed(Math.abs(numeric) < 10 ? 1 : 0)} count`;
     return numeric.toFixed(decimalValue);
   };
+  const isLowerBetterMetric = (metric?: Metric | null) => {
+    const label = `${metric?.name ?? ''} ${metric?.unit ?? ''}`.toLowerCase();
+    return [
+      'wait',
+      'los',
+      'length of stay',
+      'readmission',
+      'turnaround',
+      'infection',
+      'error',
+      'defect',
+      'critical value',
+      'risk',
+    ].some((token) => label.includes(token));
+  };
+  const getForecastImpactInterpretation = (forecast: any) => {
+    const selectedMetric = selectedMetricDetails;
+    const forecastSeries = forecast?.forecast_data ?? [];
+    const projected = forecastSeries[forecastSeries.length - 1]?.value;
+    const current = Number(selectedMetric?.current_value ?? NaN);
+    const target = Number(selectedMetric?.target_value ?? NaN);
+
+    if (!selectedMetric || !Number.isFinite(projected) || !Number.isFinite(current)) {
+      return {
+        headline: 'This forecast shows where the metric may move next, but SigmaSense does not yet have enough context to explain the operating impact clearly.',
+        targetEffect: 'Use the forecast as a directional planning aid while checking the live metric and current operating conditions.',
+        takeaway: 'Operational takeaway: treat this as an early watch signal until more recent data or a clearer target relationship is available.',
+      };
+    }
+
+    const lowerIsBetter = isLowerBetterMetric(selectedMetric);
+    const delta = projected - current;
+    const absoluteDelta = Math.abs(delta);
+    const isMeaningfulMove = absoluteDelta >= Math.max(Math.abs(current) * 0.03, 1);
+    const improvesMetric = lowerIsBetter ? projected < current : projected > current;
+    const worsensMetric = lowerIsBetter ? projected > current : projected < current;
+
+    let headline = `The forecast suggests ${selectedMetric.name} will stay roughly stable near ${formatMetricValue(projected)} over the selected horizon.`;
+    if (isMeaningfulMove && improvesMetric) {
+      headline = `The forecast suggests ${selectedMetric.name} could improve from ${formatMetricValue(current)} to about ${formatMetricValue(projected)} over the selected horizon.`;
+    } else if (isMeaningfulMove && worsensMetric) {
+      headline = `The forecast suggests ${selectedMetric.name} could worsen from ${formatMetricValue(current)} to about ${formatMetricValue(projected)} over the selected horizon.`;
+    }
+
+    let targetEffect = 'SigmaSense cannot judge target impact clearly because this metric does not yet have a usable target attached.';
+    if (Number.isFinite(target) && target > 0) {
+      const currentGap = lowerIsBetter ? current - target : target - current;
+      const projectedGap = lowerIsBetter ? projected - target : target - projected;
+      const gapChange = Math.abs(projectedGap) - Math.abs(currentGap);
+
+      if ((lowerIsBetter && projected <= target) || (!lowerIsBetter && projected >= target)) {
+        targetEffect = `If this forecast holds, ${selectedMetric.name} would be back within target by the end of the selected forecast window.`;
+      } else if (gapChange > 0.5) {
+        targetEffect = `If this forecast holds, the metric would move farther away from target and end about ${formatMetricValue(Math.abs(projectedGap))} off target.`;
+      } else if (gapChange < -0.5) {
+        targetEffect = `If this forecast holds, the metric would move closer to target and finish about ${formatMetricValue(Math.abs(projectedGap))} away from target.`;
+      } else {
+        targetEffect = `If this forecast holds, the metric would stay near its current gap and remain about ${formatMetricValue(Math.abs(projectedGap))} away from target.`;
+      }
+    }
+
+    let takeaway = 'Operational takeaway: keep watching the live metric and use this forecast to prepare, not to over-rotate the plan.';
+    if (isMeaningfulMove && worsensMetric) {
+      takeaway = `Operational takeaway: if no intervention changes the trajectory, teams should expect more pressure around ${selectedMetric.name.toLowerCase()} and plan mitigations now.`;
+    } else if (isMeaningfulMove && improvesMetric) {
+      takeaway = `Operational takeaway: if current interventions continue to hold, pressure around ${selectedMetric.name.toLowerCase()} should ease rather than intensify.`;
+    }
+
+    return {
+      headline,
+      targetEffect,
+      takeaway,
+    };
+  };
   const visibleSeries = forecastData.flatMap((point) => [
     point.baseline,
     point.withActions,
@@ -557,7 +631,7 @@ const ImpactForecastsSection: React.FC = () => {
         <div className="space-y-6">
           {advancedForecasts.map((forecast) => (
             (() => {
-              const interpretation = getForecastInterpretation(forecast);
+              const interpretation = getForecastImpactInterpretation(forecast);
               return (
             <AIMPanel
               key={forecast.id}
@@ -648,10 +722,9 @@ const ImpactForecastsSection: React.FC = () => {
               <div className="mb-6 rounded-xl border border-brand-200 bg-white p-4">
                 <div className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-500">What This Means</div>
                 <div className="mt-3 space-y-2 text-sm text-brand-700">
-                  <p>{interpretation.plainMeaning}</p>
-                  <p>{interpretation.trustSummary}</p>
-                  <p>{interpretation.directionSummary}</p>
-                  <p>{interpretation.trendSummary}</p>
+                  <p>{interpretation.headline}</p>
+                  <p>{interpretation.targetEffect}</p>
+                  <p>{interpretation.takeaway}</p>
                 </div>
               </div>
 
