@@ -77,6 +77,16 @@ const RECOMMENDATION_RECENT_DUPLICATE_WINDOW_DAYS = 21;
 const RECOMMENDATION_DISMISS_COOLDOWN_DAYS = 2;
 const RECOMMENDATION_COMPLETE_COOLDOWN_DAYS = 3;
 
+const OPERATIONAL_METRIC_PRIORITY: Record<string, number> = {
+  'ED Wait Time': 30,
+  'Available Beds': 28,
+  'Discharges Pending': 24,
+  'Patients Per Nurse': 22,
+  'LOS Average Hours': 20,
+  'Bed Occupancy Rate': 18,
+  '30-Day Readmission Rate': 16,
+};
+
 function normalizePatternNumber(value: unknown): number {
   if (typeof value === 'number') return value;
   if (typeof value === 'string') {
@@ -290,6 +300,254 @@ function buildRecommendationInsertVariants(rec: Recommendation) {
   return [fullPayload, withoutId, withoutOrganizationId, withoutRichMetadata, withoutRichMetadataOrg, minimalPayload, minimalPayloadOrg];
 }
 
+function getMetricPriorityBoost(metricName?: string) {
+  if (!metricName) return 0;
+  if (metricName in OPERATIONAL_METRIC_PRIORITY) return OPERATIONAL_METRIC_PRIORITY[metricName];
+  if (/risk score/i.test(metricName)) return -8;
+  if (/risk/i.test(metricName)) return -4;
+  return 0;
+}
+
+function isCompositeRiskMetric(metricName?: string) {
+  if (!metricName) return false;
+  return /risk score/i.test(metricName) && !(metricName in OPERATIONAL_METRIC_PRIORITY);
+}
+
+function getPatternFocusKey(pattern: DataPattern) {
+  if (pattern.data?.metric?.id) return `metric:${pattern.data.metric.id}`;
+  if (pattern.data?.forecast?.metric_id) return `metric:${pattern.data.forecast.metric_id}`;
+  if (pattern.data?.metricId) return `metric:${pattern.data.metricId}`;
+  if (pattern.data?.alert?.metric_id) return `metric:${pattern.data.alert.metric_id}`;
+  const fallbackName =
+    pattern.data?.metric?.name ||
+    pattern.data?.forecast?.metric_name ||
+    pattern.data?.metricName ||
+    pattern.data?.alert?.title;
+  return fallbackName ? `name:${fallbackName}` : pattern.type;
+}
+
+function getPatternMetricName(pattern: DataPattern) {
+  return (
+    pattern.data?.metric?.name ||
+    pattern.data?.forecast?.metric_name ||
+    pattern.data?.metricName ||
+    pattern.data?.alert?.title ||
+    ''
+  );
+}
+
+function getPatternRank(pattern: DataPattern) {
+  const metricName = getPatternMetricName(pattern);
+  const severityRank = { critical: 40, high: 28, medium: 18, low: 8 }[pattern.severity] || 0;
+  const typeRank: Record<string, number> = {
+    active_alert_pressure: 34,
+    metric_declining: 28,
+    metric_below_target: 20,
+    recurring_anomalies: 18,
+    high_variability: 12,
+    negative_forecast: 12,
+    positive_forecast: 6,
+  };
+  const compositeRiskPenalty =
+    isCompositeRiskMetric(metricName) && pattern.type === 'metric_below_target'
+      ? 18
+      : isCompositeRiskMetric(metricName)
+        ? 10
+        : 0;
+  const zeroScorePenalty =
+    pattern.type === 'metric_below_target' &&
+    isCompositeRiskMetric(metricName) &&
+    normalizePatternNumber(pattern.data?.avg) <= 0.01
+      ? 18
+      : 0;
+
+  return (
+    severityRank +
+    (typeRank[pattern.type] || 0) +
+    getPatternEvidenceStrength(pattern) * 0.15 +
+    getMetricPriorityBoost(metricName) -
+    compositeRiskPenalty -
+    zeroScorePenalty
+  );
+}
+
+function formatMetricValue(value: number, unit?: string) {
+  const safeValue = Number.isFinite(value) ? value : 0;
+  if (!unit) return safeValue.toFixed(2);
+  if (unit === '%') return `${safeValue.toFixed(1)}%`;
+  if (unit === 'score') return `${safeValue.toFixed(0)} score`;
+  if (unit === 'beds') return `${safeValue.toFixed(2)} beds`;
+  if (unit === 'hours') return `${safeValue.toFixed(1)} hours`;
+  if (unit === 'count') return `${safeValue.toFixed(0)} count`;
+  if (unit === 'ratio') return `${safeValue.toFixed(1)} ratio`;
+  return `${safeValue.toFixed(2)} ${unit}`;
+}
+
+function getOperationalMetricCopy(pattern: DataPattern) {
+  const metric = pattern.data?.metric;
+  const metricName = metric?.name || '';
+  const avg = Number(pattern.data?.avg || 0);
+  const target = Number(pattern.data?.target || 0);
+  const gap = Number(pattern.data?.gap || 0);
+  const decline = Number(pattern.data?.decline || 0);
+  const cv = Number(pattern.data?.cv || 0);
+
+  if (pattern.type === 'metric_below_target') {
+    if (metricName === 'ED Wait Time') {
+      return {
+        title: 'Reduce ED wait-time pressure',
+        description: `ED Wait Time is ${gap.toFixed(1)}% off target. Current average is ${formatMetricValue(avg, metric?.unit)} against a target of ${formatMetricValue(target, metric?.unit)}. Review flow blockers before throughput strain spreads downstream.`,
+        actions: [
+          'Review the longest current wait segments and isolate the bottleneck.',
+          'Check whether bed availability or triage throughput is driving the delay.',
+          'Escalate the next operational move that will reduce queue pressure fastest.',
+          'Measure whether wait time falls back toward target on the next refresh.'
+        ],
+      };
+    }
+
+    if (metricName === 'Available Beds') {
+      return {
+        title: 'Recover available bed capacity',
+        description: `Available Beds is running ${gap.toFixed(1)}% below target. Current average is ${formatMetricValue(avg, metric?.unit)} against a target of ${formatMetricValue(target, metric?.unit)}. Focus on discharge pacing and bed turnover to restore bed capacity.`,
+        actions: [
+          'Review delayed discharges and prioritize discharge-ready patients.',
+          'Coordinate bed turnover with environmental services and bed management.',
+          'Verify whether occupancy pressure is being driven by ED boarding or inpatient throughput.',
+          'Recheck bed availability after the next operational cycle.'
+        ],
+      };
+    }
+
+    if (metricName === 'Discharges Pending') {
+      return {
+        title: 'Reduce discharge backlog',
+        description: `Discharges Pending is off target by ${gap.toFixed(1)}%. Current average is ${formatMetricValue(avg, metric?.unit)} versus a target of ${formatMetricValue(target, metric?.unit)}. Reduce the backlog before it slows bed flow further.`,
+        actions: [
+          'Review the oldest pending discharges and remove avoidable blockers.',
+          'Escalate cases waiting on pharmacy, transport, or physician signoff.',
+          'Coordinate discharge planning coverage for the next shift handoff.',
+          'Track whether pending discharges fall after the next refresh.'
+        ],
+      };
+    }
+
+    if (metricName === 'Patients Per Nurse') {
+      return {
+        title: 'Rebalance nurse assignment load',
+        description: `Patients Per Nurse is ${gap.toFixed(1)}% off target. Current average is ${formatMetricValue(avg, metric?.unit)} against a target of ${formatMetricValue(target, metric?.unit)}. Rebalance staffing before assignment load becomes a patient-flow constraint.`,
+        actions: [
+          'Review unit-level assignment imbalance and identify overload pockets.',
+          'Adjust staffing or float coverage for the most pressured units.',
+          'Confirm whether discharge delays are increasing assignment pressure.',
+          'Monitor whether the ratio moves back toward target on the next refresh.'
+        ],
+      };
+    }
+
+    if (metricName === 'LOS Average Hours') {
+      return {
+        title: 'Pull length of stay back toward target',
+        description: `LOS Average Hours is ${gap.toFixed(1)}% off target. Current average is ${formatMetricValue(avg, metric?.unit)} against a target of ${formatMetricValue(target, metric?.unit)}. Review the inpatient flow steps that are extending stay duration.`,
+        actions: [
+          'Review delayed discharge, diagnostic, or bed-placement steps for admitted patients.',
+          'Identify service lines with the longest recent LOS growth.',
+          'Escalate persistent throughput blockers to care coordination and bed management.',
+          'Measure whether LOS improves over the next refresh cycle.'
+        ],
+      };
+    }
+
+    if (metricName === 'Bed Occupancy Rate') {
+      return {
+        title: 'Relieve bed occupancy pressure',
+        description: `Bed Occupancy Rate is ${gap.toFixed(1)}% away from target. Current average is ${formatMetricValue(avg, metric?.unit)} against a target of ${formatMetricValue(target, metric?.unit)}. Reduce occupancy pressure before it constrains admissions and discharge flow.`,
+        actions: [
+          'Compare occupancy movement with discharge completion and intake pressure.',
+          'Review whether boarding or delayed bed turnover is driving the gap.',
+          'Stage the next capacity response before the next operating cycle.',
+          'Check whether occupancy moves back toward target on the next refresh.'
+        ],
+      };
+    }
+  }
+
+  if (pattern.type === 'metric_declining') {
+    if (metricName === 'Available Beds') {
+      return {
+        title: 'Reverse declining bed availability',
+        description: `Available Beds has declined ${decline.toFixed(1)}% in the recent period. Bed availability is tightening fast enough to justify immediate inpatient flow review before capacity pressure worsens.`,
+        actions: [
+          'Confirm whether the decline is being driven by slower discharges, bed holds, or intake pressure.',
+          'Review the highest-friction units for blocked turnover.',
+          'Coordinate the next shift plan to recover bed capacity quickly.',
+          'Check whether the decline reverses on the next refresh.'
+        ],
+      };
+    }
+
+    if (metricName === 'Bed Occupancy Rate') {
+      return {
+        title: 'Stabilize rising bed occupancy pressure',
+        description: `Bed Occupancy Rate has shifted ${decline.toFixed(1)}% away from the recent baseline. Review whether occupancy pressure is outpacing discharge and bed-turnover capacity.`,
+        actions: [
+          'Review occupancy movement against discharge and admission flow.',
+          'Identify whether boarding or inpatient throughput is driving the pressure.',
+          'Prepare a bed-capacity response if the next refresh continues the trend.',
+          'Track whether occupancy stabilizes after the next operating cycle.'
+        ],
+      };
+    }
+  }
+
+  if (pattern.type === 'high_variability') {
+    if (metricName === 'LOS Average Hours' || metricName === 'Discharges Pending') {
+      return {
+        title: `Stabilize variability in ${metricName}`,
+        description: `${metricName} is showing unstable movement (CV ${cv.toFixed(1)}%). The signal is fluctuating enough to make planning unreliable, so focus on process consistency before the next operating cycle.`,
+        actions: [
+          'Review the last few shifts for inconsistent execution or handoff patterns.',
+          'Identify whether a specific unit, shift, or service line is driving the volatility.',
+          'Standardize the highest-variance step in the process before the next refresh.',
+          'Watch whether the metric range tightens after the intervention.'
+        ],
+      };
+    }
+  }
+
+  return null;
+}
+
+function shouldSuppressPattern(pattern: DataPattern) {
+  const metricName = getPatternMetricName(pattern);
+
+  if (
+    pattern.type === 'metric_below_target' &&
+    isCompositeRiskMetric(metricName) &&
+    normalizePatternNumber(pattern.data?.avg) <= 0.01
+  ) {
+    return true;
+  }
+
+  if (
+    pattern.type === 'metric_below_target' &&
+    isCompositeRiskMetric(metricName) &&
+    normalizePatternNumber(pattern.data?.gap) >= 95
+  ) {
+    return true;
+  }
+
+  if (
+    pattern.type === 'high_variability' &&
+    isCompositeRiskMetric(metricName) &&
+    normalizePatternNumber(pattern.data?.mean) <= 0.01
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
 export class RecommendationsEngine {
   private userId: string;
   private organizationId: string | null = null;
@@ -466,7 +724,16 @@ export class RecommendationsEngine {
       inserted: 0,
     };
 
-    for (const pattern of patterns) {
+    const rankedPatterns = [...patterns]
+      .filter((pattern) => !shouldSuppressPattern(pattern))
+      .sort((a, b) => getPatternRank(b) - getPatternRank(a))
+      .filter((pattern, index, list) => {
+        const focusKey = getPatternFocusKey(pattern);
+        return list.findIndex((candidate) => getPatternFocusKey(candidate) === focusKey) === index;
+      })
+      .slice(0, 6);
+
+    for (const pattern of rankedPatterns) {
       const recommendation = this.createRecommendation(pattern, orgId);
       if (recommendation) {
         recommendations.push(recommendation);
@@ -962,12 +1229,32 @@ export class RecommendationsEngine {
 
     switch (pattern.type) {
       case 'metric_below_target':
+        {
+          const operationalCopy = getOperationalMetricCopy(pattern);
+          if (operationalCopy) {
+            return {
+              ...baseRecommendation,
+              id: crypto.randomUUID(),
+              title: operationalCopy.title,
+              description: operationalCopy.description,
+              category: 'performance',
+              priority: pattern.severity,
+              impact_score: 85,
+              effort_score: 60,
+              confidence_score: 90,
+              recommended_actions: operationalCopy.actions,
+              expected_impact: `Closing this ${pattern.data.gap}% gap should move ${pattern.data.metric.name} back toward its operating target and reduce downstream pressure.`,
+            };
+          }
+        }
         return {
           ...baseRecommendation,
           id: crypto.randomUUID(),
-          title: `Improve ${pattern.data.metric.name} to Target`,
+          title: isCompositeRiskMetric(pattern.data.metric.name)
+            ? `Lift ${pattern.data.metric.name} back into range`
+            : `Close ${pattern.data.metric.name} performance gap`,
           description: `${pattern.data.metric.name} is currently ${pattern.data.gap}% below target. Current average: ${pattern.data.avg.toFixed(2)} ${pattern.data.metric.unit || ''}, Target: ${pattern.data.target} ${pattern.data.metric.unit || ''}. Closing this gap is critical for meeting performance goals.`,
-          category: 'performance',
+          category: isCompositeRiskMetric(pattern.data.metric.name) ? 'risk' : 'performance',
           priority: pattern.severity,
           impact_score: 85,
           effort_score: 60,
@@ -983,12 +1270,32 @@ export class RecommendationsEngine {
         };
 
       case 'metric_declining':
+        {
+          const operationalCopy = getOperationalMetricCopy(pattern);
+          if (operationalCopy) {
+            return {
+              ...baseRecommendation,
+              id: crypto.randomUUID(),
+              title: operationalCopy.title,
+              description: operationalCopy.description,
+              category: 'performance',
+              priority: 'high',
+              impact_score: 80,
+              effort_score: 50,
+              confidence_score: 85,
+              recommended_actions: operationalCopy.actions,
+              expected_impact: `Reversing this trend should recover recent performance loss before it becomes a broader operating issue.`,
+            };
+          }
+        }
         return {
           ...baseRecommendation,
           id: crypto.randomUUID(),
-          title: `Reverse Declining Trend in ${pattern.data.metric.name}`,
+          title: isCompositeRiskMetric(pattern.data.metric.name)
+            ? `Stabilize decline in ${pattern.data.metric.name}`
+            : `Reverse decline in ${pattern.data.metric.name}`,
           description: `${pattern.data.metric.name} has declined ${pattern.data.decline}% in the recent period (from ${pattern.data.firstAvg.toFixed(2)} to ${pattern.data.secondAvg.toFixed(2)}). Early intervention can prevent further deterioration.`,
-          category: 'performance',
+          category: isCompositeRiskMetric(pattern.data.metric.name) ? 'risk' : 'performance',
           priority: 'high',
           impact_score: 80,
           effort_score: 50,
@@ -1004,12 +1311,30 @@ export class RecommendationsEngine {
         };
 
       case 'high_variability':
+        {
+          const operationalCopy = getOperationalMetricCopy(pattern);
+          if (operationalCopy) {
+            return {
+              ...baseRecommendation,
+              id: crypto.randomUUID(),
+              title: operationalCopy.title,
+              description: operationalCopy.description,
+              category: 'quality',
+              priority: pattern.severity,
+              impact_score: 75,
+              effort_score: 65,
+              confidence_score: 88,
+              recommended_actions: operationalCopy.actions,
+              expected_impact: 'Reducing variability should make the operating signal more reliable and easier to manage shift-to-shift.',
+            };
+          }
+        }
         return {
           ...baseRecommendation,
           id: crypto.randomUUID(),
-          title: `Reduce Variability in ${pattern.data.metric.name}`,
+          title: `Stabilize ${pattern.data.metric.name} variation`,
           description: `${pattern.data.metric.name} shows high variability (Coefficient of Variation: ${pattern.data.cv}%). High variability indicates an unstable process that produces inconsistent results.`,
-          category: 'quality',
+          category: isCompositeRiskMetric(pattern.data.metric.name) ? 'risk' : 'quality',
           priority: pattern.severity,
           impact_score: 75,
           effort_score: 65,
