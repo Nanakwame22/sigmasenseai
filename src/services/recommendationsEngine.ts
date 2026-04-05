@@ -313,7 +313,61 @@ function isCompositeRiskMetric(metricName?: string) {
   return /risk score/i.test(metricName) && !(metricName in OPERATIONAL_METRIC_PRIORITY);
 }
 
+function getOperationalTheme(name?: string) {
+  if (!name) return null;
+  const normalized = name.toLowerCase();
+
+  if (
+    normalized.includes('available beds') ||
+    normalized.includes('bed occupancy') ||
+    normalized.includes('occupied beds')
+  ) {
+    return 'bed_capacity';
+  }
+
+  if (
+    normalized.includes('discharges pending') ||
+    normalized.includes('discharge')
+  ) {
+    return 'discharge_flow';
+  }
+
+  if (
+    normalized.includes('ed wait') ||
+    normalized.includes('patient flow')
+  ) {
+    return 'patient_flow';
+  }
+
+  if (
+    normalized.includes('patients per nurse') ||
+    normalized.includes('staffing')
+  ) {
+    return 'staffing_balance';
+  }
+
+  if (normalized.includes('los average hours') || normalized.includes('length of stay')) {
+    return 'length_of_stay';
+  }
+
+  if (normalized.includes('readmission')) {
+    return 'readmission_risk';
+  }
+
+  if (normalized.includes('laboratory risk') || normalized.includes('lab')) {
+    return 'lab_quality';
+  }
+
+  return null;
+}
+
 function getPatternFocusKey(pattern: DataPattern) {
+  const theme =
+    getOperationalTheme(pattern.data?.metric?.name) ||
+    getOperationalTheme(pattern.data?.forecast?.metric_name) ||
+    getOperationalTheme(pattern.data?.metricName) ||
+    getOperationalTheme(pattern.data?.alert?.title);
+  if (theme) return `theme:${theme}`;
   if (pattern.data?.metric?.id) return `metric:${pattern.data.metric.id}`;
   if (pattern.data?.forecast?.metric_id) return `metric:${pattern.data.forecast.metric_id}`;
   if (pattern.data?.metricId) return `metric:${pattern.data.metricId}`;
@@ -559,6 +613,8 @@ function getRecommendationMetricName(rec: Recommendation) {
 }
 
 function getRecommendationFocusKey(rec: Recommendation) {
+  const theme = getOperationalTheme(getRecommendationMetricName(rec)) || getOperationalTheme(rec.title);
+  if (theme) return `theme:${theme}`;
   if (rec.source_data?.signature) return rec.source_data.signature;
   const metricId =
     rec.source_data?.raw?.metric?.id ||
