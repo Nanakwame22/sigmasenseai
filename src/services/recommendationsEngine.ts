@@ -27,11 +27,151 @@ export interface Recommendation {
   updated_at: string;
 }
 
+interface RecommendationLifecycleEvent {
+  event: 'generated' | 'started' | 'completed' | 'dismissed';
+  at: string;
+  actor_id?: string;
+  note?: string;
+}
+
+interface RecommendationSourceDataShape {
+  pattern_type?: string;
+  signature?: string;
+  evidence_strength?: number;
+  generated_from?: string[];
+  refresh_timestamp?: string | null;
+  review_after?: string;
+  expires_at?: string;
+  canonical_kind?: 'recommendation_signal';
+  lifecycle?: RecommendationLifecycleEvent[];
+  raw?: any;
+  [key: string]: any;
+}
+
 interface DataPattern {
   type: string;
   severity: 'critical' | 'high' | 'medium' | 'low';
   data: any;
   insight: string;
+}
+
+const RECOMMENDATION_REVIEW_WINDOW_DAYS = 14;
+const RECOMMENDATION_EXPIRY_WINDOW_DAYS = 30;
+const RECOMMENDATION_RECENT_DUPLICATE_WINDOW_DAYS = 21;
+const RECOMMENDATION_DISMISS_COOLDOWN_DAYS = 10;
+
+function normalizePatternNumber(value: unknown): number {
+  if (typeof value === 'number') return value;
+  if (typeof value === 'string') {
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+}
+
+function addDaysIso(days: number) {
+  const next = new Date();
+  next.setDate(next.getDate() + days);
+  return next.toISOString();
+}
+
+function getPatternRefreshTimestamp(pattern: DataPattern): string | null {
+  if (pattern.type === 'metric_below_target' || pattern.type === 'metric_declining' || pattern.type === 'high_variability') {
+    return pattern.data?.values?.[0]?.timestamp ?? null;
+  }
+  if (pattern.type === 'negative_forecast' || pattern.type === 'positive_forecast') {
+    return pattern.data?.forecast?.created_at ?? null;
+  }
+  if (pattern.type === 'recurring_anomalies') {
+    return pattern.data?.anomalies?.[0]?.detected_at ?? null;
+  }
+  return null;
+}
+
+function getPatternEvidenceStrength(pattern: DataPattern): number {
+  switch (pattern.type) {
+    case 'metric_below_target':
+      return Math.min(100, 55 + Number(pattern.data?.gap || 0) * 1.2 + ((pattern.data?.values?.length || 0) >= 20 ? 10 : 0));
+    case 'metric_declining':
+      return Math.min(100, 58 + Number(pattern.data?.decline || 0) * 1.1);
+    case 'high_variability':
+      return Math.min(100, 50 + Number(pattern.data?.cv || 0) * 0.7);
+    case 'recurring_anomalies':
+      return Math.min(100, 62 + Number(pattern.data?.count || 0) * 6);
+    case 'negative_forecast':
+      return Math.min(100, 60 + Number(pattern.data?.decline || 0) * 0.9 + ((pattern.data?.predictions?.length || 0) >= 12 ? 8 : 0));
+    case 'positive_forecast':
+      return Math.min(100, 45 + Number(pattern.data?.growth || 0) * 0.6);
+    default:
+      return 0;
+  }
+}
+
+function meetsRecommendationGate(pattern: DataPattern): boolean {
+  const evidenceStrength = getPatternEvidenceStrength(pattern);
+
+  switch (pattern.type) {
+    case 'metric_below_target':
+      return evidenceStrength >= 62 && normalizePatternNumber(pattern.data?.gap) >= 8;
+    case 'metric_declining':
+      return evidenceStrength >= 65 && normalizePatternNumber(pattern.data?.decline) >= 10;
+    case 'high_variability':
+      return evidenceStrength >= 60 && normalizePatternNumber(pattern.data?.cv) >= 35;
+    case 'recurring_anomalies':
+      return evidenceStrength >= 70 && normalizePatternNumber(pattern.data?.count) >= 3;
+    case 'negative_forecast':
+      return evidenceStrength >= 66 && normalizePatternNumber(pattern.data?.decline) >= 10;
+    case 'positive_forecast':
+      return evidenceStrength >= 72 && normalizePatternNumber(pattern.data?.growth) >= 20;
+    default:
+      return false;
+  }
+}
+
+function buildRecommendationSignature(pattern: DataPattern): string {
+  switch (pattern.type) {
+    case 'metric_below_target':
+    case 'metric_declining':
+    case 'high_variability':
+      return `${pattern.type}::${pattern.data?.metric?.id || pattern.data?.metric?.name || 'metricless'}`;
+    case 'recurring_anomalies':
+      return `${pattern.type}::${pattern.data?.metricId || pattern.data?.metricName || 'unknown'}`;
+    case 'negative_forecast':
+    case 'positive_forecast':
+      return `${pattern.type}::${pattern.data?.forecast?.metric_id || pattern.data?.forecast?.metric_name || 'forecastless'}`;
+    default:
+      return `${pattern.type}::generic`;
+  }
+}
+
+function getPatternGeneratedFrom(pattern: DataPattern): string[] {
+  switch (pattern.type) {
+    case 'metric_below_target':
+    case 'metric_declining':
+    case 'high_variability':
+      return ['metrics', 'metric_data'];
+    case 'recurring_anomalies':
+      return ['anomalies'];
+    case 'negative_forecast':
+    case 'positive_forecast':
+      return ['forecasts', 'metrics'];
+    default:
+      return ['aim'];
+  }
+}
+
+function appendLifecycleEvent(
+  sourceData: RecommendationSourceDataShape | undefined,
+  event: RecommendationLifecycleEvent
+): RecommendationSourceDataShape {
+  const safeSourceData: RecommendationSourceDataShape = {
+    ...(sourceData || {})
+  };
+
+  return {
+    ...safeSourceData,
+    lifecycle: [...(safeSourceData.lifecycle || []), event]
+  };
 }
 
 export class RecommendationsEngine {
@@ -82,16 +222,55 @@ export class RecommendationsEngine {
     }
 
     if (recommendations.length > 0) {
-      const titles = recommendations.map((rec) => rec.title);
+      const signatures = recommendations
+        .map((rec) => rec.source_data?.signature)
+        .filter(Boolean);
+      const cutoffIso = new Date(
+        Date.now() - RECOMMENDATION_RECENT_DUPLICATE_WINDOW_DAYS * 24 * 60 * 60 * 1000
+      ).toISOString();
+
       const { data: existing } = await supabase
         .from('recommendations')
-        .select('title')
+        .select('id, title, status, created_at, dismissed_at, completed_at, source_data')
         .eq('organization_id', orgId)
-        .in('status', ['pending', 'in_progress'])
-        .in('title', titles);
+        .gte('created_at', cutoffIso);
 
-      const existingTitles = new Set((existing || []).map((rec) => rec.title));
-      const uniqueRecommendations = recommendations.filter((rec) => !existingTitles.has(rec.title));
+      const activeSignatures = new Set(
+        (existing || [])
+          .filter((rec) => ['pending', 'in_progress'].includes(rec.status))
+          .map((rec) => rec.source_data?.signature)
+          .filter(Boolean)
+      );
+
+      const coolingDismissedSignatures = new Set(
+        (existing || [])
+          .filter((rec) => {
+            if (rec.status !== 'dismissed') return false;
+            const dismissedAt = rec.dismissed_at || rec.updated_at || rec.created_at;
+            return Date.now() - new Date(dismissedAt).getTime() <= RECOMMENDATION_DISMISS_COOLDOWN_DAYS * 24 * 60 * 60 * 1000;
+          })
+          .map((rec) => rec.source_data?.signature)
+          .filter(Boolean)
+      );
+
+      const recentlyCompletedSignatures = new Set(
+        (existing || [])
+          .filter((rec) => rec.status === 'completed')
+          .map((rec) => rec.source_data?.signature)
+          .filter(Boolean)
+      );
+
+      const seenSignatures = new Set<string>();
+      const uniqueRecommendations = recommendations.filter((rec) => {
+        const signature = rec.source_data?.signature;
+        if (!signature) return true;
+        if (seenSignatures.has(signature)) return false;
+        seenSignatures.add(signature);
+        if (activeSignatures.has(signature)) return false;
+        if (coolingDismissedSignatures.has(signature)) return false;
+        if (recentlyCompletedSignatures.has(signature)) return false;
+        return true;
+      });
 
       if (uniqueRecommendations.length === 0) {
         return [];
@@ -297,13 +476,41 @@ export class RecommendationsEngine {
   }
 
   private createRecommendation(pattern: DataPattern, organizationId: string): Recommendation | null {
+    if (!meetsRecommendationGate(pattern)) {
+      return null;
+    }
+
+    const signature = buildRecommendationSignature(pattern);
+    const evidenceStrength = getPatternEvidenceStrength(pattern);
+    const refreshTimestamp = getPatternRefreshTimestamp(pattern);
+    const nowIso = new Date().toISOString();
+    const sourceData: RecommendationSourceDataShape = appendLifecycleEvent(
+      {
+        pattern_type: pattern.type,
+        signature,
+        evidence_strength: evidenceStrength,
+        generated_from: getPatternGeneratedFrom(pattern),
+        refresh_timestamp: refreshTimestamp,
+        review_after: addDaysIso(RECOMMENDATION_REVIEW_WINDOW_DAYS),
+        expires_at: addDaysIso(RECOMMENDATION_EXPIRY_WINDOW_DAYS),
+        canonical_kind: 'recommendation_signal',
+        raw: pattern.data
+      },
+      {
+        event: 'generated',
+        at: nowIso,
+        actor_id: this.userId,
+        note: pattern.insight
+      }
+    );
+
     const baseRecommendation = {
       user_id: this.userId,
       organization_id: organizationId,
       status: 'pending' as const,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      source_data: pattern.data
+      created_at: nowIso,
+      updated_at: nowIso,
+      source_data: sourceData
     };
 
     switch (pattern.type) {
@@ -469,9 +676,21 @@ export class RecommendationsEngine {
     const orgId = await this.getOrganizationId();
     if (!orgId) return false;
 
+    const { data: existing } = await supabase
+      .from('recommendations')
+      .select('source_data')
+      .eq('id', id)
+      .eq('organization_id', orgId)
+      .maybeSingle();
+
     const updates: any = {
       status: 'in_progress',
-      updated_at: new Date().toISOString()
+      updated_at: new Date().toISOString(),
+      source_data: appendLifecycleEvent(existing?.source_data, {
+        event: 'started',
+        at: new Date().toISOString(),
+        actor_id: this.userId
+      })
     };
     if (assignedTo) updates.assigned_to = assignedTo;
 
@@ -488,10 +707,23 @@ export class RecommendationsEngine {
     const orgId = await this.getOrganizationId();
     if (!orgId) return false;
 
+    const { data: existing } = await supabase
+      .from('recommendations')
+      .select('source_data')
+      .eq('id', id)
+      .eq('organization_id', orgId)
+      .maybeSingle();
+
     const updates: any = {
       status: 'completed',
       completed_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
+      updated_at: new Date().toISOString(),
+      source_data: appendLifecycleEvent(existing?.source_data, {
+        event: 'completed',
+        at: new Date().toISOString(),
+        actor_id: this.userId,
+        note: notes || actualImpact
+      })
     };
     if (actualImpact) updates.actual_impact = actualImpact;
     if (notes) updates.implementation_notes = notes;
@@ -509,13 +741,26 @@ export class RecommendationsEngine {
     const orgId = await this.getOrganizationId();
     if (!orgId) return false;
 
+    const { data: existing } = await supabase
+      .from('recommendations')
+      .select('source_data')
+      .eq('id', id)
+      .eq('organization_id', orgId)
+      .maybeSingle();
+
     const { error } = await supabase
       .from('recommendations')
       .update({
         status: 'dismissed',
         dismissed_at: new Date().toISOString(),
         dismissed_reason: reason,
-        updated_at: new Date().toISOString()
+        updated_at: new Date().toISOString(),
+        source_data: appendLifecycleEvent(existing?.source_data, {
+          event: 'dismissed',
+          at: new Date().toISOString(),
+          actor_id: this.userId,
+          note: reason
+        })
       })
       .eq('id', id)
       .eq('organization_id', orgId);
