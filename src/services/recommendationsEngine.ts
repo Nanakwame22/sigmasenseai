@@ -548,6 +548,97 @@ function shouldSuppressPattern(pattern: DataPattern) {
   return false;
 }
 
+function getRecommendationMetricName(rec: Recommendation) {
+  return (
+    rec.source_data?.raw?.metric?.name ||
+    rec.source_data?.raw?.forecast?.metric_name ||
+    rec.source_data?.raw?.metricName ||
+    rec.source_data?.raw?.alert?.title ||
+    ''
+  );
+}
+
+function getRecommendationFocusKey(rec: Recommendation) {
+  if (rec.source_data?.signature) return rec.source_data.signature;
+  const metricId =
+    rec.source_data?.raw?.metric?.id ||
+    rec.source_data?.raw?.forecast?.metric_id ||
+    rec.source_data?.raw?.metricId ||
+    rec.source_data?.raw?.alert?.metric_id;
+  if (metricId) return `metric:${metricId}`;
+  const metricName = getRecommendationMetricName(rec);
+  return metricName ? `name:${metricName}` : rec.title;
+}
+
+function isGenericRiskGapRecommendation(rec: Recommendation) {
+  const patternType = rec.source_data?.pattern_type;
+  const metricName = getRecommendationMetricName(rec);
+  return patternType === 'metric_below_target' && isCompositeRiskMetric(metricName);
+}
+
+function getRecommendationRank(rec: Recommendation) {
+  const metricName = getRecommendationMetricName(rec);
+  const priorityRank = { critical: 40, high: 28, medium: 18, low: 8 }[rec.priority] || 0;
+  const statusRank = rec.status === 'in_progress' ? 6 : rec.status === 'pending' ? 4 : 0;
+  const patternType = rec.source_data?.pattern_type;
+  const typeRank: Record<string, number> = {
+    active_alert_pressure: 28,
+    metric_declining: 24,
+    metric_below_target: 16,
+    recurring_anomalies: 18,
+    high_variability: 10,
+    negative_forecast: 12,
+    positive_forecast: 4,
+  };
+  const genericRiskPenalty = isGenericRiskGapRecommendation(rec) ? 24 : 0;
+
+  return (
+    priorityRank +
+    statusRank +
+    (typeRank[patternType] || 0) +
+    (rec.impact_score || 0) * 0.28 +
+    (rec.confidence_score || 0) * 0.18 -
+    (rec.effort_score || 0) * 0.1 +
+    getMetricPriorityBoost(metricName) -
+    genericRiskPenalty
+  );
+}
+
+function curateVisibleRecommendations(recommendations: Recommendation[]) {
+  const active = recommendations
+    .filter((rec) => rec.status === 'pending' || rec.status === 'in_progress')
+    .sort((a, b) => getRecommendationRank(b) - getRecommendationRank(a));
+
+  const inactive = recommendations.filter((rec) => rec.status !== 'pending' && rec.status !== 'in_progress');
+  const seenFocus = new Set<string>();
+  const curatedActive: Recommendation[] = [];
+  let operationalCount = 0;
+  let genericRiskCount = 0;
+
+  for (const rec of active) {
+    const focusKey = getRecommendationFocusKey(rec);
+    if (seenFocus.has(focusKey)) continue;
+    seenFocus.add(focusKey);
+
+    const genericRisk = isGenericRiskGapRecommendation(rec);
+    if (genericRisk) {
+      if (genericRiskCount >= 1) continue;
+      if (operationalCount >= 4 && rec.priority !== 'critical') continue;
+    }
+
+    curatedActive.push(rec);
+    if (genericRisk) {
+      genericRiskCount += 1;
+    } else {
+      operationalCount += 1;
+    }
+
+    if (curatedActive.length >= 7) break;
+  }
+
+  return [...curatedActive, ...inactive];
+}
+
 export class RecommendationsEngine {
   private userId: string;
   private organizationId: string | null = null;
@@ -1509,13 +1600,14 @@ export class RecommendationsEngine {
     category?: string;
     priority?: string;
   }): Promise<Recommendation[]> {
-    return this.getRecommendationsByScope((query) => {
+    const recommendations = await this.getRecommendationsByScope((query) => {
       let next = query;
       if (filters?.status) next = next.eq('status', filters.status);
       if (filters?.category) next = next.eq('category', filters.category);
       if (filters?.priority) next = next.eq('priority', filters.priority);
       return next;
     });
+    return curateVisibleRecommendations(recommendations);
   }
 
   async startRecommendation(id: string, assignedTo?: string): Promise<boolean> {
@@ -1625,7 +1717,7 @@ export class RecommendationsEngine {
       };
     }
 
-    const recommendations = await this.getRecommendationsByScope();
+    const recommendations = curateVisibleRecommendations(await this.getRecommendationsByScope());
 
     if (!recommendations || recommendations.length === 0) {
       return {
