@@ -175,6 +175,13 @@ function buildRecommendationSignature(pattern: DataPattern): string {
   }
 }
 
+function buildDirectionalWatchSignature(pattern: DataPattern): string {
+  if (pattern.type === 'active_alert_pressure') {
+    return `directional_watch_review::${pattern.data?.alert?.metric_id || pattern.data?.alert?.title || 'alertless'}::${pattern.data?.alert?.alert_type || 'signal'}`;
+  }
+  return `directional_watch_review::${pattern.type}`;
+}
+
 function getPatternGeneratedFrom(pattern: DataPattern): string[] {
   switch (pattern.type) {
     case 'metric_below_target':
@@ -300,6 +307,24 @@ export class RecommendationsEngine {
       const recommendation = this.createRecommendation(pattern, orgId);
       if (recommendation) {
         recommendations.push(recommendation);
+      }
+    }
+
+    if (recommendations.length === 0) {
+      const directionalWatchPattern = [...patterns]
+        .filter((pattern) => pattern.type === 'active_alert_pressure')
+        .sort((a, b) => {
+          const severityRank = { critical: 4, high: 3, medium: 2, low: 1 };
+          const severityDelta = severityRank[b.severity] - severityRank[a.severity];
+          if (severityDelta !== 0) return severityDelta;
+          return getPatternEvidenceStrength(b) - getPatternEvidenceStrength(a);
+        })[0];
+
+      if (directionalWatchPattern) {
+        const fallbackRecommendation = this.createDirectionalRecommendation(directionalWatchPattern, orgId);
+        if (fallbackRecommendation) {
+          recommendations.push(fallbackRecommendation);
+        }
       }
     }
 
@@ -910,6 +935,58 @@ export class RecommendationsEngine {
       default:
         return null;
     }
+  }
+
+  private createDirectionalRecommendation(pattern: DataPattern, organizationId: string): Recommendation | null {
+    if (pattern.type !== 'active_alert_pressure') return null;
+
+    const nowIso = new Date().toISOString();
+    const sourceData: RecommendationSourceDataShape = appendLifecycleEvent(
+      {
+        pattern_type: pattern.type,
+        signature: buildDirectionalWatchSignature(pattern),
+        evidence_strength: Math.max(50, getPatternEvidenceStrength(pattern) - 6),
+        generated_from: [...getPatternGeneratedFrom(pattern), 'watch_signals'],
+        refresh_timestamp: getPatternRefreshTimestamp(pattern),
+        review_after: addDaysIso(7),
+        expires_at: addDaysIso(21),
+        canonical_kind: 'recommendation_signal',
+        decision_state: 'directional',
+        raw: pattern.data,
+      },
+      {
+        event: 'generated',
+        at: nowIso,
+        actor_id: this.userId,
+        note: `Directional watch signal promoted for operator review: ${pattern.insight}`,
+      }
+    );
+
+    return {
+      id: crypto.randomUUID(),
+      user_id: this.userId,
+      organization_id: organizationId,
+      title: `Validate response for ${pattern.data.alert.title}`,
+      description:
+        `${pattern.data.alert.title} has not yet crossed the full action-ready threshold, but it has remained strong enough to justify an operator review and a response decision.`,
+      category: 'risk',
+      priority: pattern.severity === 'critical' ? 'high' : pattern.severity,
+      impact_score: pattern.severity === 'critical' ? 78 : pattern.severity === 'high' ? 72 : 64,
+      effort_score: 32,
+      confidence_score: Math.max(60, Math.min(82, getPatternEvidenceStrength(pattern))),
+      status: 'pending',
+      recommended_actions: [
+        'Confirm whether the signal is still active on the latest refresh cycle.',
+        'Review the linked response actions and choose the lowest-risk intervention.',
+        'Assign an owner to verify whether the pressure is persistent or transient.',
+        'Promote this into a full corrective action only if the next refresh confirms continued pressure.'
+      ],
+      expected_impact:
+        'This recommendation is intended to close the evidence gap quickly and decide whether the signal should become a full corrective action.',
+      created_at: nowIso,
+      updated_at: nowIso,
+      source_data: sourceData,
+    };
   }
 
   async getRecommendations(filters?: {
