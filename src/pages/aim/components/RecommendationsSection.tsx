@@ -266,10 +266,14 @@ export default function RecommendationsSection() {
     } catch (error) {
       console.error('Error generating recommendations:', error);
       if (error instanceof RecommendationGenerationError) {
+        const detail =
+          typeof error.diagnostics?.insertError === 'string'
+            ? ` (${error.diagnostics.insertError})`
+            : '';
         addToast(
           error.code === 'persistence_failed'
-            ? 'AIM found recommendation candidates but could not save them. Check recommendation persistence.'
-            : 'AIM found recommendation candidates but could not activate any live recommendation records.',
+            ? `AIM found recommendation candidates but could not save them${detail}`
+            : `AIM found recommendation candidates but could not activate any live recommendation records${detail}`,
           'error'
         );
       } else {
