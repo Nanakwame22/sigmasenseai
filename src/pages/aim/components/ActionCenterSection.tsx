@@ -109,6 +109,34 @@ async function getOrganizationId(userId: string): Promise<string | null> {
   return membership?.organization_id ?? null;
 }
 
+async function getRecommendationsForActionLinking(orgId: string, userId: string) {
+  const orgQuery = await supabase
+    .from('recommendations')
+    .select('id, title, status, actual_impact, implementation_notes, updated_at, completed_at')
+    .eq('organization_id', orgId);
+
+  if (!orgQuery.error) {
+    return orgQuery.data || [];
+  }
+
+  if (!orgQuery.error.message?.includes('organization_id')) {
+    console.error('Error loading linked recommendations:', orgQuery.error);
+    return [];
+  }
+
+  const userQuery = await supabase
+    .from('recommendations')
+    .select('id, title, status, actual_impact, implementation_notes, updated_at, completed_at')
+    .eq('user_id', userId);
+
+  if (userQuery.error) {
+    console.error('Error loading linked recommendations:', userQuery.error);
+    return [];
+  }
+
+  return userQuery.data || [];
+}
+
 const ActionCenterSection: React.FC = () => {
   const { user, organization } = useAuth();
   const navigate = useNavigate();
@@ -140,10 +168,7 @@ const ActionCenterSection: React.FC = () => {
         return;
       }
 
-      const { data: recommendations } = await supabase
-        .from('recommendations')
-        .select('id, title, status, actual_impact, implementation_notes, updated_at, completed_at')
-        .eq('organization_id', orgId);
+      const recommendations = await getRecommendationsForActionLinking(orgId, user.id);
 
       const recommendationMap = new Map(
         (recommendations || []).map((recommendation: any) => [recommendation.id, recommendation])
