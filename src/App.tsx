@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { AppRoutes } from './router';
 import ConnectionError from './components/common/ConnectionError';
 import { ToastContainer } from './components/common/Toast';
+import ErrorBoundary from './components/common/ErrorBoundary';
 
 function AppContent() {
   const { connectionError } = useAuth();
@@ -18,7 +19,9 @@ function App() {
   return (
     <BrowserRouter basename={__BASE_PATH__}>
       <AuthProvider>
-        <AppContent />
+        <ErrorBoundary>
+          <AppContent />
+        </ErrorBoundary>
         <ToastContainer />
       </AuthProvider>
     </BrowserRouter>
