@@ -121,9 +121,9 @@ export default function DashboardLayout() {
       icon: 'ri-heart-pulse-line',
       submenu: [
         { label: 'CPI Command Center', path: '/dashboard/cpi', icon: 'ri-heart-pulse-line' },
-        { label: 'Clinical Intelligence', path: '/dashboard/cpi', icon: 'ri-brain-line' },
-        { label: 'Healthcare Workflows', path: '/dashboard/cpi', icon: 'ri-git-branch-line' },
-        { label: 'Health Integrations', path: '/dashboard/cpi', icon: 'ri-links-line' },
+        { label: 'Clinical Intelligence', path: '/dashboard/cpi/clinical-intelligence', icon: 'ri-brain-line' },
+        { label: 'Healthcare Workflows', path: '/dashboard/cpi/workflows', icon: 'ri-git-branch-line' },
+        { label: 'Health Integrations', path: '/dashboard/cpi/integrations', icon: 'ri-links-line' },
       ],
     },
     {
@@ -246,7 +246,7 @@ export default function DashboardLayout() {
                 <div className={`${sidebarOpen ? 'mt-2 space-y-1' : 'hidden'}`}>
                   {section.submenu?.map((item) => (
                     <Link
-                      key={item.path}
+                      key={item.label}
                       to={item.path}
                       className={`flex items-center px-3 py-2.5 text-sm rounded-premium transition-smooth ${
                         location.pathname === item.path

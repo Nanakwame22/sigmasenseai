@@ -6,7 +6,7 @@
 
 @layer base {
   * {
-    @apply border-border;
+    border-color: #E4E9F0;
   }
   body {
     @apply bg-[#FAFBFC] text-[#102A43] font-['Inter',sans-serif] antialiased;
