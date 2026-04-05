@@ -17,6 +17,13 @@ Deno.serve(async (req) => {
   );
 
   try {
+    const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+    const parseMetricNumber = (value: string | undefined) => {
+      if (!value) return 0;
+      const parsed = Number.parseFloat(String(value).replace(/[^0-9.-]/g, ""));
+      return Number.isFinite(parsed) ? parsed : 0;
+    };
+
     // ── 1. Read live ED domain snapshot ────────────────────────────────────
     const { data: domain, error: domainErr } = await supabase
       .from("cpi_domain_snapshots")
@@ -39,6 +46,9 @@ Deno.serve(async (req) => {
     const lwbs = metrics["lwbs"] ?? "—";
     const avgWait = metrics["avg_wait_time"] ?? "—";
     const currentDelta = metrics["current_patients_delta"] ?? "";
+    const currentPatientsNum = parseMetricNumber(currentPatients);
+    const lwbsNum = parseMetricNumber(lwbs);
+    const avgWaitNum = parseMetricNumber(avgWait);
 
     // ── 2. Build prediction text from live data ────────────────────────────
     const predictionText = riskScore >= 70
@@ -50,14 +60,20 @@ Deno.serve(async (req) => {
     // ── 3. Update cpi_models for ed-surge model ────────────────────────────
     const { data: modelRow } = await supabase
       .from("cpi_models")
-      .select("id, run_count_today, accuracy")
+      .select("id, run_count_today, accuracy, learn_count")
       .eq("model_key", "ed-surge")
       .maybeSingle();
 
     if (modelRow) {
-      const nudge = (Math.random() - 0.45) * 0.35;
-      const newAccuracy = parseFloat(
-        Math.min(99.9, Math.max(60.0, parseFloat(modelRow.accuracy) + nudge)).toFixed(2)
+      const learnBoost = Math.min(6, (modelRow.learn_count ?? 0) * 0.7);
+      const pressureScore =
+        riskScore * 0.5 +
+        Math.min(currentPatientsNum, 120) * 0.18 +
+        Math.min(avgWaitNum, 120) * 0.22 +
+        Math.min(lwbsNum, 10) * 2.4;
+      const newAccuracy = parseFloat(clamp(72 + pressureScore * 0.12 + learnBoost, 60, 98.5).toFixed(2));
+      const predictionConfidence = parseFloat(
+        clamp(66 + pressureScore * 0.16 + Math.min(8, (modelRow.run_count_today ?? 0) * 0.15) + learnBoost, 60, 98).toFixed(2)
       );
       await supabase
         .from("cpi_models")
@@ -65,6 +81,7 @@ Deno.serve(async (req) => {
           last_run_at: new Date().toISOString(),
           run_count_today: (modelRow.run_count_today ?? 0) + 1,
           accuracy: newAccuracy,
+          prediction_confidence: predictionConfidence,
           predictions: predictionText,
           updated_at: new Date().toISOString(),
         })

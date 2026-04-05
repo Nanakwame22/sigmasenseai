@@ -1,7 +1,7 @@
 interface TrustChip {
   label: string;
   value: string;
-  tone?: 'teal' | 'emerald' | 'amber' | 'slate';
+  tone?: 'teal' | 'emerald' | 'amber' | 'slate' | 'rose';
 }
 
 interface OperationalTrustPanelProps {
@@ -17,6 +17,7 @@ const toneClasses: Record<NonNullable<TrustChip['tone']>, string> = {
   emerald: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   amber: 'bg-amber-50 text-amber-700 border-amber-200',
   slate: 'bg-slate-100 text-slate-700 border-slate-200',
+  rose: 'bg-rose-50 text-rose-700 border-rose-200',
 };
 
 export default function OperationalTrustPanel({

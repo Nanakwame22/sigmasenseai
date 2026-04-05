@@ -8,6 +8,9 @@ import { generatePredictiveAlerts, generateRecommendations, detectPatterns } fro
 import { LoadingSpinner } from '../../components/common/LoadingSpinner';
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import InsightSummary from '../../components/common/InsightSummary';
+import { useAIMData } from '../../hooks/useAIMData';
+import { useCPIData } from '../../hooks/useCPIData';
+import type { IntelligenceHealthIssue, IntelligenceHealthSeverity } from '../../services/intelligenceObservability';
 
 interface Message {
   id: string;
@@ -27,6 +30,8 @@ interface TrustAssessment {
 
 export default function AIInsightsPage() {
   const { organizationId } = useAuth();
+  const { stats: aimStats } = useAIMData();
+  const { intelligenceHealth: cpiIntelligenceHealth, loadingDomains, loadingFeed } = useCPIData();
   const [query, setQuery] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
@@ -34,8 +39,29 @@ export default function AIInsightsPage() {
   const [predictiveAlerts, setPredictiveAlerts] = useState<any[]>([]);
   const [recommendations, setRecommendations] = useState<any[]>([]);
   const [patterns, setPatterns] = useState<any[]>([]);
-  const [activeTab, setActiveTab] = useState<'chat' | 'alerts' | 'recommendations' | 'insights'>('chat');
+  const [activeTab, setActiveTab] = useState<'chat' | 'alerts' | 'recommendations' | 'insights' | 'health'>('chat');
   const [loadingInsights, setLoadingInsights] = useState(true);
+  const cpiHealthLoading = loadingDomains || loadingFeed;
+
+  const combinedHealthIssues = [
+    ...aimStats.intelligenceHealth.issues
+      .filter((issue) => issue.count > 0)
+      .map((issue) => ({ ...issue, system: 'AIM' as const })),
+    ...cpiIntelligenceHealth.issues
+      .filter((issue) => issue.count > 0)
+      .map((issue) => ({ ...issue, system: 'CPI' as const })),
+  ].sort((a, b) => {
+    const severityRank: Record<IntelligenceHealthSeverity, number> = {
+      'Needs attention': 3,
+      Watch: 2,
+      Healthy: 1,
+    };
+    const severityDelta = severityRank[b.severity] - severityRank[a.severity];
+    if (severityDelta !== 0) return severityDelta;
+    return b.count - a.count;
+  });
+
+  const combinedHealthIssueCount = combinedHealthIssues.length;
 
   const getAISummary = () => {
     if (activeTab === 'chat') {
@@ -75,6 +101,24 @@ export default function AIInsightsPage() {
         guidance: recommendations.length === 0
           ? 'Come back after more data or new alerts are available, since recommendations become stronger when the platform has enough context to rank likely actions.'
           : 'Start with the highest-priority, lowest-friction item first, then use the listed action steps to turn the suggestion into a concrete workflow.',
+      };
+    }
+
+    if (activeTab === 'health') {
+      const systemsNeedingAttention = [aimStats.intelligenceHealth, cpiIntelligenceHealth].filter(
+        (summary) => summary.severity !== 'Healthy'
+      ).length;
+
+      return {
+        summary: systemsNeedingAttention === 0
+          ? 'AIM and CPI are both reading as healthy, so the intelligence layer is keeping up with live evidence, action linkage, and outcome verification.'
+          : `This health view shows where the intelligence layer itself needs attention across AIM and CPI, so operators can catch stale evidence, weak verification, or linkage drift before trust erodes.`,
+        driver: combinedHealthIssues[0]
+          ? `${combinedHealthIssues[0].system} is currently led by "${combinedHealthIssues[0].label}" with ${combinedHealthIssues[0].count} active issue${combinedHealthIssues[0].count === 1 ? '' : 's'}.`
+          : 'There are no active health issues right now, which means SigmaSense is seeing a stable flow of evidence, feedback, and linked execution state.',
+        guidance: systemsNeedingAttention === 0
+          ? 'Use this page as your internal trust check before major reviews, and keep watching for stale inputs or overdue verification as the operating tempo changes.'
+          : 'Start with the highest-severity issue first, fix the underlying evidence or execution gap, then confirm the health score improves on the next live refresh.',
       };
     }
 
@@ -339,6 +383,29 @@ export default function AIInsightsPage() {
     }
   };
 
+  const getHealthSeverityClasses = (severity: IntelligenceHealthSeverity) => {
+    switch (severity) {
+      case 'Healthy':
+        return {
+          panel: 'border-emerald-200 bg-emerald-50',
+          badge: 'bg-emerald-100 text-emerald-700',
+          accent: 'text-emerald-700',
+        };
+      case 'Watch':
+        return {
+          panel: 'border-amber-200 bg-amber-50',
+          badge: 'bg-amber-100 text-amber-700',
+          accent: 'text-amber-700',
+        };
+      default:
+        return {
+          panel: 'border-rose-200 bg-rose-50',
+          badge: 'bg-rose-100 text-rose-700',
+          accent: 'text-rose-700',
+        };
+    }
+  };
+
   const getEffortColor = (effort: string) => {
     switch (effort) {
       case 'low': return 'bg-green-100 text-green-700';
@@ -512,7 +579,8 @@ export default function AIInsightsPage() {
             { id: 'chat', label: 'AI Chat', icon: 'ri-chat-3-line' },
             { id: 'alerts', label: 'Predictive Alerts', icon: 'ri-alarm-warning-line', count: predictiveAlerts.length },
             { id: 'recommendations', label: 'Recommendations', icon: 'ri-lightbulb-line', count: recommendations.length },
-            { id: 'insights', label: 'Pattern Insights', icon: 'ri-line-chart-line', count: patterns.length }
+            { id: 'insights', label: 'Pattern Insights', icon: 'ri-line-chart-line', count: patterns.length },
+            { id: 'health', label: 'Health', icon: 'ri-pulse-line', count: combinedHealthIssueCount }
           ].map((tab, index) => (
             <button
               key={tab.id}
@@ -890,6 +958,130 @@ export default function AIInsightsPage() {
                     );
                   })()
                 ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Intelligence Health Tab */}
+        {activeTab === 'health' && (
+          <div className="p-6 animate-fade-in">
+            {aimStats.loading || cpiHealthLoading ? (
+              <div className="flex justify-center py-12">
+                <LoadingSpinner />
+              </div>
+            ) : (
+              <div className="space-y-5">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  {[
+                    {
+                      system: 'AIM',
+                      summary: aimStats.intelligenceHealth,
+                      detail: `AIM is currently tracking ${aimStats.recommendationsCount} open recommendation${aimStats.recommendationsCount === 1 ? '' : 's'}, ${aimStats.predictiveAlertsCount} grouped alert${aimStats.predictiveAlertsCount === 1 ? '' : 's'}, and ${aimStats.actionCenterCount} tracked work item${aimStats.actionCenterCount === 1 ? '' : 's'}.`,
+                    },
+                    {
+                      system: 'CPI',
+                      summary: cpiIntelligenceHealth,
+                      detail: 'CPI health reflects live domain telemetry, command-feed acknowledgment, and the current pressure across operational domains.',
+                    },
+                  ].map(({ system, summary, detail }) => {
+                    const tone = getHealthSeverityClasses(summary.severity);
+                    const activeIssues = summary.issues.filter((issue) => issue.count > 0);
+                    return (
+                      <div
+                        key={system}
+                        className={`rounded-2xl border p-5 shadow-sm ${tone.panel}`}
+                      >
+                        <div className="flex items-start justify-between gap-4">
+                          <div>
+                            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500">{system} Intelligence</div>
+                            <h3 className="mt-2 text-lg font-bold text-gray-900">{summary.headline}</h3>
+                            <p className="mt-2 text-sm leading-6 text-gray-600">{summary.note}</p>
+                          </div>
+                          <div className="text-right">
+                            <div className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${tone.badge}`}>
+                              {summary.severity}
+                            </div>
+                            <div className={`mt-3 text-3xl font-bold ${tone.accent}`}>{summary.score}</div>
+                            <div className="text-xs uppercase tracking-[0.18em] text-gray-500">Health score</div>
+                          </div>
+                        </div>
+
+                        <p className="mt-4 text-sm text-gray-600">{detail}</p>
+
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          {activeIssues.length > 0 ? (
+                            activeIssues.slice(0, 4).map((issue) => (
+                              <span
+                                key={`${system}-${issue.key}`}
+                                className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-medium ${getHealthSeverityClasses(issue.severity).badge}`}
+                              >
+                                <span>{issue.label}</span>
+                                <span className="rounded-full bg-white/70 px-1.5 py-0.5 text-[11px]">{issue.count}</span>
+                              </span>
+                            ))
+                          ) : (
+                            <span className="inline-flex rounded-full bg-white px-3 py-1 text-xs font-medium text-emerald-700">
+                              No active health issues
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500">Shared Intelligence Issue Queue</div>
+                      <h3 className="mt-2 text-lg font-bold text-gray-900">Top integrity and reliability issues</h3>
+                      <p className="mt-2 text-sm text-gray-600">
+                        This queue shows the issues most likely to weaken trust in recommendations, alerts, or case resolution if left unattended.
+                      </p>
+                    </div>
+                    <div className="rounded-2xl bg-slate-900 px-4 py-3 text-right text-white">
+                      <div className="text-2xl font-bold">{combinedHealthIssueCount}</div>
+                      <div className="text-xs uppercase tracking-[0.18em] text-slate-300">Active issues</div>
+                    </div>
+                  </div>
+
+                  <div className="mt-5 space-y-3">
+                    {combinedHealthIssues.length > 0 ? (
+                      combinedHealthIssues.map((issue) => {
+                        const tone = getHealthSeverityClasses(issue.severity);
+                        return (
+                          <div
+                            key={`${issue.system}-${issue.key}`}
+                            className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-4"
+                          >
+                            <div className="flex items-start justify-between gap-4">
+                              <div className="min-w-0">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="rounded-full bg-slate-900 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-white">
+                                    {issue.system}
+                                  </span>
+                                  <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${tone.badge}`}>
+                                    {issue.severity}
+                                  </span>
+                                  <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold text-gray-600">
+                                    {issue.count} active
+                                  </span>
+                                </div>
+                                <div className="mt-2 text-sm font-semibold text-gray-900">{issue.label}</div>
+                                <p className="mt-1 text-sm leading-6 text-gray-600">{issue.detail}</p>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm text-emerald-800">
+                        AIM and CPI are both reading cleanly right now. There are no active intelligence health issues to escalate.
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             )}
           </div>

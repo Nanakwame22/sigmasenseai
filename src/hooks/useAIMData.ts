@@ -8,6 +8,10 @@ import {
   getAIMDecisionReadiness,
   type IntelligenceReadiness,
 } from '../services/intelligenceContract';
+import {
+  buildAIMIntelligenceHealth,
+  type IntelligenceHealthSummary,
+} from '../services/intelligenceObservability';
 
 interface AIMStats {
   dataSourcesCount: number;
@@ -22,6 +26,7 @@ interface AIMStats {
   decisionReadiness: IntelligenceReadiness;
   predictedImpact: number;
   alertLeadTime: number;
+  intelligenceHealth: IntelligenceHealthSummary;
   loading: boolean;
   error: string | null;
   // real-time pulse flags — flip true briefly when a new item arrives
@@ -45,6 +50,13 @@ export const useAIMData = () => {
     decisionReadiness: 'Monitor only',
     predictedImpact: 0,
     alertLeadTime: 0,
+    intelligenceHealth: {
+      severity: 'Healthy',
+      score: 92,
+      headline: 'AIM intelligence health is stable',
+      note: 'Live telemetry, action linkage, and verification loops are healthy enough for continued decision support.',
+      issues: [],
+    },
     loading: true,
     error: null,
     recommendationsPulse: false,
@@ -93,7 +105,7 @@ export const useAIMData = () => {
           .in('status', ['pending', 'in_progress']),
         supabase
           .from('action_items')
-          .select('id, status, impact_score')
+          .select('id, status, impact_score, progress, due_date, tags')
           .eq('organization_id', orgId),
         supabase
           .from('dmaic_projects')
@@ -105,7 +117,7 @@ export const useAIMData = () => {
           .eq('organization_id', orgId),
         supabase
           .from('recommendations')
-          .select('confidence_score')
+          .select('id, status, confidence_score, source_data')
           .eq('organization_id', orgId)
           .in('status', ['pending', 'in_progress', 'completed']),
         supabase
@@ -210,6 +222,13 @@ export const useAIMData = () => {
         assumptions: ['Confidence combines recommendation quality, forecast accuracy, and live-signal coverage.'],
       });
 
+      const intelligenceHealth = buildAIMIntelligenceHealth({
+        latestMetricTimestamp: latestMetricData?.timestamp ?? null,
+        recommendations: (recommendationsData as any[]) || [],
+        alerts: (alertsData as any[]) || [],
+        actionItems: (actionItemsData as any[]) || [],
+      });
+
       setStats(prev => ({
         ...prev,
         dataSourcesCount: dataSourcesCount || 0,
@@ -226,6 +245,7 @@ export const useAIMData = () => {
         decisionReadiness: evidenceContract.decisionReadiness,
         predictedImpact: Math.round(totalPredictedImpact),
         alertLeadTime: Math.round(avgLeadTime),
+        intelligenceHealth,
         loading: false,
         error: null,
       }));

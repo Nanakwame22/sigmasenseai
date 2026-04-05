@@ -12,6 +12,13 @@ Deno.serve(async (req) => {
   }
 
   try {
+    const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+    const parseMetricNumber = (value: string | undefined) => {
+      if (!value) return 0;
+      const parsed = Number.parseFloat(String(value).replace(/[^0-9.-]/g, ""));
+      return Number.isFinite(parsed) ? parsed : 0;
+    };
+
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
@@ -61,6 +68,9 @@ Deno.serve(async (req) => {
     const riskScore30d = metrics["risk_score_30d"] ?? "—";
     const interventionsActive = metrics["interventions_active"] ?? "—";
     const riskScore: number = domain.risk_score ?? 0;
+    const highRiskPatientsNum = parseMetricNumber(highRiskPatients);
+    const riskScore30dNum = parseMetricNumber(riskScore30d);
+    const interventionsActiveNum = parseMetricNumber(interventionsActive);
 
     // ── 3. Build prediction text from live data ────────────────────────────
     const predictionText = `${highRiskPatients} high-risk patients (30-day score > 75th percentile) — CHF/COPD/Pneumonia cohort`;
@@ -69,14 +79,22 @@ Deno.serve(async (req) => {
     if (action === "model_check") {
       const { data: modelRow } = await supabase
         .from("cpi_models")
-        .select("id, run_count_today, accuracy")
+        .select("id, run_count_today, accuracy, learn_count")
         .eq("model_key", "readmission")
         .maybeSingle();
 
       if (modelRow) {
-        const nudge = (Math.random() - 0.45) * 0.35;
-        const newAccuracy = parseFloat(
-          Math.min(99.9, Math.max(60.0, parseFloat(modelRow.accuracy) + nudge)).toFixed(2)
+        const learnBoost = Math.min(6, (modelRow.learn_count ?? 0) * 0.7);
+        const preventionCoverage = Math.min(interventionsActiveNum, Math.max(highRiskPatientsNum, 1));
+        const coverageRatio = highRiskPatientsNum > 0 ? preventionCoverage / highRiskPatientsNum : 0;
+        const pressureScore =
+          riskScore * 0.55 +
+          Math.min(highRiskPatientsNum, 25) * 1.2 +
+          Math.min(riskScore30dNum, 100) * 0.08 +
+          coverageRatio * 14;
+        const newAccuracy = parseFloat(clamp(71 + pressureScore * 0.11 + learnBoost, 60, 98.5).toFixed(2));
+        const predictionConfidence = parseFloat(
+          clamp(65 + pressureScore * 0.15 + Math.min(8, (modelRow.run_count_today ?? 0) * 0.15) + learnBoost, 60, 98).toFixed(2)
         );
         await supabase
           .from("cpi_models")
@@ -84,6 +102,7 @@ Deno.serve(async (req) => {
             last_run_at: new Date().toISOString(),
             run_count_today: (modelRow.run_count_today ?? 0) + 1,
             accuracy: newAccuracy,
+            prediction_confidence: predictionConfidence,
             predictions: predictionText,
             updated_at: new Date().toISOString(),
           })

@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useDashboardData } from '../../hooks/useDashboardData';
 import MetricTrendChart from './components/MetricTrendChart';
@@ -59,6 +59,7 @@ function formatLastUpdated(date: Date) {
 }
 
 export default function DashboardHome() {
+  const navigate = useNavigate();
   const { stats, loading, error, isRealtimeConnected, lastUpdated } = useDashboardData();
 
   if (loading) {
@@ -316,13 +317,17 @@ export default function DashboardHome() {
             </div>
 
             <div className="pt-4 mt-2 border-t border-white/10">
-              <Link
-                to="/dashboard/aim"
-                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-ai-500 to-ai-600 text-white font-bold rounded-premium hover:from-ai-600 hover:to-ai-700 transition-all text-xs shadow-glow-sm whitespace-nowrap"
+              <button
+                type="button"
+                onClick={() => {
+                  navigate('/dashboard/ai-insights');
+                  window.location.assign('/dashboard/ai-insights');
+                }}
+                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-ai-500 to-ai-600 text-white font-bold rounded-premium hover:from-ai-600 hover:to-ai-700 transition-all text-xs shadow-glow-sm whitespace-nowrap cursor-pointer"
               >
                 <i className="ri-arrow-right-line"></i>
                 View All Insights
-              </Link>
+              </button>
             </div>
           </div>
         </div>

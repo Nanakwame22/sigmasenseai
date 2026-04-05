@@ -512,11 +512,13 @@ function ModelCard({
           </div>
         </div>
 
-        {/* Accuracy bar */}
+          {/* Reliability bar */}
         <div className="mb-4">
           <div className="flex items-center justify-between mb-1.5">
             <div className="flex items-center space-x-2">
-              <span className="text-xs text-slate-500">Model Accuracy</span>
+              <span className="text-xs text-slate-500">
+                {isSmart ? 'Signal Reliability' : 'Derived Signal Strength'}
+              </span>
               {model.prediction_confidence != null && (
                 <span className="text-xs text-slate-400">
                   · {model.prediction_confidence.toFixed(1)}% confidence
@@ -675,7 +677,7 @@ function ModelCard({
                   {isSmart && !runResult && model.status === 'running' && (
                     <p className="text-xs text-slate-400 pl-0.5">
                       <i className="ri-information-line mr-1"></i>
-                      Calls live edge function — reads domain snapshot &amp; fires real alerts
+                      Calls a live edge check using current domain snapshots, feed state, and learned case history
                     </p>
                   )}
 
@@ -1100,8 +1102,8 @@ export default function CPIIntelligenceModels() {
         <div className="mt-4 flex items-center space-x-2 px-4 py-2.5 bg-teal-50 border border-teal-100 rounded-xl">
           <div className="w-1.5 h-1.5 rounded-full bg-teal-500 animate-pulse flex-shrink-0"></div>
           <p className="text-xs text-teal-700">
-            <strong>Live monitoring active</strong> — <strong>ED Surge</strong>, <strong>Lab Escalation</strong>, and <strong>Readmission</strong> invoke dedicated Supabase edge services on demand, while the remaining model cards derive their summaries from the imported healthcare KPI layer.
-            All models receive real-time alert badges from the feed, refresh against the latest operational metrics, and incorporate resolved decision cases as feedback through the full Sense → Analyze → Decide → Act → <strong>Learn</strong> loop.
+            <strong>Live monitoring active</strong> — <strong>ED Surge</strong>, <strong>Lab Escalation</strong>, and <strong>Readmission</strong> invoke dedicated Supabase edge checks that recompute from live domain snapshots, feed pressure, and learned case history. The remaining cards are explicitly <strong>derived</strong> from the imported healthcare KPI layer rather than separate predictive services.
+            All cards receive real-time alert badges from the feed, refresh against the latest operational metrics, and incorporate resolved decision cases as feedback through the full Sense → Analyze → Decide → Act → <strong>Learn</strong> loop.
           </p>
         </div>
       )}

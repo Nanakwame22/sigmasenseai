@@ -33,6 +33,13 @@ interface LinkedActionMeta {
   progress: number;
 }
 
+interface LearningFeedback {
+  delta: number;
+  evidenceStrength: 'Strong' | 'Moderate' | 'Limited';
+  evidenceSummary: string;
+  previewText: string;
+}
+
 interface MetricRecord {
   id: string;
   name: string;
@@ -149,17 +156,78 @@ function getCaseAuditMeta(caseItem: DecisionCase) {
   };
 }
 
-function calculateLearningDelta(caseItem: DecisionCase, outcomePositive: boolean) {
-  const severityWeight = caseItem.signal_severity === 'critical' ? 0.2 : 0.12;
-  const automationWeight = caseItem.steps.filter((step) => step.automated).length * 0.02;
-  const complexityWeight = Math.min(caseItem.tags.length, 4) * 0.015;
-  const baseDelta = severityWeight + automationWeight + complexityWeight;
+function calculateLearningFeedback(
+  caseItem: DecisionCase,
+  outcomePositive: boolean,
+  outcomeText: string,
+  linkedAction?: LinkedActionMeta | null
+): LearningFeedback {
+  const severityWeight = caseItem.signal_severity === 'critical' ? 0.05 : 0.03;
+  const automationWeight = Math.min(caseItem.steps.filter((step) => step.automated).length, 4) * 0.008;
+  const complexityWeight = Math.min(caseItem.tags.length, 4) * 0.008;
 
-  if (outcomePositive) {
-    return parseFloat(baseDelta.toFixed(2));
-  }
+  const normalizedOutcome = outcomeText.trim();
+  const outcomeLength = normalizedOutcome.length;
+  const outcomeWeight =
+    outcomeLength >= 140 ? 0.045 :
+    outcomeLength >= 80 ? 0.03 :
+    outcomeLength >= 30 ? 0.018 :
+    normalizedOutcome ? 0.008 : 0;
 
-  return parseFloat((-Math.max(0.04, baseDelta * 0.45)).toFixed(2));
+  const progress = linkedAction?.progress ?? 0;
+  const linkedActionWeight =
+    !linkedAction ? 0.01 :
+    linkedAction.status === 'completed' ? 0.05 :
+    linkedAction.status === 'in_progress' && progress >= 50 ? 0.04 :
+    progress > 0 ? 0.025 :
+    0.015;
+
+  const verificationWeight =
+    progress >= 75 ? 0.035 :
+    progress >= 35 ? 0.02 :
+    linkedAction ? 0.01 : 0;
+
+  const caseAgeHours = Math.max(0, (Date.now() - new Date(caseItem.created_at).getTime()) / (1000 * 60 * 60));
+  const timelinessWeight =
+    caseAgeHours <= 6 ? 0.03 :
+    caseAgeHours <= 24 ? 0.025 :
+    caseAgeHours <= 72 ? 0.018 :
+    0.01;
+
+  const evidenceScore = severityWeight + automationWeight + complexityWeight + outcomeWeight + linkedActionWeight + verificationWeight + timelinessWeight;
+  const evidenceStrength: LearningFeedback['evidenceStrength'] =
+    evidenceScore >= 0.18 ? 'Strong' :
+    evidenceScore >= 0.12 ? 'Moderate' :
+    'Limited';
+
+  const baseMagnitude = Math.min(0.22, Math.max(0.06, evidenceScore));
+  const delta = outcomePositive
+    ? parseFloat(baseMagnitude.toFixed(2))
+    : parseFloat((-Math.max(0.05, baseMagnitude * (evidenceStrength === 'Strong' ? 0.9 : 0.72))).toFixed(2));
+
+  const actionEvidence = !linkedAction
+    ? 'no linked tracker evidence yet'
+    : linkedAction.status === 'completed'
+      ? 'a completed linked action'
+      : linkedAction.status === 'in_progress'
+        ? `an in-progress linked action (${progress}% complete)`
+        : linkedAction.status === 'blocked'
+          ? 'a blocked linked action'
+          : linkedAction.status === 'cancelled'
+            ? 'a cancelled linked action'
+            : 'a linked action with early execution evidence';
+
+  const evidenceSummary = `${evidenceStrength.toLowerCase()} evidence from ${actionEvidence}, ${caseItem.signal_severity} signal pressure, and ${normalizedOutcome ? 'documented outcome notes' : 'minimal outcome notes'}.`;
+  const previewText = outcomePositive
+    ? `Resolving this case will strengthen model reliability with ${evidenceStrength.toLowerCase()} execution evidence.`
+    : `Resolving this case will reduce model reliability where ${evidenceStrength.toLowerCase()} evidence shows the intervention did not hold.`;
+
+  return {
+    delta,
+    evidenceStrength,
+    evidenceSummary,
+    previewText,
+  };
 }
 
 function buildLiveCases(metrics: MetricRecord[], metricPoints: MetricPointRecord[]): DecisionCase[] {
@@ -635,25 +703,25 @@ function getTargetModels(c: DecisionCase): string[] {
 // ─── Resolve Modal ─────────────────────────────────────────────────────────────
 interface ResolveModalProps {
   caseItem: DecisionCase;
+  linkedAction?: LinkedActionMeta | null;
   onClose: () => void;
   onSaved: (outcomePositive: boolean) => void | Promise<void>;
-  onFed: (modelNames: string[]) => void;
+  onFed: (modelNames: string[], feedback: LearningFeedback) => void;
 }
 
-function ResolveModal({ caseItem, onClose, onSaved, onFed }: ResolveModalProps) {
+function ResolveModal({ caseItem, linkedAction, onClose, onSaved, onFed }: ResolveModalProps) {
   const [outcome, setOutcome] = useState('');
   const [outcomePositive, setOutcomePositive] = useState(true);
   const [saving, setSaving] = useState(false);
 
   const targetKeys  = getTargetModels(caseItem);
   const targetNames = targetKeys.map(k => MODEL_KEY_NAMES[k] ?? k);
+  const learningFeedback = calculateLearningFeedback(caseItem, outcomePositive, outcome, linkedAction);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!outcome.trim()) return;
     setSaving(true);
-
-    const delta = calculateLearningDelta(caseItem, outcomePositive);
 
     // Updated Learn step description
     const updatedSteps = [...(caseItem.steps as DecisionStep[])];
@@ -661,7 +729,7 @@ function ResolveModal({ caseItem, onClose, onSaved, onFed }: ResolveModalProps) 
     if (learnIdx !== -1) {
       updatedSteps[learnIdx] = {
         stage: 'Learn',
-        description: `Outcome fed to ${targetKeys.length} model(s): ${targetNames.join(', ')} — accuracy ${delta >= 0 ? '+' : ''}${delta}% applied`,
+        description: `Outcome fed to ${targetKeys.length} model(s): ${targetNames.join(', ')} — ${learningFeedback.evidenceStrength.toLowerCase()} evidence, reliability ${learningFeedback.delta >= 0 ? '+' : ''}${learningFeedback.delta}% applied`,
         automated: true,
       };
     }
@@ -679,11 +747,11 @@ function ResolveModal({ caseItem, onClose, onSaved, onFed }: ResolveModalProps) 
     // 2 — feed learning to intelligence models
     await supabase.rpc('feed_model_learning', {
       p_model_keys:      targetKeys,
-      p_accuracy_delta:  delta,
+      p_accuracy_delta:  learningFeedback.delta,
     });
 
     setSaving(false);
-    onFed(targetNames);
+    onFed(targetNames, learningFeedback);
     await onSaved(outcomePositive);
     onClose();
   };
@@ -759,7 +827,10 @@ function ResolveModal({ caseItem, onClose, onSaved, onFed }: ResolveModalProps) 
               ))}
             </div>
             <p className="text-xs text-emerald-600 mt-1.5 opacity-80">
-              Resolving this case will {outcomePositive ? 'boost' : 'adjust'} model accuracy scores in real-time.
+              {learningFeedback.previewText}
+            </p>
+            <p className="text-[11px] text-emerald-700/80 mt-1">
+              {learningFeedback.evidenceSummary} Reliability {learningFeedback.delta >= 0 ? '+' : ''}{learningFeedback.delta}%.
             </p>
           </div>
 
@@ -789,10 +860,11 @@ function ResolveModal({ caseItem, onClose, onSaved, onFed }: ResolveModalProps) 
 
 interface LearnFeedBannerProps {
   modelNames: string[];
+  feedback: LearningFeedback;
   onDismiss: () => void;
 }
 
-function LearnFeedBanner({ modelNames, onDismiss }: LearnFeedBannerProps) {
+function LearnFeedBanner({ modelNames, feedback, onDismiss }: LearnFeedBannerProps) {
   useEffect(() => {
     const t = setTimeout(onDismiss, 5000);
     return () => clearTimeout(t);
@@ -806,9 +878,10 @@ function LearnFeedBanner({ modelNames, onDismiss }: LearnFeedBannerProps) {
       <div className="flex-1 min-w-0">
         <p className="text-sm font-bold text-emerald-800">Learning fed to Intelligence Models</p>
         <p className="text-xs text-emerald-700 mt-0.5">
-          Accuracy scores updated in real-time for:&nbsp;
+          {feedback.evidenceStrength} reliability feedback applied for:&nbsp;
           <span className="font-semibold">{modelNames.join(', ')}</span>
         </p>
+        <p className="text-[11px] text-emerald-700/80 mt-1">{feedback.evidenceSummary}</p>
       </div>
       <button onClick={onDismiss} className="w-6 h-6 flex items-center justify-center rounded hover:bg-emerald-100 cursor-pointer flex-shrink-0">
         <i className="ri-close-line text-emerald-600 text-sm"></i>
@@ -827,7 +900,7 @@ export default function WorkflowDecisionSupport() {
   const [showLogModal, setShowLogModal] = useState(false);
   const [resolveCase, setResolveCase] = useState<DecisionCase | null>(null);
   const [tick, setTick] = useState(0);
-  const [learnFeed, setLearnFeed] = useState<string[] | null>(null);
+  const [learnFeed, setLearnFeed] = useState<{ modelNames: string[]; feedback: LearningFeedback } | null>(null);
   const [promotingLiveId, setPromotingLiveId] = useState<string | null>(null);
   const [pushingCaseId, setPushingCaseId] = useState<string | null>(null);
   const [linkedCaseActions, setLinkedCaseActions] = useState<Record<string, LinkedActionMeta>>({});
@@ -1066,7 +1139,7 @@ export default function WorkflowDecisionSupport() {
 
       {/* Learn Feed Banner */}
       {learnFeed && (
-        <LearnFeedBanner modelNames={learnFeed} onDismiss={() => setLearnFeed(null)} />
+        <LearnFeedBanner modelNames={learnFeed.modelNames} feedback={learnFeed.feedback} onDismiss={() => setLearnFeed(null)} />
       )}
 
       {/* Summary Strip */}
@@ -1346,6 +1419,7 @@ export default function WorkflowDecisionSupport() {
       {resolveCase && (
         <ResolveModal
           caseItem={resolveCase}
+          linkedAction={linkedCaseActions[resolveCase.id] ?? null}
           onClose={() => setResolveCase(null)}
           onSaved={async (outcomePositive) => {
             await syncCaseActionOutcome(
@@ -1360,7 +1434,7 @@ export default function WorkflowDecisionSupport() {
             );
             await fetchCases();
           }}
-          onFed={(names) => setLearnFeed(names)}
+          onFed={(names, feedback) => setLearnFeed({ modelNames: names, feedback })}
         />
       )}
     </div>

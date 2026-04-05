@@ -70,17 +70,25 @@ function getOutcomeStateFromTags(tags: string[] | null | undefined): Action['out
 
 function getOutcomeDetailFromTags(tags: string[] | null | undefined): string | null {
   if (!Array.isArray(tags)) return null;
+  const evidenceStrength = tags.includes('aim-evidence:strong')
+    ? 'strong'
+    : tags.includes('aim-evidence:moderate')
+      ? 'moderate'
+      : tags.includes('aim-evidence:limited')
+        ? 'limited'
+        : null;
+
   if (tags.includes('aim-outcome:captured')) {
-    return 'AIM has a recorded result for this execution path. Review the captured impact to understand what worked.';
+    return `AIM has a recorded result for this execution path.${evidenceStrength ? ` ${evidenceStrength[0].toUpperCase()}${evidenceStrength.slice(1)} verification evidence is attached to the linked outcome.` : ''} Review the captured impact to understand what worked.`;
   }
   if (tags.includes('aim-outcome:awaiting_verification')) {
-    return 'Execution is complete, but AIM is still waiting for KPI confirmation or realized impact notes.';
+    return `Execution is complete, but AIM is still waiting for KPI confirmation or realized impact notes.${evidenceStrength ? ` Current verification evidence is ${evidenceStrength}.` : ''}`;
   }
   if (tags.includes('aim-outcome:monitoring')) {
     return 'Execution is underway. AIM is monitoring for the first measurable shift against the expected impact.';
   }
   if (tags.includes('aim-outcome:at_risk')) {
-    return 'This linked action is blocked, overdue, or dismissed. Reconfirm ownership before the signal deteriorates further.';
+    return `This linked action is blocked, overdue, or dismissed.${evidenceStrength ? ` ${evidenceStrength[0].toUpperCase()}${evidenceStrength.slice(1)} verification evidence suggests the current intervention is not yet holding.` : ''} Reconfirm ownership before the signal deteriorates further.`;
   }
   if (tags.includes('aim-outcome:baseline_ready')) {
     return 'This item is linked to AIM and ready to start. Capture baseline context before execution begins.';

@@ -50,6 +50,23 @@ interface RecommendationLifecycleEvent {
   note?: string;
 }
 
+interface RecommendationLearningFeedback {
+  delta: number;
+  evidenceStrength: 'Strong' | 'Moderate' | 'Limited';
+  evidenceSummary: string;
+  adjustedConfidence: number;
+  verificationStatus: 'complete' | 'pending';
+}
+
+interface LinkedRecommendationAction {
+  id: string;
+  status: string;
+  progress: number;
+  due_date?: string | null;
+  updated_at?: string | null;
+  tags?: string[] | null;
+}
+
 interface RecommendationSourceDataShape {
   pattern_type?: string;
   signature?: string;
@@ -242,8 +259,18 @@ function appendLifecycleEvent(
 
 function replaceTags(existingTags: string[] | null | undefined, nextTags: string[], tagsToRemove: string[] = []) {
   const base = Array.isArray(existingTags) ? existingTags.filter((tag) => typeof tag === 'string') : [];
-  const filtered = base.filter((tag) => !tagsToRemove.includes(tag) && !tag.startsWith('aim-outcome:') && !tag.startsWith('aim-verification:'));
+  const filtered = base.filter(
+    (tag) =>
+      !tagsToRemove.includes(tag) &&
+      !tag.startsWith('aim-outcome:') &&
+      !tag.startsWith('aim-verification:') &&
+      !tag.startsWith('aim-evidence:')
+  );
   return Array.from(new Set([...filtered, ...nextTags]));
+}
+
+function clampConfidence(value: number) {
+  return Math.max(0, Math.min(100, Math.round(value)));
 }
 
 function isAlertPressureRecommendation(rec: Recommendation | { source_data?: any }) {
@@ -779,6 +806,93 @@ export class RecommendationsEngine {
           .eq('organization_id', orgId)
       )
     );
+  }
+
+  private async getLinkedActionEvidence(recommendationId: string): Promise<LinkedRecommendationAction[]> {
+    const orgId = await this.getOrganizationId();
+    if (!orgId) return [];
+
+    const recTag = `rec:${recommendationId}`;
+    const { data, error } = await supabase
+      .from('action_items')
+      .select('id, status, progress, due_date, updated_at, tags')
+      .eq('organization_id', orgId)
+      .contains('tags', [recTag]);
+
+    if (error) {
+      console.error('Error loading linked action evidence:', error);
+      return [];
+    }
+
+    return (data || []) as LinkedRecommendationAction[];
+  }
+
+  private calculateRecommendationLearningFeedback(
+    recommendation: Recommendation,
+    outcomeText: string,
+    outcomePositive: boolean,
+    linkedActions: LinkedRecommendationAction[]
+  ): RecommendationLearningFeedback {
+    const priorityWeight =
+      recommendation.priority === 'critical' ? 0.05 :
+      recommendation.priority === 'high' ? 0.04 :
+      recommendation.priority === 'medium' ? 0.03 :
+      0.02;
+    const confidenceWeight = Math.min(0.03, (recommendation.confidence_score || 0) / 100 * 0.03);
+    const impactWeight = Math.min(0.035, (recommendation.impact_score || 0) / 100 * 0.035);
+    const noteWeight =
+      outcomeText.trim().length >= 140 ? 0.05 :
+      outcomeText.trim().length >= 80 ? 0.035 :
+      outcomeText.trim().length >= 30 ? 0.022 :
+      outcomeText.trim() ? 0.012 : 0;
+
+    const completedActions = linkedActions.filter((item) => item.status === 'completed');
+    const inProgressActions = linkedActions.filter((item) => item.status === 'in_progress');
+    const maxProgress = linkedActions.reduce((max, item) => Math.max(max, Number.isFinite(item.progress) ? item.progress : 0), 0);
+    const executionWeight =
+      completedActions.length > 0 ? 0.06 :
+      inProgressActions.length > 0 && maxProgress >= 50 ? 0.045 :
+      maxProgress > 0 ? 0.025 :
+      linkedActions.length > 0 ? 0.015 : 0.008;
+
+    const overdueActions = linkedActions.filter((item) => {
+      if (!item.due_date || item.status === 'completed') return false;
+      const dueDate = new Date(item.due_date);
+      return !Number.isNaN(dueDate.getTime()) && dueDate.getTime() < Date.now();
+    }).length;
+    const timelinessWeight = overdueActions > 0 ? -0.018 : 0.015;
+
+    const evidenceScore = Math.max(
+      0.05,
+      priorityWeight + confidenceWeight + impactWeight + noteWeight + executionWeight + timelinessWeight
+    );
+    const evidenceStrength: RecommendationLearningFeedback['evidenceStrength'] =
+      evidenceScore >= 0.17 ? 'Strong' :
+      evidenceScore >= 0.12 ? 'Moderate' :
+      'Limited';
+
+    const verificationStatus: RecommendationLearningFeedback['verificationStatus'] =
+      completedActions.length > 0 || maxProgress >= 85 ? 'complete' : 'pending';
+
+    const baseDelta = Math.min(0.16, evidenceScore);
+    const delta = outcomePositive
+      ? parseFloat(baseDelta.toFixed(2))
+      : parseFloat((-Math.max(0.05, baseDelta * (evidenceStrength === 'Strong' ? 0.95 : 0.75))).toFixed(2));
+
+    const adjustedConfidence = clampConfidence(
+      (recommendation.confidence_score || 0) +
+      Math.round(outcomePositive ? delta * 24 : delta * 28)
+    );
+
+    const evidenceSummary = `${evidenceStrength.toLowerCase()} verification from ${linkedActions.length > 0 ? `${maxProgress}% execution progress across ${linkedActions.length} linked action item${linkedActions.length === 1 ? '' : 's'}` : 'recommendation-only notes'}, ${outcomeText.trim().length >= 30 ? 'documented outcome notes' : 'minimal outcome notes'}, and ${recommendation.priority} priority context.`;
+
+    return {
+      delta,
+      evidenceStrength,
+      evidenceSummary,
+      adjustedConfidence,
+      verificationStatus,
+    };
   }
 
   private recommendationQuery() {
@@ -1710,17 +1824,38 @@ export class RecommendationsEngine {
 
   async completeRecommendation(id: string, actualImpact?: string, notes?: string): Promise<boolean> {
     const existing = await this.getRecommendationById(id);
+    if (!existing) return false;
+    const linkedActions = await this.getLinkedActionEvidence(id);
+    const learningFeedback = this.calculateRecommendationLearningFeedback(
+      existing,
+      notes || actualImpact || '',
+      true,
+      linkedActions
+    );
 
     const updates: any = {
       status: 'completed',
       completed_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
-      source_data: appendLifecycleEvent(existing?.source_data, {
+      confidence_score: learningFeedback.adjustedConfidence,
+      source_data: {
+        ...appendLifecycleEvent(existing.source_data, {
         event: 'completed',
         at: new Date().toISOString(),
         actor_id: this.userId,
         note: notes || actualImpact
-      })
+        }),
+        verification_feedback: {
+          direction: 'positive',
+          evidence_strength: learningFeedback.evidenceStrength.toLowerCase(),
+          evidence_summary: learningFeedback.evidenceSummary,
+          reliability_delta: learningFeedback.delta,
+          verification_status: learningFeedback.verificationStatus,
+          linked_action_count: linkedActions.length,
+          max_linked_progress: linkedActions.reduce((max, item) => Math.max(max, item.progress || 0), 0),
+          verified_at: new Date().toISOString(),
+        },
+      }
     };
     if (actualImpact) updates.actual_impact = actualImpact;
     if (notes) updates.implementation_notes = notes;
@@ -1732,8 +1867,9 @@ export class RecommendationsEngine {
         id,
         [
           'aim-source:recommendation',
-          actualImpact ? 'aim-outcome:captured' : 'aim-outcome:awaiting_verification',
-          actualImpact ? 'aim-verification:complete' : 'aim-verification:pending',
+          learningFeedback.verificationStatus === 'complete' ? 'aim-outcome:captured' : 'aim-outcome:awaiting_verification',
+          `aim-evidence:${learningFeedback.evidenceStrength.toLowerCase()}`,
+          learningFeedback.verificationStatus === 'complete' ? 'aim-verification:complete' : 'aim-verification:pending',
         ],
         {
           status: 'completed',
@@ -1747,22 +1883,43 @@ export class RecommendationsEngine {
 
   async dismissRecommendation(id: string, reason?: string): Promise<boolean> {
     const existing = await this.getRecommendationById(id);
+    if (!existing) return false;
+    const linkedActions = await this.getLinkedActionEvidence(id);
+    const learningFeedback = this.calculateRecommendationLearningFeedback(
+      existing,
+      reason || '',
+      false,
+      linkedActions
+    );
 
     const { error } = await this.updateRecommendationById(id, {
         status: 'dismissed',
         dismissed_at: new Date().toISOString(),
         dismissed_reason: reason,
         updated_at: new Date().toISOString(),
-        source_data: appendLifecycleEvent(existing?.source_data, {
+        confidence_score: learningFeedback.adjustedConfidence,
+        source_data: {
+          ...appendLifecycleEvent(existing.source_data, {
           event: 'dismissed',
           at: new Date().toISOString(),
           actor_id: this.userId,
           note: reason
-        })
+          }),
+          verification_feedback: {
+            direction: 'negative',
+            evidence_strength: learningFeedback.evidenceStrength.toLowerCase(),
+            evidence_summary: learningFeedback.evidenceSummary,
+            reliability_delta: learningFeedback.delta,
+            verification_status: learningFeedback.verificationStatus,
+            linked_action_count: linkedActions.length,
+            max_linked_progress: linkedActions.reduce((max, item) => Math.max(max, item.progress || 0), 0),
+            verified_at: new Date().toISOString(),
+          },
+        }
       });
 
     if (!error) {
-      await this.syncLinkedActionItems(id, ['aim-source:recommendation', 'aim-outcome:at_risk', 'aim-verification:pending'], {
+      await this.syncLinkedActionItems(id, ['aim-source:recommendation', 'aim-outcome:at_risk', `aim-evidence:${learningFeedback.evidenceStrength.toLowerCase()}`, 'aim-verification:complete'], {
         status: 'on_hold',
       });
     }

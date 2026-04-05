@@ -7,6 +7,10 @@ import {
   type IntelligenceFreshnessState,
   type IntelligenceSourceLabel,
 } from '../services/intelligenceContract';
+import {
+  buildCPIIntelligenceHealth,
+  type IntelligenceHealthSummary,
+} from '../services/intelligenceObservability';
 
 export interface CPIDomainSnapshot {
   id: string;
@@ -39,6 +43,7 @@ export interface CPIFeedItem {
 interface UseCPIDataReturn {
   domains: CPIDomainSnapshot[];
   feed: CPIFeedItem[];
+  intelligenceHealth: IntelligenceHealthSummary;
   loadingDomains: boolean;
   loadingFeed: boolean;
   error: string | null;
@@ -568,6 +573,13 @@ export function useCPIData(): UseCPIDataReturn {
   const [loadingDomains, setLoadingDomains] = useState(true);
   const [loadingFeed, setLoadingFeed] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [intelligenceHealth, setIntelligenceHealth] = useState<IntelligenceHealthSummary>({
+    severity: 'Healthy',
+    score: 92,
+    headline: 'CPI intelligence health is stable',
+    note: 'Domain telemetry and feed acknowledgment are healthy enough for live CPI decision support.',
+    issues: [],
+  });
 
   const applySyntheticAcknowledge = useCallback((id: string, acknowledgedAt: string) => {
     setFeed(prev =>
@@ -734,9 +746,14 @@ export function useCPIData(): UseCPIDataReturn {
     };
   }, [fetchDomains, fetchFeed]);
 
+  useEffect(() => {
+    setIntelligenceHealth(buildCPIIntelligenceHealth({ domains, feed }));
+  }, [domains, feed]);
+
   return {
     domains,
     feed,
+    intelligenceHealth,
     loadingDomains,
     loadingFeed,
     error,

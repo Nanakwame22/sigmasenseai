@@ -1,11 +1,12 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useCPIData } from '../../../hooks/useCPIData';
+import OperationalTrustPanel from '../../../components/common/OperationalTrustPanel';
 
 export default function CPIHeader() {
   const [time, setTime] = useState(new Date());
   const [pulse, setPulse] = useState(false);
-  const { domains } = useCPIData();
+  const { domains, intelligenceHealth } = useCPIData();
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -75,6 +76,22 @@ export default function CPIHeader() {
     down: 'text-emerald-400',
     stable: 'text-slate-400',
   };
+
+  const latestDomainUpdate = useMemo(() => {
+    if (!domains.length) return 'Awaiting live data';
+    const latest = domains
+      .map((domain) => domain.updated_at)
+      .filter(Boolean)
+      .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0];
+
+    if (!latest) return 'Awaiting live data';
+    const diffMins = Math.floor((Date.now() - new Date(latest).getTime()) / 60000);
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours < 24) return `${diffHours}h ago`;
+    return new Date(latest).toLocaleDateString();
+  }, [domains]);
 
   return (
     <div className="relative overflow-hidden">
@@ -182,6 +199,46 @@ export default function CPIHeader() {
             <i className="ri-arrow-left-right-line text-teal-400 text-xs"></i>
             <span className="text-xs text-teal-400 font-medium">Connected to Analytics Layer</span>
             <span className="text-xs text-teal-500/60">· Forecasting · AIM · Alerts</span>
+          </div>
+        </div>
+
+        <div className="mt-5">
+          <OperationalTrustPanel
+            title="CPI decisions are tied to live domain telemetry"
+            subtitle="This workspace derives its top-level pressure signals from current healthcare metrics and recent domain updates, not a static command-center snapshot."
+            chips={[
+              { label: 'Domain Refresh', value: latestDomainUpdate, tone: 'teal' },
+              { label: 'Domains', value: `${domains.length} active`, tone: 'emerald' },
+              { label: 'Evidence', value: 'Metrics + feed + cases', tone: 'slate' },
+              {
+                label: 'Intelligence Health',
+                value: `${intelligenceHealth.severity} · ${intelligenceHealth.score}`,
+                tone:
+                  intelligenceHealth.severity === 'Healthy'
+                    ? 'emerald'
+                    : intelligenceHealth.severity === 'Watch'
+                      ? 'amber'
+                      : 'rose',
+              },
+            ]}
+            note={`${intelligenceHealth.note} CPI lineage follows the live operational path: Metrics → CPI domains → feed alerts → decision cases → workflow actions. Use this to verify that a signal is fresh before escalating or closing a case.`}
+            className="border-white/10 bg-white/95"
+          />
+          <div className="mt-3 flex flex-wrap gap-2">
+            {intelligenceHealth.issues.filter((issue) => issue.count > 0).slice(0, 3).map((issue) => (
+              <span
+                key={issue.key}
+                className={`rounded-full px-3 py-1 text-[11px] font-medium ${
+                  issue.severity === 'Needs attention'
+                    ? 'bg-rose-500/15 text-rose-200'
+                    : issue.severity === 'Watch'
+                      ? 'bg-amber-500/15 text-amber-100'
+                      : 'bg-emerald-500/15 text-emerald-100'
+                }`}
+              >
+                {issue.count} {issue.label}
+              </span>
+            ))}
           </div>
         </div>
       </div>

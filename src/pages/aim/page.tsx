@@ -112,7 +112,14 @@ const AIMPage: React.FC = () => {
         ? 'Signals are meaningful, but a human review should confirm the next move.'
         : aimStats.decisionReadiness === 'Directional'
           ? 'AIM can frame the situation, but the signal mix is still building toward a stronger recommendation.'
-          : 'AIM is connected, but more live evidence is needed before decision-grade guidance is available.';
+      : 'AIM is connected, but more live evidence is needed before decision-grade guidance is available.';
+
+  const healthTone =
+    aimStats.intelligenceHealth.severity === 'Healthy'
+      ? 'emerald'
+      : aimStats.intelligenceHealth.severity === 'Watch'
+        ? 'amber'
+        : 'rose';
 
   const briefingByLens: Record<
     BriefingLens,
@@ -450,10 +457,48 @@ const AIMPage: React.FC = () => {
                       { label: 'Decision Readiness', value: aimStats.decisionReadiness, tone: readinessTone as any },
                       { label: 'Evidence Coverage', value: `${aimStats.evidenceSignals}/5 live signals`, tone: aimStats.evidenceCoverage >= 80 ? 'emerald' : aimStats.evidenceCoverage >= 60 ? 'teal' : 'amber' },
                       { label: 'Confidence', value: confidenceState, tone: aimStats.aiConfidence >= 70 ? 'emerald' : 'amber' },
+                      { label: 'Intelligence Health', value: `${aimStats.intelligenceHealth.severity} · ${aimStats.intelligenceHealth.score}`, tone: healthTone as any },
                     ]}
-                    note={`${readinessNote} Evidence for AIM comes from live recommendations, metric refreshes, predictive alerts, and tracked actions. When confidence is lower, use the supporting evidence chips and Decision Support to verify whether a recommendation is decision-ready or still directional.`}
+                    note={`${readinessNote} ${aimStats.intelligenceHealth.note} Evidence for AIM comes from live recommendations, metric refreshes, predictive alerts, and tracked actions. When confidence is lower, use the supporting evidence chips and Decision Support to verify whether a recommendation is decision-ready or still directional.`}
                     className="border-white/10 bg-white/95"
                   />
+
+                  <div className="rounded-[24px] border border-white/10 bg-white/6 p-4 backdrop-blur-sm">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-200">Intelligence Health</div>
+                        <div className="mt-2 text-sm font-semibold text-white">{aimStats.intelligenceHealth.headline}</div>
+                        <div className="mt-1 text-xs leading-5 text-brand-200">{aimStats.intelligenceHealth.note}</div>
+                      </div>
+                      <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-white">
+                        Score {aimStats.intelligenceHealth.score}
+                      </div>
+                    </div>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {aimStats.intelligenceHealth.issues
+                        .filter((issue) => issue.count > 0)
+                        .slice(0, 3)
+                        .map((issue) => (
+                          <span
+                            key={issue.key}
+                            className={`rounded-full px-3 py-1 text-[11px] font-medium ${
+                              issue.severity === 'Needs attention'
+                                ? 'bg-rose-500/15 text-rose-100'
+                                : issue.severity === 'Watch'
+                                  ? 'bg-amber-500/15 text-amber-100'
+                                  : 'bg-emerald-500/15 text-emerald-100'
+                            }`}
+                          >
+                            {issue.count} {issue.label}
+                          </span>
+                        ))}
+                      {aimStats.intelligenceHealth.issues.filter((issue) => issue.count > 0).length === 0 && (
+                        <span className="rounded-full bg-emerald-500/15 px-3 py-1 text-[11px] font-medium text-emerald-100">
+                          No active intelligence health warnings
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>

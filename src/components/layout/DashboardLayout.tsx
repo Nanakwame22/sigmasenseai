@@ -142,6 +142,7 @@ export default function DashboardLayout() {
       icon: 'ri-lightbulb-line',
       submenu: [
         { label: 'AIM — Intelligence Engine', path: '/dashboard/aim', icon: 'ri-robot-line' },
+        { label: 'AI Insights', path: '/dashboard/ai-insights', icon: 'ri-pulse-line' },
         { label: 'Advanced Forecasting', path: '/dashboard/advanced-forecasting', icon: 'ri-line-chart-line' },
         { label: 'Anomaly Detection', path: '/dashboard/anomaly-detection', icon: 'ri-alert-line' },
         { label: 'Root Cause Analysis', path: '/dashboard/root-cause', icon: 'ri-search-line' },
