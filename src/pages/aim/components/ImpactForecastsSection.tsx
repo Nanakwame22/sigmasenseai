@@ -55,6 +55,53 @@ const SCENARIO_THEME: Record<string, {
   },
 };
 
+function getForecastInterpretation(forecast: any) {
+  const validation = forecast.validation;
+  const realizedLabel = validation?.realized_label ?? 'Weak';
+  const directionalAccuracy = validation?.directional_accuracy ?? 0;
+  const mape = validation?.mape ?? 100;
+  const trendStrengthPct = Math.round((forecast.trend_strength ?? 0) * 100);
+
+  let trustSummary = 'Use this forecast as a rough directional signal, not as a precise prediction.';
+  if (realizedLabel === 'Validated') {
+    trustSummary = 'This forecast has held up reasonably well against recent real outcomes, so it is safer to use for planning.';
+  } else if (realizedLabel === 'Mixed') {
+    trustSummary = 'This forecast has been partly right in recent history, so it is helpful for planning but should still be checked against live conditions.';
+  }
+
+  let directionSummary = 'Recent data has not shown a strong directional pattern yet.';
+  if (directionalAccuracy >= 75) {
+    directionSummary = 'The model has usually been right about the direction of change, even when the exact size of the move was less precise.';
+  } else if (directionalAccuracy >= 55) {
+    directionSummary = 'The model has been somewhat reliable on direction, but not enough to treat this as a strong forward signal on its own.';
+  } else if (directionalAccuracy > 0) {
+    directionSummary = 'The model has struggled to predict whether this metric will move up or down, so treat the direction with caution.';
+  }
+
+  let trendSummary = 'The current forecast is mostly flat, so the signal is more about watchfulness than momentum.';
+  if (trendStrengthPct >= 60) {
+    trendSummary = 'There is a strong trend in the recent data, which means conditions may keep moving unless something changes operationally.';
+  } else if (trendStrengthPct >= 25) {
+    trendSummary = 'There is some trend in the recent data, but it is not yet strong enough to treat as a stable operating pattern.';
+  }
+
+  let plainMeaning = 'This forecast is best used as an early warning signal while you keep checking live metrics.';
+  if (realizedLabel === 'Validated' && mape <= 20) {
+    plainMeaning = 'In plain terms: this forecast has been fairly dependable lately, so it is reasonable to use it for near-term planning.';
+  } else if (realizedLabel === 'Mixed') {
+    plainMeaning = 'In plain terms: this forecast can help frame the next few steps, but teams should still validate it against what is happening live.';
+  } else if (mape >= 50) {
+    plainMeaning = 'In plain terms: the model has been far off on recent outcomes, so use this as a watch signal rather than a decision anchor.';
+  }
+
+  return {
+    trustSummary,
+    directionSummary,
+    trendSummary,
+    plainMeaning,
+  };
+}
+
 const ImpactForecastsSection: React.FC = () => {
   const { user } = useAuth();
   const [selectedScenario, setSelectedScenario] = useState<string>('balanced');
@@ -509,6 +556,9 @@ const ImpactForecastsSection: React.FC = () => {
       {advancedForecasts.length > 0 && (
         <div className="space-y-6">
           {advancedForecasts.map((forecast) => (
+            (() => {
+              const interpretation = getForecastInterpretation(forecast);
+              return (
             <AIMPanel
               key={forecast.id}
               title={forecast.metric_name}
@@ -594,6 +644,16 @@ const ImpactForecastsSection: React.FC = () => {
                   </p>
                 </div>
               )}
+
+              <div className="mb-6 rounded-xl border border-brand-200 bg-white p-4">
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-500">What This Means</div>
+                <div className="mt-3 space-y-2 text-sm text-brand-700">
+                  <p>{interpretation.plainMeaning}</p>
+                  <p>{interpretation.trustSummary}</p>
+                  <p>{interpretation.directionSummary}</p>
+                  <p>{interpretation.trendSummary}</p>
+                </div>
+              </div>
 
               {/* Forecast Chart with Confidence Intervals */}
               <div className="bg-brand-50 rounded-lg p-4">
@@ -686,6 +746,8 @@ const ImpactForecastsSection: React.FC = () => {
                 </div>
               )}
             </AIMPanel>
+              );
+            })()
           ))}
         </div>
       )}
