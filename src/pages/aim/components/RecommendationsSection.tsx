@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { RecommendationsEngine } from '../../../services/recommendationsEngine';
 import type { Recommendation } from '../../../services/recommendationsEngine';
 import { useAuth } from '../../../contexts/AuthContext';
+import { useAIMData } from '../../../hooks/useAIMData';
 import { supabase } from '../../../lib/supabase';
 import { addToast } from '../../../hooks/useToast';
 import { AIMEmptyState, AIMMetricTiles, AIMPanel, AIMSectionIntro } from './AIMSectionSystem';
@@ -101,6 +102,7 @@ function getRecommendationRationale(rec: Recommendation) {
 
 export default function RecommendationsSection() {
   const { user, organization } = useAuth();
+  const aimStats = useAIMData();
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
@@ -120,15 +122,6 @@ export default function RecommendationsSection() {
   const [pushedIds, setPushedIds] = useState<Set<string>>(new Set());
   const [pushingId, setPushingId] = useState<string | null>(null);
   const [organizationId, setOrganizationId] = useState<string | null>(null);
-  const [readinessContext, setReadinessContext] = useState<{
-    evidenceCoverage: number;
-    evidenceSignals: number;
-    recommendationState: 'Directional' | 'Monitor only' | 'Needs review' | 'Action-ready';
-  }>({
-    evidenceCoverage: 0,
-    evidenceSignals: 0,
-    recommendationState: 'Monitor only',
-  });
   const [actionModal, setActionModal] = useState<{
     show: boolean;
     type: 'start' | 'complete' | 'dismiss' | null;
@@ -149,12 +142,6 @@ export default function RecommendationsSection() {
       loadWatchSignals();
     }
   }, [organizationId, selectedCategory, selectedPriority, selectedStatus, user]);
-
-  useEffect(() => {
-    if (user && organizationId) {
-      loadReadinessContext(organizationId);
-    }
-  }, [organizationId, user, recommendations.length, watchSignals.length]);
 
   const loadOrganization = async () => {
     if (!user) return;
@@ -252,71 +239,6 @@ export default function RecommendationsSection() {
     }
   };
 
-  const loadReadinessContext = async (orgOverride?: string | null) => {
-    const activeOrgId = orgOverride ?? organization?.id ?? organizationId ?? null;
-    if (!activeOrgId) {
-      setReadinessContext({
-        evidenceCoverage: 0,
-        evidenceSignals: 0,
-        recommendationState: 'Monitor only',
-      });
-      return;
-    }
-
-    try {
-      const [
-        { count: dataSourcesCount },
-        { data: latestMetricData },
-        { data: actionItemsData },
-        { data: dmaicProjectsData },
-        { data: kaizenItemsData },
-      ] = await Promise.all([
-        supabase
-          .from('data_sources')
-          .select('*', { count: 'exact', head: true })
-          .eq('organization_id', activeOrgId)
-          .eq('status', 'active'),
-        supabase
-          .from('metric_data')
-          .select('timestamp')
-          .eq('organization_id', activeOrgId)
-          .order('timestamp', { ascending: false })
-          .limit(1)
-          .maybeSingle(),
-        supabase.from('action_items').select('id').eq('organization_id', activeOrgId),
-        supabase.from('dmaic_projects').select('id').eq('organization_id', activeOrgId),
-        supabase.from('kaizen_items').select('id').eq('organization_id', activeOrgId),
-      ]);
-
-      const trackedWorkCount =
-        (actionItemsData?.length || 0) +
-        (dmaicProjectsData?.length || 0) +
-        (kaizenItemsData?.length || 0);
-
-      const liveSignalCount = [
-        (dataSourcesCount || 0) > 0,
-        Boolean(latestMetricData?.timestamp),
-        recommendations.length > 0,
-        trackedWorkCount > 0,
-        watchSignals.length > 0,
-      ].filter(Boolean).length;
-
-      setReadinessContext({
-        evidenceCoverage: Math.round((liveSignalCount / 5) * 100),
-        evidenceSignals: liveSignalCount,
-        recommendationState:
-          recommendations.length > 0
-            ? 'Action-ready'
-            : watchSignals.some((signal) => signal.severity === 'critical' || signal.severity === 'high')
-              ? 'Needs review'
-              : watchSignals.length > 0
-                ? 'Directional'
-                : 'Monitor only',
-      });
-    } catch (error) {
-      console.error('Error loading recommendation readiness context:', error);
-    }
-  };
 
   const handleGenerateRecommendations = async () => {
     if (!user) return;
@@ -330,10 +252,8 @@ export default function RecommendationsSection() {
         await loadRecommendations();
         await loadStatistics();
         await loadWatchSignals(activeOrgId);
-        await loadReadinessContext(activeOrgId);
       } else {
         const signals = await loadWatchSignals(activeOrgId);
-        await loadReadinessContext(activeOrgId);
         addToast(
           signals.length > 0
             ? 'No action-ready recommendations were generated. AIM surfaced active watch signals instead.'
@@ -510,8 +430,8 @@ export default function RecommendationsSection() {
   const readinessSummary = {
     watchSignals: watchSignals.length,
     needsReview: watchSignals.filter((signal) => signal.severity === 'critical' || signal.severity === 'high').length,
-    evidenceCoverage: readinessContext.evidenceSignals,
-    recommendationState: readinessContext.recommendationState,
+    evidenceCoverage: aimStats.evidenceSignals,
+    recommendationState: aimStats.decisionReadiness,
   };
 
   return (

@@ -58,7 +58,8 @@ interface DataPattern {
 const RECOMMENDATION_REVIEW_WINDOW_DAYS = 14;
 const RECOMMENDATION_EXPIRY_WINDOW_DAYS = 30;
 const RECOMMENDATION_RECENT_DUPLICATE_WINDOW_DAYS = 21;
-const RECOMMENDATION_DISMISS_COOLDOWN_DAYS = 10;
+const RECOMMENDATION_DISMISS_COOLDOWN_DAYS = 2;
+const RECOMMENDATION_COMPLETE_COOLDOWN_DAYS = 3;
 
 function normalizePatternNumber(value: unknown): number {
   if (typeof value === 'number') return value;
@@ -323,7 +324,11 @@ export class RecommendationsEngine {
 
       const recentlyCompletedSignatures = new Set(
         (existing || [])
-          .filter((rec) => rec.status === 'completed')
+          .filter((rec) => {
+            if (rec.status !== 'completed') return false;
+            const completedAt = rec.completed_at || rec.updated_at || rec.created_at;
+            return Date.now() - new Date(completedAt).getTime() <= RECOMMENDATION_COMPLETE_COOLDOWN_DAYS * 24 * 60 * 60 * 1000;
+          })
           .map((rec) => rec.source_data?.signature)
           .filter(Boolean)
       );
