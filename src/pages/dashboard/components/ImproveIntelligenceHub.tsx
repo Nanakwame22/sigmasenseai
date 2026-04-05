@@ -546,7 +546,7 @@ export const ImproveIntelligenceHub: React.FC<{ projectId?: string; onSave?: () 
                 <div className={`w-7 h-7 rounded-md flex items-center justify-center ${card.bg}`}>
                   <i className={`${card.icon} ${card.color} text-sm`}></i>
                 </div>
-                <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">{card.label}</span>
+                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">{card.label}</span>
               </div>
               <div className={`text-xl font-bold ${card.color}`}>{card.value}</div>
             </div>
@@ -1123,7 +1123,7 @@ export const ImproveIntelligenceHub: React.FC<{ projectId?: string; onSave?: () 
                   <div className="w-48 flex-shrink-0"></div>
                   <div className="flex-1 flex">
                     {Array.from({ length: 16 }, (_, i) => (
-                      <div key={i} className="flex-1 text-center text-[10px] text-slate-400 font-medium">W{i + 1}</div>
+                      <div key={i} className="flex-1 text-center text-xs text-slate-400 font-medium">W{i + 1}</div>
                     ))}
                   </div>
                 </div>

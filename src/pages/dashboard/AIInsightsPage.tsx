@@ -1017,7 +1017,7 @@ export default function AIInsightsPage() {
                                 className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-medium ${getHealthSeverityClasses(issue.severity).badge}`}
                               >
                                 <span>{issue.label}</span>
-                                <span className="rounded-full bg-white/70 px-1.5 py-0.5 text-[11px]">{issue.count}</span>
+                                <span className="rounded-full bg-white/70 px-1.5 py-0.5 text-xs">{issue.count}</span>
                               </span>
                             ))
                           ) : (
@@ -1058,13 +1058,13 @@ export default function AIInsightsPage() {
                             <div className="flex items-start justify-between gap-4">
                               <div className="min-w-0">
                                 <div className="flex flex-wrap items-center gap-2">
-                                  <span className="rounded-full bg-slate-900 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-white">
+                                  <span className="rounded-full bg-slate-900 px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-white">
                                     {issue.system}
                                   </span>
-                                  <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${tone.badge}`}>
+                                  <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${tone.badge}`}>
                                     {issue.severity}
                                   </span>
-                                  <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold text-gray-600">
+                                  <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-gray-600">
                                     {issue.count} active
                                   </span>
                                 </div>

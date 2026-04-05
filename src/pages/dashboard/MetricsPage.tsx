@@ -318,29 +318,29 @@ export default function MetricsPage() {
 
         <div className="mb-4 rounded-xl border border-slate-100 bg-slate-50/80 p-3">
           <div className="flex flex-wrap gap-2">
-            <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${trustTone}`}>
+            <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${trustTone}`}>
               Freshness: {formatMetricFreshness(latestHistoryPoint?.timestamp)}
             </span>
-            <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600">
+            <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-600">
               History: {metric.data_points_count || 0} points
             </span>
           </div>
-          <p className="mt-2 text-[11px] leading-5 text-slate-500">
+          <p className="mt-2 text-xs leading-5 text-slate-500">
             Evidence: {metric.recent_data && metric.recent_data.length > 0
               ? `Recent trend is based on the latest ${metric.recent_data.length} stored points for this metric.`
               : 'No recent trend history has been stored yet, so downstream analytics will remain cautious.'}
           </p>
-          <p className="mt-1 text-[11px] leading-5 text-slate-400">
+          <p className="mt-1 text-xs leading-5 text-slate-400">
             Lineage: {lineageLabel}
           </p>
-          <p className="mt-1 text-[11px] leading-5 text-slate-400">
+          <p className="mt-1 text-xs leading-5 text-slate-400">
             Provenance: {provenanceLabel}
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             {hasSource ? (
               <Link
                 to={`/dashboard/data-integration?source=${metric.data_source_id || ''}`}
-                className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:border-teal-200 hover:text-teal-700"
+                className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 hover:border-teal-200 hover:text-teal-700"
               >
                 <i className="ri-links-line"></i>
                 Source
@@ -348,7 +348,7 @@ export default function MetricsPage() {
             ) : (
               <Link
                 to="/dashboard/metrics"
-                className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:border-teal-200 hover:text-teal-700"
+                className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 hover:border-teal-200 hover:text-teal-700"
               >
                 <i className="ri-edit-circle-line"></i>
                 Manual
@@ -356,14 +356,14 @@ export default function MetricsPage() {
             )}
             <Link
               to={`/dashboard/data-mapping?source=${metric.data_source_id || ''}&metric=${metric.id}&tab=mapping`}
-              className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:border-teal-200 hover:text-teal-700"
+              className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 hover:border-teal-200 hover:text-teal-700"
             >
               <i className="ri-map-pin-line"></i>
               Mapping
             </Link>
             <Link
               to={`/dashboard/etl-pipelines?source=${metric.data_source_id || ''}&metric=${metric.id}`}
-              className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:border-teal-200 hover:text-teal-700"
+              className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 hover:border-teal-200 hover:text-teal-700"
             >
               <i className="ri-git-branch-line"></i>
               ETL
@@ -1418,7 +1418,7 @@ export default function MetricsPage() {
               <div className="text-left flex-1">
                 <div className="flex items-center justify-between gap-4 mb-2">
                   <p className="text-sm text-purple-900 font-medium">Sandbox Demo Mode</p>
-                  <span className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wide bg-purple-100 text-purple-700 rounded-full border border-purple-200">
+                  <span className="px-2 py-1 text-xs font-semibold uppercase tracking-wide bg-purple-100 text-purple-700 rounded-full border border-purple-200">
                     Sample Only
                   </span>
                 </div>
@@ -1476,15 +1476,15 @@ export default function MetricsPage() {
               </div>
               <div className="flex flex-wrap gap-3 text-sm">
                 <div className="rounded-xl border border-emerald-200 bg-white/90 px-4 py-2">
-                  <span className="block text-[11px] font-semibold uppercase tracking-wide text-emerald-600">Active Metrics</span>
+                  <span className="block text-xs font-semibold uppercase tracking-wide text-emerald-600">Active Metrics</span>
                   <span className="text-lg font-bold text-slate-900">{activeMetrics.length}</span>
                 </div>
                 <div className="rounded-xl border border-emerald-200 bg-white/90 px-4 py-2">
-                  <span className="block text-[11px] font-semibold uppercase tracking-wide text-emerald-600">Tracked Sources</span>
+                  <span className="block text-xs font-semibold uppercase tracking-wide text-emerald-600">Tracked Sources</span>
                   <span className="text-lg font-bold text-slate-900">{trackedMetrics.length}</span>
                 </div>
                 <div className="rounded-xl border border-emerald-200 bg-white/90 px-4 py-2">
-                  <span className="block text-[11px] font-semibold uppercase tracking-wide text-emerald-600">Definitions Awaiting History</span>
+                  <span className="block text-xs font-semibold uppercase tracking-wide text-emerald-600">Definitions Awaiting History</span>
                   <span className="text-lg font-bold text-slate-900">{inactiveMetrics.length}</span>
                 </div>
               </div>

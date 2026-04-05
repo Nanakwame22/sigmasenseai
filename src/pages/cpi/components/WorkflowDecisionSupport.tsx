@@ -829,7 +829,7 @@ function ResolveModal({ caseItem, linkedAction, onClose, onSaved, onFed }: Resol
             <p className="text-xs text-emerald-600 mt-1.5 opacity-80">
               {learningFeedback.previewText}
             </p>
-            <p className="text-[11px] text-emerald-700/80 mt-1">
+            <p className="text-xs text-emerald-700/80 mt-1">
               {learningFeedback.evidenceSummary} Reliability {learningFeedback.delta >= 0 ? '+' : ''}{learningFeedback.delta}%.
             </p>
           </div>
@@ -881,7 +881,7 @@ function LearnFeedBanner({ modelNames, feedback, onDismiss }: LearnFeedBannerPro
           {feedback.evidenceStrength} reliability feedback applied for:&nbsp;
           <span className="font-semibold">{modelNames.join(', ')}</span>
         </p>
-        <p className="text-[11px] text-emerald-700/80 mt-1">{feedback.evidenceSummary}</p>
+        <p className="text-xs text-emerald-700/80 mt-1">{feedback.evidenceSummary}</p>
       </div>
       <button onClick={onDismiss} className="w-6 h-6 flex items-center justify-center rounded hover:bg-emerald-100 cursor-pointer flex-shrink-0">
         <i className="ri-close-line text-emerald-600 text-sm"></i>
@@ -1293,7 +1293,7 @@ export default function WorkflowDecisionSupport() {
 
                   <div className="flex items-center justify-between mt-3 pt-3 border-t border-brand-100">
                     <div className="flex items-center space-x-2 min-w-0">
-                      <span className="text-[11px] font-semibold uppercase tracking-wide text-brand-400">Owner</span>
+                      <span className="text-xs font-semibold uppercase tracking-wide text-brand-400">Owner</span>
                       <span className="text-xs font-medium text-brand-700 truncate">{owner}</span>
                     </div>
                     <div className={`flex items-center space-x-1.5 px-2.5 py-1 rounded-full border text-xs font-semibold ${dueMeta.tone}`}>

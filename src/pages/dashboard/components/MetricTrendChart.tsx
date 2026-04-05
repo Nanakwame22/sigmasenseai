@@ -224,14 +224,14 @@ export default function MetricTrendChart({ series }: MetricTrendChartProps) {
       <div className="mb-5 flex items-start justify-between gap-4">
         <div className="space-y-3">
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Performance Trends</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">Performance Trends</p>
             <h2 className="mt-1 text-lg font-bold tracking-tight text-slate-900">Operational metric movement vs target</h2>
             <p className="mt-1 text-xs text-slate-500">Primary signal stays emphasized while supporting KPIs remain visible for context.</p>
           </div>
           {leadSeries ? (
             <div className="flex flex-wrap items-center gap-2.5">
               <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Lead Metric</div>
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Lead Metric</div>
                 <div className="mt-1 flex items-baseline gap-2">
                   <span className="text-base font-bold text-slate-900">{leadSeries.name}</span>
                   <span className="text-sm font-semibold" style={{ color: leadSeries.color }}>
@@ -240,13 +240,13 @@ export default function MetricTrendChart({ series }: MetricTrendChartProps) {
                 </div>
               </div>
               <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Session Delta</div>
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Session Delta</div>
                 <div className={`mt-1 text-sm font-semibold ${leadDelta > 0 ? 'text-emerald-600' : leadDelta < 0 ? 'text-rose-600' : 'text-slate-500'}`}>
                   {formatDelta(leadDelta, leadSeries.unit)}
                 </div>
               </div>
               <div className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-amber-600">Target Watch</div>
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-600">Target Watch</div>
                 <div className="mt-1 text-sm font-semibold text-amber-700">{formatMetricValue(avgTarget, leadSeries.unit)}</div>
               </div>
             </div>
@@ -301,7 +301,7 @@ export default function MetricTrendChart({ series }: MetricTrendChartProps) {
                   className="h-2.5 w-2.5 rounded-full"
                   style={{ background: isHidden ? '#cbd5e1' : s.color }}
                 ></div>
-                <span className="text-[11px] font-semibold">{s.name}</span>
+                <span className="text-xs font-semibold">{s.name}</span>
               </div>
               <div className={`mt-1 text-xs font-bold tabular-nums ${isSelected ? 'text-white' : 'text-slate-900'}`}>
                 {formatMetricValue(latestValue, s.unit)}

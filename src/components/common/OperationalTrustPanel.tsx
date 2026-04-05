@@ -31,7 +31,7 @@ export default function OperationalTrustPanel({
     <div className={`rounded-2xl border border-slate-200/80 bg-white/90 px-5 py-4 shadow-[0_12px_32px_rgba(15,23,42,0.05)] ${className}`}>
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div className="max-w-3xl">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Operational Trust</div>
+          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Operational Trust</div>
           <h3 className="mt-1 text-sm font-bold text-slate-900">{title}</h3>
           <p className="mt-1 text-xs leading-5 text-slate-500">{subtitle}</p>
         </div>

@@ -869,15 +869,15 @@ const ImpactForecastsSection: React.FC = () => {
                       </div>
                       <div className="mt-4 grid gap-3 sm:grid-cols-3">
                         <div className="rounded-2xl bg-white/70 px-4 py-3">
-                          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-500">Annual impact</div>
+                          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-500">Annual impact</div>
                           <div className={`mt-1 text-xl font-bold ${theme.accent}`}>{scenario.impact}</div>
                         </div>
                         <div className="rounded-2xl bg-white/70 px-4 py-3">
-                          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-500">Confidence</div>
+                          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-500">Confidence</div>
                           <div className={`mt-1 text-xl font-bold ${theme.accent}`}>{scenario.probability}%</div>
                         </div>
                         <div className="rounded-2xl bg-white/70 px-4 py-3">
-                          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-500">Investment posture</div>
+                          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-500">Investment posture</div>
                           <div className={`mt-1 text-xl font-bold ${theme.accent}`}>{scenario.investment}</div>
                         </div>
                       </div>
@@ -905,35 +905,35 @@ const ImpactForecastsSection: React.FC = () => {
               </p>
 
               <div className="mt-4 flex flex-wrap gap-2">
-                <span className="rounded-full border border-brand-200 bg-white/80 px-3 py-1 text-[11px] font-semibold text-brand-600">
+                <span className="rounded-full border border-brand-200 bg-white/80 px-3 py-1 text-xs font-semibold text-brand-600">
                   Readiness: {activeForecastBrief.evidence.decisionReadiness}
                 </span>
-                <span className="rounded-full border border-brand-200 bg-white/80 px-3 py-1 text-[11px] font-semibold text-brand-600">
+                <span className="rounded-full border border-brand-200 bg-white/80 px-3 py-1 text-xs font-semibold text-brand-600">
                   Provenance: {activeForecastBrief.evidence.sourceLabel}
                 </span>
-                <span className="rounded-full border border-brand-200 bg-white/80 px-3 py-1 text-[11px] font-semibold text-brand-600">
+                <span className="rounded-full border border-brand-200 bg-white/80 px-3 py-1 text-xs font-semibold text-brand-600">
                   Confidence basis: {activeForecastBrief.evidence.confidenceState}
                 </span>
               </div>
 
               <div className="mt-6 grid gap-3 sm:grid-cols-2">
                 <div className="rounded-2xl bg-white/80 px-4 py-4">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-500">Modeled annual upside</div>
+                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-500">Modeled annual upside</div>
                   <div className={`mt-2 text-3xl font-bold ${activeTheme.accent}`}>{activeForecastBrief.projectedImpact}</div>
                   <div className="mt-1 text-xs text-brand-500">{activeScenario.roi}</div>
                 </div>
                 <div className="rounded-2xl bg-white/80 px-4 py-4">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-500">Delivery confidence</div>
+                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-500">Delivery confidence</div>
                   <div className={`mt-2 text-3xl font-bold ${activeTheme.accent}`}>{activeForecastBrief.confidenceScore}%</div>
                   <div className="mt-1 text-xs text-brand-500">{activeScenario.timeline}</div>
                 </div>
                 <div className="rounded-2xl bg-white/80 px-4 py-4">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-500">Investment level</div>
+                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-500">Investment level</div>
                   <div className="mt-2 text-3xl font-bold text-brand-900">{activeForecastBrief.investment}</div>
                   <div className="mt-1 text-xs text-brand-500">Estimated commitment required</div>
                 </div>
                 <div className="rounded-2xl bg-white/80 px-4 py-4">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-500">Risk posture</div>
+                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-500">Risk posture</div>
                   <div className="mt-2 text-3xl font-bold text-brand-900">{activeScenario.risk}</div>
                   <div className="mt-1 text-xs text-brand-500">Execution pressure and change load</div>
                 </div>
@@ -961,15 +961,15 @@ const ImpactForecastsSection: React.FC = () => {
             </div>
             <div className="grid gap-3 sm:grid-cols-3 lg:w-[520px]">
               <div className="rounded-2xl bg-brand-50 px-4 py-4">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-500">Annual net benefit</div>
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-500">Annual net benefit</div>
                 <div className="mt-2 text-3xl font-bold text-ai-600">{formatMoney(calculateNetImpact())}</div>
               </div>
               <div className="rounded-2xl bg-brand-50 px-4 py-4">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-500">Focus scenario</div>
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-500">Focus scenario</div>
                 <div className="mt-2 text-lg font-bold text-brand-900">{activeScenario?.label ?? 'Balanced Improvement'}</div>
               </div>
               <div className="rounded-2xl bg-brand-50 px-4 py-4">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-500">Expected confidence</div>
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-500">Expected confidence</div>
                 <div className="mt-2 text-3xl font-bold text-brand-900">{activeScenario?.probability ?? 0}%</div>
               </div>
             </div>
@@ -1125,11 +1125,11 @@ const ImpactForecastsSection: React.FC = () => {
           </ResponsiveContainer>
           <div className="mt-3 flex items-center justify-between rounded-2xl bg-brand-50 px-4 py-3">
             <div>
-              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-500">Lead trajectory</div>
+              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-500">Lead trajectory</div>
               <div className="mt-1 text-sm font-semibold text-brand-900">With Actions stays emphasized as the executive path</div>
             </div>
             <div className="text-right">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-500">Average modeled level</div>
+              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-500">Average modeled level</div>
               <div className="mt-1 text-lg font-bold text-ai-600">{formatMetricValue(leadSeriesAverage)}</div>
             </div>
           </div>

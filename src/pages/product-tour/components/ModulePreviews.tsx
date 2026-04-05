@@ -32,8 +32,8 @@ export function DashboardPreview() {
           ))}
         </div>
         <div className="flex justify-between mt-1">
-          <span className="text-[10px] text-gray-400">90 days ago</span>
-          <span className="text-[10px] text-gray-400">Today</span>
+          <span className="text-xs text-gray-400">90 days ago</span>
+          <span className="text-xs text-gray-400">Today</span>
         </div>
       </div>
       <div className="grid grid-cols-2 gap-3">
@@ -45,7 +45,7 @@ export function DashboardPreview() {
         ].map((line, i) => (
           <div key={i} className="flex items-center justify-between bg-white rounded-lg px-3 py-2 border border-gray-100">
             <span className="text-xs text-gray-700 font-medium truncate">{line.name}</span>
-            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap ml-2 ${line.color}`}>{line.status}</span>
+            <span className={`text-xs font-bold px-2 py-0.5 rounded-full whitespace-nowrap ml-2 ${line.color}`}>{line.status}</span>
           </div>
         ))}
       </div>
@@ -76,9 +76,9 @@ export function AIMPreview() {
           { priority: 'P3', text: 'Update nursing SOP for medication reconciliation at discharge', impact: 'Compliance', color: 'bg-teal-100 text-teal-700' },
         ].map((rec, i) => (
           <div key={i} className="flex items-start gap-3 bg-white rounded-xl p-3 border border-gray-100">
-            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md flex-shrink-0 mt-0.5 ${rec.color}`}>{rec.priority}</span>
+            <span className={`text-xs font-bold px-1.5 py-0.5 rounded-md flex-shrink-0 mt-0.5 ${rec.color}`}>{rec.priority}</span>
             <p className="text-xs text-gray-700 flex-1 leading-relaxed">{rec.text}</p>
-            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0 whitespace-nowrap ${rec.color}`}>{rec.impact}</span>
+            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full flex-shrink-0 whitespace-nowrap ${rec.color}`}>{rec.impact}</span>
           </div>
         ))}
       </div>
@@ -100,7 +100,7 @@ export function CPIPreview() {
               <i className={`${stat.icon} text-sm`}></i>
             </div>
             <p className="text-lg font-bold text-gray-900">{stat.value}</p>
-            <p className="text-[10px] text-gray-400 mt-0.5 leading-tight">{stat.label}</p>
+            <p className="text-xs text-gray-400 mt-0.5 leading-tight">{stat.label}</p>
           </div>
         ))}
       </div>
@@ -114,9 +114,9 @@ export function CPIPreview() {
           ].map((t, i) => (
             <div key={i} className="flex items-center justify-between gap-2">
               <span className="text-xs text-gray-700 font-medium flex-1 truncate">{t.name}</span>
-              <span className="text-[10px] text-gray-400">{t.time}</span>
+              <span className="text-xs text-gray-400">{t.time}</span>
               <span className="text-xs font-semibold text-gray-500">{t.patients} pts</span>
-              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap ${t.color}`}>{t.status}</span>
+              <span className={`text-xs font-bold px-2 py-0.5 rounded-full whitespace-nowrap ${t.color}`}>{t.status}</span>
             </div>
           ))}
         </div>
@@ -127,7 +127,7 @@ export function CPIPreview() {
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-xs font-bold text-white">HIPAA Compliant — Field-Level Encryption Active</p>
-          <p className="text-[10px] text-white/50 mt-0.5">All PHI encrypted with AES-256 · Audit logs enabled · phi_access_logs active</p>
+          <p className="text-xs text-white/50 mt-0.5">All PHI encrypted with AES-256 · Audit logs enabled · phi_access_logs active</p>
         </div>
         <i className="ri-checkbox-circle-fill text-teal-400 text-xl flex-shrink-0"></i>
       </div>
@@ -140,7 +140,7 @@ export function AnomalyPreview() {
     <div className="p-5 space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-xs font-bold text-gray-700">Live Anomaly Feed</p>
-        <span className="flex items-center gap-1.5 text-[10px] text-emerald-600 font-semibold">
+        <span className="flex items-center gap-1.5 text-xs text-emerald-600 font-semibold">
           <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
           Monitoring 48 metrics
         </span>
@@ -160,11 +160,11 @@ export function AnomalyPreview() {
             }`}></div>
             <div className="flex-1 min-w-0">
               <p className="text-xs font-semibold text-gray-800 truncate">{a.metric}</p>
-              <p className="text-[10px] text-gray-400">{a.time}</p>
+              <p className="text-xs text-gray-400">{a.time}</p>
             </div>
             <span className="text-xs font-bold text-gray-700">{a.value}</span>
-            <span className={`text-[10px] font-semibold ${a.delta.startsWith('↑') ? 'text-red-600' : 'text-emerald-600'}`}>{a.delta}</span>
-            <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold whitespace-nowrap ${
+            <span className={`text-xs font-semibold ${a.delta.startsWith('↑') ? 'text-red-600' : 'text-emerald-600'}`}>{a.delta}</span>
+            <span className={`text-xs px-2 py-0.5 rounded-full font-bold whitespace-nowrap ${
               a.severity === 'Critical' ? 'bg-red-100 text-red-700' :
               a.severity === 'High' ? 'bg-yellow-100 text-yellow-700' :
               a.severity === 'Medium' ? 'bg-gray-100 text-gray-600' : 'bg-emerald-100 text-emerald-700'
@@ -173,10 +173,10 @@ export function AnomalyPreview() {
         ))}
       </div>
       <div className="bg-white rounded-xl p-3 border border-gray-100">
-        <p className="text-[10px] text-gray-400 font-medium mb-2">Alert Channels Active</p>
+        <p className="text-xs text-gray-400 font-medium mb-2">Alert Channels Active</p>
         <div className="flex items-center gap-2 flex-wrap">
           {['Email', 'Slack', 'PagerDuty', 'Webhook', 'In-App'].map(ch => (
-            <span key={ch} className="text-[10px] font-semibold text-teal-700 bg-teal-50 border border-teal-200 px-2 py-0.5 rounded-full">{ch}</span>
+            <span key={ch} className="text-xs font-semibold text-teal-700 bg-teal-50 border border-teal-200 px-2 py-0.5 rounded-full">{ch}</span>
           ))}
         </div>
       </div>
@@ -190,7 +190,7 @@ export function DMAICPreview() {
       <div className="bg-white rounded-xl p-3 border border-gray-100">
         <div className="flex items-center justify-between mb-3">
           <p className="text-xs font-bold text-gray-700">Project: Reduce ED Wait Time</p>
-          <span className="text-[10px] text-teal-600 font-bold bg-teal-50 px-2 py-0.5 rounded-full">In Progress</span>
+          <span className="text-xs text-teal-600 font-bold bg-teal-50 px-2 py-0.5 rounded-full">In Progress</span>
         </div>
         <div className="flex items-stretch gap-1">
           {[
@@ -212,7 +212,7 @@ export function DMAICPreview() {
         </div>
       </div>
       <div className="space-y-2">
-        <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Open Tasks</p>
+        <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Open Tasks</p>
         {[
           { task: 'Complete fishbone diagram for triage delays', owner: 'Dr. Martinez', due: 'Oct 28', done: false },
           { task: 'Validate sample size for hypothesis test', owner: 'J. Chen', due: 'Oct 30', done: false },
@@ -224,7 +224,7 @@ export function DMAICPreview() {
               {t.done && <i className="ri-check-line text-white text-[9px]"></i>}
             </div>
             <p className={`text-xs flex-1 truncate ${t.done ? 'line-through text-gray-400' : 'text-gray-700'}`}>{t.task}</p>
-            <span className="text-[10px] text-gray-400 whitespace-nowrap">{t.due}</span>
+            <span className="text-xs text-gray-400 whitespace-nowrap">{t.due}</span>
           </div>
         ))}
       </div>
@@ -253,13 +253,13 @@ export function RootCausePreview() {
                 <div className="flex items-center gap-2">
                   <div className="w-2 h-2 rounded-full bg-yellow-500 flex-shrink-0"></div>
                   <span className="text-gray-700 font-medium">{c.cause}</span>
-                  <span className="text-[10px] bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded font-bold">{c.probability}</span>
+                  <span className="text-xs bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded font-bold">{c.probability}</span>
                 </div>
                 <div className="pl-4 space-y-1">
                   {c.children.map((ch, j) => (
                     <div key={j} className="flex items-center gap-2">
                       <div className="w-1.5 h-1.5 rounded-full bg-gray-300 flex-shrink-0"></div>
-                      <span className="text-gray-500 text-[11px]">{ch}</span>
+                      <span className="text-gray-500 text-xs">{ch}</span>
                     </div>
                   ))}
                 </div>
@@ -279,7 +279,7 @@ export function RootCausePreview() {
               <i className={`${s.icon} text-sm`}></i>
             </div>
             <p className="text-base font-bold text-gray-900">{s.value}</p>
-            <p className="text-[10px] text-gray-400">{s.label}</p>
+            <p className="text-xs text-gray-400">{s.label}</p>
           </div>
         ))}
       </div>
@@ -293,7 +293,7 @@ export function ForecastPreview() {
       <div className="bg-white rounded-xl p-4 border border-gray-100">
         <div className="flex items-center justify-between mb-3">
           <p className="text-xs font-bold text-gray-700">Patient Volume Forecast — Next 30 Days</p>
-          <span className="text-[10px] font-bold text-teal-600 bg-teal-50 px-2 py-0.5 rounded-full">95% CI</span>
+          <span className="text-xs font-bold text-teal-600 bg-teal-50 px-2 py-0.5 rounded-full">95% CI</span>
         </div>
         <div className="relative h-24">
           <div className="flex items-end gap-0.5 h-full">
@@ -318,7 +318,7 @@ export function ForecastPreview() {
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div className="bg-white rounded-xl p-3 border border-gray-100">
-          <p className="text-[10px] text-gray-400 mb-1">What-If Scenario</p>
+          <p className="text-xs text-gray-400 mb-1">What-If Scenario</p>
           <p className="text-xs font-semibold text-gray-800 mb-2">"If LOS drops by 1 day..."</p>
           <div className="space-y-1.5">
             {[
@@ -327,25 +327,25 @@ export function ForecastPreview() {
               { label: 'Staff Load', change: '-7% pressure', up: true },
             ].map((r, i) => (
               <div key={i} className="flex items-center justify-between">
-                <span className="text-[10px] text-gray-500">{r.label}</span>
-                <span className="text-[10px] font-bold text-emerald-600">{r.change}</span>
+                <span className="text-xs text-gray-500">{r.label}</span>
+                <span className="text-xs font-bold text-emerald-600">{r.change}</span>
               </div>
             ))}
           </div>
         </div>
         <div className="bg-white rounded-xl p-3 border border-gray-100">
-          <p className="text-[10px] text-gray-400 mb-1">Model Accuracy</p>
+          <p className="text-xs text-gray-400 mb-1">Model Accuracy</p>
           {[
             { model: 'ARIMA', accuracy: '91.2%' },
             { model: 'Prophet', accuracy: '94.7%' },
             { model: 'Ensemble', accuracy: '96.1%' },
           ].map((m, i) => (
             <div key={i} className="flex items-center gap-2 mb-1.5">
-              <span className="text-[10px] text-gray-500 w-16">{m.model}</span>
+              <span className="text-xs text-gray-500 w-16">{m.model}</span>
               <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
                 <div className="h-full bg-teal-500 rounded-full" style={{ width: m.accuracy }}></div>
               </div>
-              <span className="text-[10px] font-bold text-gray-700 w-8 text-right">{m.accuracy}</span>
+              <span className="text-xs font-bold text-gray-700 w-8 text-right">{m.accuracy}</span>
             </div>
           ))}
         </div>
@@ -368,13 +368,13 @@ export function DataIntegrationPreview() {
               <i className={`${s.icon} text-sm`}></i>
             </div>
             <p className="text-base font-bold text-gray-900">{s.value}</p>
-            <p className="text-[10px] text-gray-400 leading-tight">{s.label}</p>
+            <p className="text-xs text-gray-400 leading-tight">{s.label}</p>
           </div>
         ))}
       </div>
       <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
         <div className="px-3 py-2 border-b border-gray-100 bg-gray-50/60">
-          <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Active ETL Pipelines</p>
+          <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Active ETL Pipelines</p>
         </div>
         <div className="divide-y divide-gray-50">
           {[
@@ -393,10 +393,10 @@ export function DataIntegrationPreview() {
                   <div className="flex-1 h-1 bg-gray-100 rounded-full overflow-hidden">
                     <div className={`h-full rounded-full ${p.health > 90 ? 'bg-teal-500' : 'bg-yellow-400'}`} style={{ width: `${p.health}%` }}></div>
                   </div>
-                  <span className="text-[10px] text-gray-400 whitespace-nowrap">{p.health}%</span>
+                  <span className="text-xs text-gray-400 whitespace-nowrap">{p.health}%</span>
                 </div>
               </div>
-              <span className="text-[10px] text-gray-500 whitespace-nowrap">{p.records} rows</span>
+              <span className="text-xs text-gray-500 whitespace-nowrap">{p.records} rows</span>
             </div>
           ))}
         </div>
@@ -408,7 +408,7 @@ export function DataIntegrationPreview() {
 export function KaizenPreview() {
   return (
     <div className="p-5 space-y-4">
-      <div className="grid grid-cols-4 gap-2 text-center text-[10px]">
+      <div className="grid grid-cols-4 gap-2 text-center text-xs">
         {[
           { stage: 'Backlog', count: 8, color: 'bg-gray-100 text-gray-600' },
           { stage: 'In Progress', count: 4, color: 'bg-teal-100 text-teal-700' },
@@ -433,7 +433,7 @@ export function KaizenPreview() {
               {item.urgent && <span className="text-[9px] bg-red-100 text-red-600 font-bold px-1.5 py-0.5 rounded-full whitespace-nowrap">Urgent</span>}
             </div>
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-[10px] text-gray-400">{item.owner}</span>
+              <span className="text-xs text-gray-400">{item.owner}</span>
               {item.tags.map(t => (
                 <span key={t} className="text-[9px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded font-medium">{t}</span>
               ))}
@@ -462,7 +462,7 @@ export function BenchmarkingPreview() {
                 <span className="text-xs text-gray-700 font-medium">{m.metric}</span>
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-bold text-gray-900">{m.yours}{m.unit}</span>
-                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${m.better ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-600'}`}>
+                  <span className={`text-xs font-bold px-1.5 py-0.5 rounded-full ${m.better ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-600'}`}>
                     {m.better ? '▲ Better' : '▼ Below'}
                   </span>
                 </div>
@@ -478,7 +478,7 @@ export function BenchmarkingPreview() {
                     style={{ left: `${(m.benchmark / (Math.max(m.yours, m.benchmark) * 1.1)) * 100}%` }}
                   ></div>
                 </div>
-                <span className="text-[10px] text-gray-400 whitespace-nowrap">Peer: {m.benchmark}{m.unit}</span>
+                <span className="text-xs text-gray-400 whitespace-nowrap">Peer: {m.benchmark}{m.unit}</span>
               </div>
             </div>
           ))}
@@ -486,14 +486,14 @@ export function BenchmarkingPreview() {
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div className="bg-white rounded-xl p-3 border border-gray-100">
-          <p className="text-[10px] text-gray-400 mb-1.5">Percentile Ranking</p>
+          <p className="text-xs text-gray-400 mb-1.5">Percentile Ranking</p>
           <p className="text-2xl font-extrabold text-gray-900">72<span className="text-sm font-semibold text-gray-400">nd</span></p>
-          <p className="text-[10px] text-gray-500 mt-0.5">vs. 2,400 peer hospitals</p>
+          <p className="text-xs text-gray-500 mt-0.5">vs. 2,400 peer hospitals</p>
         </div>
         <div className="bg-white rounded-xl p-3 border border-gray-100">
-          <p className="text-[10px] text-gray-400 mb-1.5">Top Opportunity</p>
+          <p className="text-xs text-gray-400 mb-1.5">Top Opportunity</p>
           <p className="text-xs font-bold text-gray-800">HCAHPS Score</p>
-          <p className="text-[10px] text-red-600 font-semibold mt-0.5">+4 points gap to top quartile</p>
+          <p className="text-xs text-red-600 font-semibold mt-0.5">+4 points gap to top quartile</p>
         </div>
       </div>
     </div>

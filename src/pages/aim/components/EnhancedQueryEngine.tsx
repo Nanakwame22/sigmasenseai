@@ -297,7 +297,7 @@ export default function EnhancedQueryEngine({ compact = false }: Props) {
         {/* Suggestions */}
         {!result && suggestions.length > 0 && (
           <div>
-            <p className="text-[10px] font-semibold text-brand-400 uppercase tracking-widest mb-2">Try asking</p>
+            <p className="text-xs font-semibold text-brand-400 uppercase tracking-widest mb-2">Try asking</p>
             <div className="flex flex-col gap-1.5">
               {suggestions.slice(0, 3).map((s, i) => (
                 <button
@@ -427,9 +427,9 @@ export default function EnhancedQueryEngine({ compact = false }: Props) {
             </div>
             <div className="flex items-center justify-between">
               <p className="text-xs text-brand-400">
-                <kbd className="px-1.5 py-0.5 bg-brand-100 border border-border rounded text-[10px] font-mono">Enter</kbd>
+                <kbd className="px-1.5 py-0.5 bg-brand-100 border border-border rounded text-xs font-mono">Enter</kbd>
                 {' '}to run &nbsp;·&nbsp;
-                <kbd className="px-1.5 py-0.5 bg-brand-100 border border-border rounded text-[10px] font-mono">Shift+Enter</kbd>
+                <kbd className="px-1.5 py-0.5 bg-brand-100 border border-border rounded text-xs font-mono">Shift+Enter</kbd>
                 {' '}for new line
               </p>
               <button
@@ -448,7 +448,7 @@ export default function EnhancedQueryEngine({ compact = false }: Props) {
 
           {/* How to use */}
           <div className="rounded-premium-xl border border-border bg-brand-50 p-5">
-            <div className="text-[10px] font-bold text-brand-400 uppercase tracking-widest mb-4">How to use</div>
+            <div className="text-xs font-bold text-brand-400 uppercase tracking-widest mb-4">How to use</div>
             <ul className="space-y-4">
               {[
                 { icon: 'ri-bar-chart-box-line', text: 'Ask for trends, exceptions, comparisons, or operational drivers.' },
@@ -469,7 +469,7 @@ export default function EnhancedQueryEngine({ compact = false }: Props) {
         {/* Suggested prompts */}
         {!result && suggestions.length > 0 && (
           <div className="mt-5 pt-5 border-t border-border">
-            <div className="mb-3 text-[10px] font-bold text-brand-400 uppercase tracking-widest">Suggested prompts</div>
+            <div className="mb-3 text-xs font-bold text-brand-400 uppercase tracking-widest">Suggested prompts</div>
             <div className="flex flex-wrap gap-2">
               {suggestions.slice(0, 6).map((suggestion, index) => (
                 <button
@@ -477,7 +477,7 @@ export default function EnhancedQueryEngine({ compact = false }: Props) {
                   onClick={() => handleSuggestionClick(suggestion)}
                   className="flex items-center gap-1.5 px-3.5 py-1.5 bg-white border border-border text-brand-600 hover:bg-ai-50 hover:text-ai-700 hover:border-ai-200 rounded-full text-xs font-medium transition-all whitespace-nowrap cursor-pointer shadow-elevation-1"
                 >
-                  <i className="ri-corner-down-right-line text-brand-300 text-[10px]"></i>
+                  <i className="ri-corner-down-right-line text-brand-300 text-xs"></i>
                   {suggestion}
                 </button>
               ))}
@@ -525,11 +525,11 @@ export default function EnhancedQueryEngine({ compact = false }: Props) {
               {/* Visualization */}
               <div className="rounded-premium-xl border border-border bg-white p-5 shadow-elevation-1">
                 <div className="flex items-center gap-2 mb-5">
-                  <span className="px-2.5 py-1 bg-brand-100 text-brand-600 text-[11px] font-bold uppercase tracking-wide rounded-full">
+                  <span className="px-2.5 py-1 bg-brand-100 text-brand-600 text-xs font-bold uppercase tracking-wide rounded-full">
                     {result.visualization || 'table'}
                   </span>
                   {result.data && (
-                    <span className="px-2.5 py-1 bg-ai-100 text-ai-700 text-[11px] font-bold uppercase tracking-wide rounded-full">
+                    <span className="px-2.5 py-1 bg-ai-100 text-ai-700 text-xs font-bold uppercase tracking-wide rounded-full">
                       {result.data.length} row{result.data.length === 1 ? '' : 's'}
                     </span>
                   )}

@@ -312,7 +312,7 @@ const AIMPage: React.FC = () => {
                     <span className="text-sm font-medium whitespace-nowrap tracking-[0.01em]">{item.label}</span>
                     {item.badgeLabel && (
                       <span
-                        className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] ${
+                        className={`rounded-full border px-2 py-0.5 text-xs font-semibold uppercase tracking-[0.14em] ${
                           activeSection === item.id
                             ? 'border-white/20 bg-white/10 text-white/90'
                             : 'border-ai-400/20 bg-ai-500/10 text-ai-300'
@@ -375,21 +375,21 @@ const AIMPage: React.FC = () => {
                     </span>
                   </div>
                   <h1 className="max-w-xl text-[2.2rem] font-bold tracking-[-0.03em] leading-[0.94] text-white lg:text-[2.55rem]">Actionable Intelligence Model</h1>
-                  <p className="mt-3 max-w-xl text-[13px] leading-5 text-brand-100 md:text-sm">
+                  <p className="mt-3 max-w-xl text-sm leading-5 text-brand-100 md:text-sm">
                     SigmaSense&apos;s decision studio for monitoring risk, modeling outcomes, and converting AI guidance into tracked operational work.
                   </p>
                   <div className="mt-5 rounded-[28px] border border-white/10 bg-white/5 p-4 shadow-[0_18px_44px_rgba(15,23,42,0.16)] backdrop-blur-sm">
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                       <div className="max-w-xl">
-                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-200">Role-Based Briefing</div>
+                        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-200">Role-Based Briefing</div>
                         <h2 className="mt-2.5 max-w-lg text-base font-semibold tracking-[-0.02em] leading-6 text-white">{activeBriefing.headline}</h2>
-                        <p className="mt-2.5 text-[13px] leading-5 text-brand-100">{activeBriefing.summary}</p>
-                        <p className="mt-2.5 text-[13px] leading-5 text-ai-100">
+                        <p className="mt-2.5 text-sm leading-5 text-brand-100">{activeBriefing.summary}</p>
+                        <p className="mt-2.5 text-sm leading-5 text-ai-100">
                           <span className="font-semibold text-white">Next move:</span> {activeBriefing.nextMove}
                         </p>
                         <div className="mt-3 flex flex-wrap gap-2">
                           {activeBriefing.chips.map((chip) => (
-                            <span key={chip} className="rounded-full border border-white/10 bg-white/6 px-2.5 py-1 text-[11px] font-medium text-brand-100">
+                            <span key={chip} className="rounded-full border border-white/10 bg-white/6 px-2.5 py-1 text-xs font-medium text-brand-100">
                               {chip}
                             </span>
                           ))}
@@ -406,7 +406,7 @@ const AIMPage: React.FC = () => {
                           <button
                             key={lens.id}
                             onClick={() => setBriefingLens(lens.id)}
-                            className={`rounded-full border px-2.5 py-1.5 text-[11px] font-semibold transition-colors ${
+                            className={`rounded-full border px-2.5 py-1.5 text-xs font-semibold transition-colors ${
                               briefingLens === lens.id
                                 ? 'border-ai-300/40 bg-ai-400/15 text-white'
                                 : 'border-white/10 bg-white/5 text-brand-200 hover:bg-white/10'
@@ -416,17 +416,17 @@ const AIMPage: React.FC = () => {
                           </button>
                         ))}
                         <div className="w-full rounded-2xl border border-white/10 bg-white/5 px-3.5 py-3 text-left">
-                          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-brand-300">Audience</div>
-                          <div className="mt-1.5 text-[12px] leading-5 font-medium text-white">{activeBriefing.audience}</div>
+                          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-300">Audience</div>
+                          <div className="mt-1.5 text-xs leading-5 font-medium text-white">{activeBriefing.audience}</div>
                         </div>
                       </div>
                     </div>
                   </div>
 
                   <div className="mt-5 flex flex-wrap gap-2">
-                    <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-medium text-brand-100">Role-aware briefings</span>
-                    <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-medium text-brand-100">Decision-grade AI guidance</span>
-                    <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-medium text-brand-100">Closed-loop actions</span>
+                    <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-brand-100">Role-aware briefings</span>
+                    <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-brand-100">Decision-grade AI guidance</span>
+                    <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-brand-100">Closed-loop actions</span>
                   </div>
                 </div>
                 <div className="space-y-4">
@@ -481,7 +481,7 @@ const AIMPage: React.FC = () => {
                         .map((issue) => (
                           <span
                             key={issue.key}
-                            className={`rounded-full px-3 py-1 text-[11px] font-medium ${
+                            className={`rounded-full px-3 py-1 text-xs font-medium ${
                               issue.severity === 'Needs attention'
                                 ? 'bg-rose-500/15 text-rose-100'
                                 : issue.severity === 'Watch'
@@ -493,7 +493,7 @@ const AIMPage: React.FC = () => {
                           </span>
                         ))}
                       {aimStats.intelligenceHealth.issues.filter((issue) => issue.count > 0).length === 0 && (
-                        <span className="rounded-full bg-emerald-500/15 px-3 py-1 text-[11px] font-medium text-emerald-100">
+                        <span className="rounded-full bg-emerald-500/15 px-3 py-1 text-xs font-medium text-emerald-100">
                           No active intelligence health warnings
                         </span>
                       )}
@@ -512,7 +512,7 @@ const AIMPage: React.FC = () => {
                   <div className="rounded-[32px] border border-brand-200/80 bg-[linear-gradient(180deg,_rgba(255,255,255,0.98),_rgba(248,250,252,0.98))] p-6 shadow-[0_24px_70px_rgba(15,23,42,0.08)]">
                     <div className="flex items-center justify-between">
                       <div>
-                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-500">Mission Control</div>
+                        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-500">Mission Control</div>
                         <h3 className="mt-2 text-xl font-bold tracking-tight text-brand-900">Quick Ask</h3>
                         <p className="mt-2 text-sm leading-6 text-brand-600">Use AIM as a live operational copilot without leaving the current briefing.</p>
                       </div>
@@ -554,7 +554,7 @@ const AIMPage: React.FC = () => {
                           </div>
 
                           <div className="space-y-3">
-                            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-500">Intelligence Metrics</div>
+                            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-500">Intelligence Metrics</div>
                             {aimStats.loading ? (
                               <div className="space-y-3">
                                 {[1, 2, 3].map((i) => (
@@ -574,7 +574,7 @@ const AIMPage: React.FC = () => {
                                       </div>
                                       <div className="text-xs text-brand-600 font-medium">AI Confidence Score</div>
                                     </div>
-                                    <span className="rounded-full bg-ai-600/10 px-2.5 py-1 text-[11px] font-semibold text-ai-700">
+                                    <span className="rounded-full bg-ai-600/10 px-2.5 py-1 text-xs font-semibold text-ai-700">
                                       {confidenceState}
                                     </span>
                                   </div>

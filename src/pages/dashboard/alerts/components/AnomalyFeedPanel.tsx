@@ -167,7 +167,7 @@ export default function AnomalyFeedPanel({ onAlertsCreated }: AnomalyFeedPanelPr
             <div className="flex items-center gap-2">
               <span className="text-sm font-bold text-amber-900">Live Anomaly Feed</span>
               {unalertedCount > 0 && (
-                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-200 px-2 py-0.5 rounded-full">
+                <span className="inline-flex items-center gap-1 text-xs font-bold text-amber-700 bg-amber-200 px-2 py-0.5 rounded-full">
                   <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse inline-block" />
                   {unalertedCount} without alert
                 </span>
@@ -221,10 +221,10 @@ export default function AnomalyFeedPanel({ onAlertsCreated }: AnomalyFeedPanelPr
                     <span className="text-sm font-semibold text-gray-900 truncate">
                       {anomaly.metric?.name ?? 'Unknown Metric'}
                     </span>
-                    <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${sev.bg} ${sev.text} border ${sev.border}`}>
+                    <span className={`text-xs font-bold uppercase px-1.5 py-0.5 rounded ${sev.bg} ${sev.text} border ${sev.border}`}>
                       {anomaly.severity}
                     </span>
-                    <span className="text-[10px] text-gray-500 capitalize bg-gray-100 px-1.5 py-0.5 rounded">
+                    <span className="text-xs text-gray-500 capitalize bg-gray-100 px-1.5 py-0.5 rounded">
                       {anomaly.anomaly_type}
                     </span>
                   </div>

@@ -1089,7 +1089,7 @@ export default function ETLPipelinesPage() {
 
       {selectedPipeline && (
         <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-4">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">ETL Provenance</div>
+          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">ETL Provenance</div>
           <p className="mt-1 text-sm font-semibold text-slate-900">
             {focusedMetricId
               ? `Focused on the pipeline currently feeding the selected metric`
@@ -1633,7 +1633,7 @@ export default function ETLPipelinesPage() {
                               <div className="flex items-center gap-2">
                                 <i className="ri-ai-generate text-teal-600"></i>
                                 <p className="text-sm font-semibold text-teal-900">AI-assisted mapping suggestion</p>
-                                <span className={`px-2 py-1 rounded-full text-[11px] font-semibold ${
+                                <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
                                   mappingSuggestion.confidence === 'high'
                                     ? 'bg-emerald-100 text-emerald-700'
                                     : mappingSuggestion.confidence === 'medium'

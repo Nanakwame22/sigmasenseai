@@ -730,15 +730,15 @@ const ActionCenterSection: React.FC = () => {
 
                   <div className="mt-5 grid gap-4 md:grid-cols-3">
                     <div className="rounded-2xl bg-brand-50 p-4">
-                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-500">Task Items</div>
+                      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-500">Task Items</div>
                       <div className="mt-2 text-2xl font-bold text-brand-900">{readinessCounts.tasks}</div>
                     </div>
                     <div className="rounded-2xl bg-brand-50 p-4">
-                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-500">DMAIC Work</div>
+                      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-500">DMAIC Work</div>
                       <div className="mt-2 text-2xl font-bold text-brand-900">{readinessCounts.dmaic}</div>
                     </div>
                     <div className="rounded-2xl bg-brand-50 p-4">
-                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-500">Kaizen Items</div>
+                      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-500">Kaizen Items</div>
                       <div className="mt-2 text-2xl font-bold text-brand-900">{readinessCounts.kaizen}</div>
                     </div>
                   </div>
@@ -803,7 +803,7 @@ const ActionCenterSection: React.FC = () => {
                         <div className="font-semibold text-brand-900 mb-1">{action.title}</div>
                         <div className="text-xs text-brand-500">From: {action.createdFrom}</div>
                         <div className="mt-2 flex flex-wrap items-center gap-2">
-                          <span className="rounded-full bg-brand-100 px-2.5 py-1 text-[11px] font-semibold text-brand-700">
+                          <span className="rounded-full bg-brand-100 px-2.5 py-1 text-xs font-semibold text-brand-700">
                             {action.sourceSignalLabel}
                           </span>
                           <span className="text-xs text-brand-500">{action.sourceSignalDetail}</span>

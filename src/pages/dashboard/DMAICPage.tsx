@@ -3368,10 +3368,10 @@ Total Items: ${Object.values(sipocDiagram).reduce((sum, arr) => sum + arr.length
                           {phase.name}
                         </div>
                         {isCompleted && (
-                          <div className="text-[10px] text-teal-600 font-medium">Completed</div>
+                          <div className="text-xs text-teal-600 font-medium">Completed</div>
                         )}
                         {isActive && (
-                          <div className="text-[10px] text-indigo-600 font-medium">In Progress</div>
+                          <div className="text-xs text-indigo-600 font-medium">In Progress</div>
                         )}
                       </div>
                     </button>

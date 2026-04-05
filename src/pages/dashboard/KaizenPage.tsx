@@ -452,7 +452,7 @@ export default function KaizenPage() {
             <div>
               <p className="text-xs text-gray-600">Avg. Time</p>
               <p className="text-2xl font-bold text-purple-600 mt-1">{Math.round(stats.avgImplementationTime)}</p>
-              <p className="text-[10px] text-gray-500">days</p>
+              <p className="text-xs text-gray-500">days</p>
             </div>
             <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
               <i className="ri-timer-line text-lg text-purple-600"></i>

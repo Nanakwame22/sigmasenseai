@@ -222,19 +222,19 @@ const DecisionSupportSection: React.FC = () => {
 
                     <div className="mt-5 grid gap-3 sm:grid-cols-4">
                       <div className="rounded-2xl bg-white/75 px-4 py-3">
-                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-500">Investment</div>
+                        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-500">Investment</div>
                         <div className="mt-1 text-lg font-bold text-brand-900">{scenario.cost}</div>
                       </div>
                       <div className="rounded-2xl bg-white/75 px-4 py-3">
-                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-500">ROI</div>
+                        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-500">ROI</div>
                         <div className={`mt-1 text-lg font-bold ${theme.accent}`}>{scenario.roi}%</div>
                       </div>
                       <div className="rounded-2xl bg-white/75 px-4 py-3">
-                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-500">Annual impact</div>
+                        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-500">Annual impact</div>
                         <div className={`mt-1 text-lg font-bold ${theme.accent}`}>{scenario.impact}</div>
                       </div>
                       <div className="rounded-2xl bg-white/75 px-4 py-3">
-                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-500">Decision score</div>
+                        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-500">Decision score</div>
                         <div className={`mt-1 text-lg font-bold ${theme.accent}`}>{scenario.score}/100</div>
                       </div>
                     </div>
@@ -253,29 +253,29 @@ const DecisionSupportSection: React.FC = () => {
 
                 <div className="mt-6 grid gap-3 sm:grid-cols-2">
                   <div className="rounded-2xl bg-white/80 px-4 py-4">
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-500">Modeled annual upside</div>
+                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-500">Modeled annual upside</div>
                     <div className={`mt-2 text-3xl font-bold ${activeScenarioTheme.accent}`}>{activeScenario.impact}</div>
                   </div>
                   <div className="rounded-2xl bg-white/80 px-4 py-4">
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-500">Execution risk</div>
+                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-500">Execution risk</div>
                     <div className="mt-2 text-3xl font-bold text-brand-900">{activeScenario.risk}</div>
                   </div>
                 </div>
 
                 <div className="mt-4 flex flex-wrap gap-2">
-                  <span className="rounded-full border border-brand-200 bg-white/80 px-3 py-1 text-[11px] font-semibold text-brand-600">
+                  <span className="rounded-full border border-brand-200 bg-white/80 px-3 py-1 text-xs font-semibold text-brand-600">
                     Readiness: {activeDecisionBrief.evidence.decisionReadiness}
                   </span>
-                  <span className="rounded-full border border-brand-200 bg-white/80 px-3 py-1 text-[11px] font-semibold text-brand-600">
+                  <span className="rounded-full border border-brand-200 bg-white/80 px-3 py-1 text-xs font-semibold text-brand-600">
                     Provenance: {activeDecisionBrief.evidence.sourceLabel}
                   </span>
-                  <span className="rounded-full border border-brand-200 bg-white/80 px-3 py-1 text-[11px] font-semibold text-brand-600">
+                  <span className="rounded-full border border-brand-200 bg-white/80 px-3 py-1 text-xs font-semibold text-brand-600">
                     Confidence basis: {activeDecisionBrief.evidence.confidenceState}
                   </span>
                 </div>
 
                 <div className="mt-6 rounded-[22px] bg-white/80 p-5">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-500">Why AIM prefers it</div>
+                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-500">Why AIM prefers it</div>
                   <div className="mt-4 space-y-3">
                     {activeScenario.pros.slice(0, 3).map((pro, idx) => (
                       <div key={idx} className="flex items-start gap-3 text-sm text-brand-700">
@@ -505,24 +505,24 @@ const DecisionSupportSection: React.FC = () => {
         >
           <div className="grid gap-4 md:grid-cols-4">
             <div className="rounded-[22px] border border-brand-200 bg-white p-5">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-500">Scenario coverage</div>
+              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-500">Scenario coverage</div>
               <div className="mt-2 text-3xl font-bold text-brand-900">{scenarios.length}</div>
               <div className="mt-1 text-sm text-brand-500">decision path{scenarios.length === 1 ? '' : 's'} currently ready</div>
             </div>
             <div className="rounded-[22px] border border-brand-200 bg-white p-5">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-500">Justification briefs</div>
+              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-500">Justification briefs</div>
               <div className="mt-2 text-3xl font-bold text-brand-900">{justifications.length}</div>
               <div className="mt-1 text-sm text-brand-500">recommendation narratives available</div>
             </div>
             <div className="rounded-[22px] border border-brand-200 bg-white p-5">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-500">Confidence coverage</div>
+              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-500">Confidence coverage</div>
               <div className="mt-2 text-3xl font-bold text-ai-600">
                 {hasConfidenceContent && confidenceBreakdown ? `${confidenceBreakdown.overallScore}%` : 'Pending'}
               </div>
               <div className="mt-1 text-sm text-brand-500">evidence-backed confidence depth</div>
             </div>
             <div className="rounded-[22px] border border-brand-200 bg-white p-5">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-500">Current status</div>
+              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-500">Current status</div>
               <div className="mt-2 text-2xl font-bold text-amber-600">Needs more evidence</div>
               <div className="mt-1 text-sm text-brand-500">AIM is still gathering the strongest decision path</div>
             </div>

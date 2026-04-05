@@ -137,27 +137,27 @@ function KPICard({ item }: { item: KPIHealthItem }) {
 
       <div className="mt-3 rounded-xl border border-slate-100 bg-slate-50/80 p-3">
         <div className="flex flex-wrap gap-2">
-          <div className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600">
+          <div className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-600">
             Freshness: {freshness}
           </div>
-          <div className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600">
+          <div className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-600">
             History: {item.historyPoints} points
           </div>
         </div>
-        <p className="mt-2 text-[11px] leading-5 text-slate-500">{item.evidenceSummary}</p>
-        <p className="mt-1 text-[11px] leading-5 text-slate-400">{item.lineageSummary}</p>
-        <p className="mt-1 text-[11px] leading-5 text-slate-400">Provenance: {item.provenanceSummary}</p>
+        <p className="mt-2 text-xs leading-5 text-slate-500">{item.evidenceSummary}</p>
+        <p className="mt-1 text-xs leading-5 text-slate-400">{item.lineageSummary}</p>
+        <p className="mt-1 text-xs leading-5 text-slate-400">Provenance: {item.provenanceSummary}</p>
         <div className="mt-3 flex flex-wrap gap-2">
           <Link
             to={`/dashboard/metrics?metric=${item.id}`}
-            className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:border-teal-200 hover:text-teal-700"
+            className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 hover:border-teal-200 hover:text-teal-700"
           >
             <i className="ri-line-chart-line"></i>
             Metric
           </Link>
           <Link
             to={`/dashboard/etl-pipelines?metric=${item.id}`}
-            className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:border-teal-200 hover:text-teal-700"
+            className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 hover:border-teal-200 hover:text-teal-700"
           >
             <i className="ri-git-branch-line"></i>
             ETL

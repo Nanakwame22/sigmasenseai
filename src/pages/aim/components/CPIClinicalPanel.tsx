@@ -285,7 +285,7 @@ export default function CPIClinicalPanel() {
               )}
 
               {/* Status pill */}
-              <span className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide ${sCfg.text}`}>
+              <span className={`inline-flex items-center gap-1 text-xs font-bold uppercase tracking-wide ${sCfg.text}`}>
                 {sCfg.label}
               </span>
 
@@ -294,8 +294,8 @@ export default function CPIClinicalPanel() {
                 <div className="mt-2.5 pt-2.5 border-t border-white/50 space-y-1">
                   {d.subMetrics.slice(0, 2).map((sm, idx) => (
                     <div key={idx} className="flex items-center justify-between">
-                      <span className="text-[10px] text-gray-500 truncate max-w-[70%]">{sm.name.replace(/^(ED |Lab |30-Day |Staff |Critical |Patient )/i, '')}</span>
-                      <span className="text-[10px] font-semibold text-gray-700 whitespace-nowrap">
+                      <span className="text-xs text-gray-500 truncate max-w-[70%]">{sm.name.replace(/^(ED |Lab |30-Day |Staff |Critical |Patient )/i, '')}</span>
+                      <span className="text-xs font-semibold text-gray-700 whitespace-nowrap">
                         {sm.value !== null ? `${sm.value} ${sm.unit}`.trim() : '—'}
                       </span>
                     </div>

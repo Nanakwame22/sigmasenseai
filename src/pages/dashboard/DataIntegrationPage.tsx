@@ -1218,7 +1218,7 @@ export default function DataIntegrationPage() {
         <div className="mb-8 rounded-[28px] border border-slate-200 bg-gradient-to-br from-white via-slate-50 to-cyan-50/60 p-7 shadow-[0_24px_60px_-40px_rgba(15,23,42,0.45)]">
           <div className="flex items-start justify-between gap-6">
             <div className="max-w-3xl">
-              <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-cyan-700">
+              <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em] text-cyan-700">
                 <span className="h-2 w-2 rounded-full bg-cyan-500"></span>
                 Data Integration Control
               </div>
@@ -1228,15 +1228,15 @@ export default function DataIntegrationPage() {
               </p>
               <div className="mt-5 flex flex-wrap gap-3">
                 <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Connected Sources</div>
+                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Connected Sources</div>
                   <div className="mt-1 text-lg font-bold text-slate-900">{healthSummary.total}</div>
                 </div>
                 <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Average Reliability</div>
+                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Average Reliability</div>
                   <div className="mt-1 text-lg font-bold text-slate-900">{averageReliability}%</div>
                 </div>
                 <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Events Last 7 Days</div>
+                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Events Last 7 Days</div>
                   <div className="mt-1 text-lg font-bold text-slate-900">{healthSummary.events}</div>
                 </div>
               </div>
@@ -1786,7 +1786,7 @@ export default function DataIntegrationPage() {
             <div className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 p-6 backdrop-blur">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                     New Connector
                   </div>
                   <h2 className="text-xl font-bold text-gray-900">Add Data Source</h2>

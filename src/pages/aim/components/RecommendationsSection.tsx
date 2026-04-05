@@ -500,18 +500,18 @@ export default function RecommendationsSection() {
                       key={item.label}
                       className="rounded-[20px] border border-brand-200/90 bg-white p-4"
                     >
-                      <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-brand-500">{item.label}</div>
+                      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-500">{item.label}</div>
                       <div className={`mt-2 text-[1.65rem] leading-none font-bold tracking-tight ${item.accent}`}>{item.value}</div>
-                      <p className="mt-2 text-[12px] leading-5 text-brand-600">{item.detail}</p>
+                      <p className="mt-2 text-xs leading-5 text-brand-600">{item.detail}</p>
                     </div>
                   ))}
 
                   <div className="rounded-[22px] border border-sky-200 bg-[linear-gradient(180deg,_rgba(240,249,255,0.92),_rgba(255,255,255,0.98))] p-4">
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-brand-500">Current State</div>
+                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-500">Current State</div>
                     <div className="mt-2 text-[1.35rem] leading-tight font-bold tracking-tight text-sky-700">
                       {readinessSummary.recommendationState}
                     </div>
-                    <p className="mt-2 text-[12px] leading-5 text-brand-600">
+                    <p className="mt-2 text-xs leading-5 text-brand-600">
                       AIM can guide direction, but it is not yet action-ready.
                     </p>
                   </div>
@@ -519,7 +519,7 @@ export default function RecommendationsSection() {
               </div>
 
               <div className="rounded-[26px] border border-brand-200 bg-[linear-gradient(180deg,_rgba(248,250,252,0.95),_rgba(255,255,255,0.98))] p-6 shadow-[0_14px_34px_rgba(15,23,42,0.04)]">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-brand-500">Why no recommendation yet</div>
+                <div className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-500">Why no recommendation yet</div>
                 <p className="mt-3 max-w-3xl text-sm leading-6 text-brand-700">
                   AIM still needs a stronger combination of persistent signal pressure, fresh corroborating evidence, and clearer execution confidence
                   before it promotes a watch signal into a formal recommendation.
@@ -534,10 +534,10 @@ export default function RecommendationsSection() {
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-brand-500">Closest watch signals</div>
+                  <div className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-500">Closest watch signals</div>
                   <p className="mt-1 text-sm text-brand-600">Signals closest to crossing into formal recommendation territory.</p>
                 </div>
-                <span className="rounded-full border border-brand-200 bg-brand-50 px-3 py-1 text-[11px] font-semibold text-brand-600">
+                <span className="rounded-full border border-brand-200 bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-600">
                   {watchSignals.length} active
                 </span>
               </div>
@@ -545,16 +545,16 @@ export default function RecommendationsSection() {
                 <div key={signal.id} className="rounded-[24px] border border-brand-200 bg-white p-5 shadow-[0_14px_30px_rgba(15,23,42,0.04)]">
                   <div className="flex flex-wrap items-center gap-2">
                     <h3 className="text-[14px] font-semibold leading-6 text-brand-900">{signal.title}</h3>
-                    <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${getWatchSignalTone(signal.severity)}`}>
+                    <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${getWatchSignalTone(signal.severity)}`}>
                       {signal.severity}
                     </span>
                   </div>
-                  <p className="mt-3 text-[13px] leading-6 text-brand-600">{signal.reason}</p>
+                  <p className="mt-3 text-sm leading-6 text-brand-600">{signal.reason}</p>
                   <div className="mt-3 flex flex-wrap gap-2">
-                    <span className="rounded-full border border-brand-200 bg-brand-50 px-2.5 py-1 text-[11px] font-semibold text-brand-600">
+                    <span className="rounded-full border border-brand-200 bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-600">
                       Freshness: {signal.freshness}
                     </span>
-                    <span className="rounded-full border border-brand-200 bg-brand-50 px-2.5 py-1 text-[11px] font-semibold text-brand-600">
+                    <span className="rounded-full border border-brand-200 bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-600">
                       Closest to recommendation threshold
                     </span>
                   </div>
@@ -650,19 +650,19 @@ export default function RecommendationsSection() {
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2 mb-2">
                           <h3 className="text-base font-semibold text-brand-900">{signal.title}</h3>
-                          <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${getWatchSignalTone(signal.severity)}`}>
+                          <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${getWatchSignalTone(signal.severity)}`}>
                             {signal.severity}
                           </span>
-                          <span className="rounded-full border border-brand-200 bg-brand-50 px-2.5 py-1 text-[11px] font-semibold text-brand-600">
+                          <span className="rounded-full border border-brand-200 bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-600">
                             {signal.category}
                           </span>
                         </div>
                         <p className="text-sm text-brand-600">{signal.reason}</p>
                         <div className="mt-3 flex flex-wrap gap-2">
-                          <span className="rounded-full border border-brand-200 bg-brand-50 px-2.5 py-1 text-[11px] font-semibold text-brand-600">
+                          <span className="rounded-full border border-brand-200 bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-600">
                             Freshness: {signal.freshness}
                           </span>
-                          <span className="rounded-full border border-brand-200 bg-brand-50 px-2.5 py-1 text-[11px] font-semibold text-brand-600">
+                          <span className="rounded-full border border-brand-200 bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-600">
                             Watch only
                           </span>
                         </div>
@@ -739,26 +739,26 @@ export default function RecommendationsSection() {
 
                         <div className="mt-4 rounded-2xl border border-brand-200 bg-brand-50/90 p-4">
                           <div className="flex flex-wrap items-center gap-2">
-                            <span className="rounded-full border border-brand-200 bg-white px-3 py-1 text-[11px] font-semibold text-brand-600">
+                            <span className="rounded-full border border-brand-200 bg-white px-3 py-1 text-xs font-semibold text-brand-600">
                               Freshness: {signal.evidence.freshnessLabel}
                             </span>
-                            <span className={`rounded-full border px-3 py-1 text-[11px] font-semibold ${readiness.tone}`}>
+                            <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${readiness.tone}`}>
                               {readiness.label}
                             </span>
-                            <span className="rounded-full border border-brand-200 bg-white px-3 py-1 text-[11px] font-semibold text-brand-600">
+                            <span className="rounded-full border border-brand-200 bg-white px-3 py-1 text-xs font-semibold text-brand-600">
                               Provenance: {signal.evidence.sourceLabel}
                             </span>
                             <button
                               onClick={() => setExpandedId(isExpanded ? null : rec.id)}
-                              className="rounded-full border border-brand-200 bg-white px-3 py-1 text-[11px] font-semibold text-brand-700 hover:bg-brand-100 transition-colors"
+                              className="rounded-full border border-brand-200 bg-white px-3 py-1 text-xs font-semibold text-brand-700 hover:bg-brand-100 transition-colors"
                             >
                               {isExpanded ? 'Hide evidence' : 'Open evidence'}
                             </button>
                           </div>
-                          <p className="mt-2 text-[11px] leading-5 text-brand-500">
+                          <p className="mt-2 text-xs leading-5 text-brand-500">
                             {getRecommendationEvidence(rec) || 'Confidence and action evidence will strengthen as AIM accumulates more live operational context.'}
                           </p>
-                          <p className="mt-1 text-[11px] leading-5 text-brand-400">
+                          <p className="mt-1 text-xs leading-5 text-brand-400">
                             Lineage: {categoryLineage[rec.category] || 'Operational signals → AIM recommendation engine'}
                           </p>
                         </div>
@@ -766,34 +766,34 @@ export default function RecommendationsSection() {
                         {isExpanded && (
                           <div className="mt-6 rounded-[24px] border border-ai-100 bg-gradient-to-br from-ai-50 via-white to-ai-50 p-5 space-y-4">
                             <div className="flex flex-wrap items-center gap-2">
-                              <span className={`rounded-full border px-3 py-1 text-[11px] font-semibold ${readiness.tone}`}>
+                              <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${readiness.tone}`}>
                                 Decision Readiness: {readiness.label}
                               </span>
-                              <span className="rounded-full border border-brand-200 bg-white px-3 py-1 text-[11px] font-semibold text-brand-600">
+                              <span className="rounded-full border border-brand-200 bg-white px-3 py-1 text-xs font-semibold text-brand-600">
                                 Confidence basis: {signal.evidence.confidenceState} ({signal.confidenceScore}%)
                               </span>
-                              <span className="rounded-full border border-brand-200 bg-white px-3 py-1 text-[11px] font-semibold text-brand-600">
+                              <span className="rounded-full border border-brand-200 bg-white px-3 py-1 text-xs font-semibold text-brand-600">
                                 Effort load: {rec.effort_score || 0}%
                               </span>
-                              <span className="rounded-full border border-brand-200 bg-white px-3 py-1 text-[11px] font-semibold text-brand-600">
+                              <span className="rounded-full border border-brand-200 bg-white px-3 py-1 text-xs font-semibold text-brand-600">
                                 Provenance: {signal.evidence.sourceLabel}
                               </span>
                             </div>
                             <div className="grid gap-4 lg:grid-cols-3">
                               <div className="rounded-2xl border border-white/70 bg-white/90 p-4">
-                                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-brand-500">Why AIM surfaced this</div>
+                                <div className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-500">Why AIM surfaced this</div>
                                 <p className="mt-2 text-sm leading-6 text-brand-700">
                                   {signal.evidence.evidenceSummary}
                                 </p>
                               </div>
                               <div className="rounded-2xl border border-white/70 bg-white/90 p-4">
-                                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-brand-500">Evidence window</div>
+                                <div className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-500">Evidence window</div>
                                 <p className="mt-2 text-sm leading-6 text-brand-700">
                                   Latest signal refresh: {signal.evidence.freshnessLabel}. Stronger evidence appears as more recommendations, alerts, and tracked outcomes accumulate.
                                 </p>
                               </div>
                               <div className="rounded-2xl border border-white/70 bg-white/90 p-4">
-                                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-brand-500">Operator guidance</div>
+                                <div className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-500">Operator guidance</div>
                                 <p className="mt-2 text-sm leading-6 text-brand-700">
                                   {rationale.nextBestMove}
                                 </p>
@@ -801,19 +801,19 @@ export default function RecommendationsSection() {
                             </div>
                             <div className="grid gap-4 lg:grid-cols-3">
                               <div className="rounded-2xl border border-brand-200 bg-white/90 p-4">
-                                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-brand-500">Decision stance</div>
+                                <div className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-500">Decision stance</div>
                                 <p className="mt-2 text-sm leading-6 text-brand-700">
                                   {rationale.decisionStance}
                                 </p>
                               </div>
                               <div className="rounded-2xl border border-brand-200 bg-white/90 p-4">
-                                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-brand-500">Execution tradeoff</div>
+                                <div className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-500">Execution tradeoff</div>
                                 <p className="mt-2 text-sm leading-6 text-brand-700">
                                   {rationale.tradeoff}
                                 </p>
                               </div>
                               <div className="rounded-2xl border border-brand-200 bg-white/90 p-4">
-                                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-brand-500">What would strengthen this</div>
+                                <div className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-500">What would strengthen this</div>
                                 <p className="mt-2 text-sm leading-6 text-brand-700">
                                   {rationale.missingEvidence}
                                 </p>

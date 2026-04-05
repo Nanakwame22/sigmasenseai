@@ -182,7 +182,7 @@ export default function AlertDetailModal({ alert, onClose, onUpdated, onResolveC
               <div key={item.label} className="bg-gray-50 rounded-xl p-3 border border-gray-100">
                 <div className="flex items-center gap-1.5 mb-1">
                   <i className={`${item.icon} text-gray-400 text-xs`}></i>
-                  <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">{item.label}</span>
+                  <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">{item.label}</span>
                 </div>
                 <p className="text-sm font-medium text-gray-800">{item.value}</p>
               </div>

@@ -895,7 +895,7 @@ export default function AdvancedForecastingPage() {
                   <div className="flex items-center gap-2 flex-wrap">
                     <h3 className="font-semibold text-gray-900">{forecast.name}</h3>
                     {forecast.metric_id && isClinicalMetric(forecast.metric_id) && (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-teal-50 border border-teal-200 rounded-full text-[10px] font-bold text-teal-700 whitespace-nowrap">
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-teal-50 border border-teal-200 rounded-full text-xs font-bold text-teal-700 whitespace-nowrap">
                         <i className="ri-heart-pulse-line text-xs"></i>
                         Clinical
                       </span>
@@ -940,7 +940,7 @@ export default function AdvancedForecastingPage() {
                         <span className="text-sm font-bold">{health.score}/100 · {health.level}</span>
                       </div>
                       <p className="text-xs leading-relaxed">{health.warning}</p>
-                      <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
+                      <div className="mt-2 flex flex-wrap gap-2 text-xs">
                         <span className="px-2 py-1 rounded-full bg-white/70 border border-current/15">
                           {health.historyPoints} history points
                         </span>
@@ -1079,7 +1079,7 @@ export default function AdvancedForecastingPage() {
                       <p className="text-xs text-teal-700 mt-1">{recommendedModel.reason}</p>
                     </div>
                     {formData.model_type !== recommendedModel.model && (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold text-amber-700 border border-amber-200 whitespace-nowrap">
+                      <span className="inline-flex items-center gap-1 rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-amber-700 border border-amber-200 whitespace-nowrap">
                         <i className="ri-alert-line"></i>
                         Different model selected
                       </span>

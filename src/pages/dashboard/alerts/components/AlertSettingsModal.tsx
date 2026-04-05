@@ -372,7 +372,7 @@ export default function AlertSettingsModal({ onClose }: AlertSettingsModalProps)
                         >
                           <i className={`${opt.icon} text-lg`}></i>
                           <span className="text-xs font-semibold">{opt.label}</span>
-                          <span className="text-[10px] opacity-70">{opt.desc}</span>
+                          <span className="text-xs opacity-70">{opt.desc}</span>
                         </button>
                       ))}
                     </div>
@@ -400,7 +400,7 @@ export default function AlertSettingsModal({ onClose }: AlertSettingsModalProps)
                         </div>
                         <span className="text-sm font-semibold text-gray-800">Email</span>
                         {prefs.email_enabled && prefs.notification_email && (
-                          <span className="text-[10px] bg-teal-100 text-teal-700 px-2 py-0.5 rounded-full font-semibold">Active</span>
+                          <span className="text-xs bg-teal-100 text-teal-700 px-2 py-0.5 rounded-full font-semibold">Active</span>
                         )}
                       </div>
                       {prefs.email_enabled && (
@@ -436,7 +436,7 @@ export default function AlertSettingsModal({ onClose }: AlertSettingsModalProps)
                         </div>
                         <span className="text-sm font-semibold text-gray-800">SMS</span>
                         {prefs.sms_enabled && prefs.sms_phone && (
-                          <span className="text-[10px] bg-teal-100 text-teal-700 px-2 py-0.5 rounded-full font-semibold">Active</span>
+                          <span className="text-xs bg-teal-100 text-teal-700 px-2 py-0.5 rounded-full font-semibold">Active</span>
                         )}
                       </div>
                       {prefs.sms_enabled && (
@@ -475,7 +475,7 @@ export default function AlertSettingsModal({ onClose }: AlertSettingsModalProps)
                         </div>
                         <span className="text-sm font-semibold text-gray-800">Slack</span>
                         {prefs.slack_enabled && prefs.slack_webhook_url && (
-                          <span className="text-[10px] bg-teal-100 text-teal-700 px-2 py-0.5 rounded-full font-semibold">Active</span>
+                          <span className="text-xs bg-teal-100 text-teal-700 px-2 py-0.5 rounded-full font-semibold">Active</span>
                         )}
                       </div>
                       {prefs.slack_enabled && (

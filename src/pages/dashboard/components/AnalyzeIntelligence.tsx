@@ -124,8 +124,8 @@ function ResidualPlot() {
           }}
         />
       ))}
-      <div className="absolute bottom-2 left-3 text-[10px] text-slate-400 font-medium">Fitted Values</div>
-      <div className="absolute top-2 left-3 text-[10px] text-slate-400 font-medium rotate-0">Residuals</div>
+      <div className="absolute bottom-2 left-3 text-xs text-slate-400 font-medium">Fitted Values</div>
+      <div className="absolute top-2 left-3 text-xs text-slate-400 font-medium rotate-0">Residuals</div>
     </div>
   );
 }
@@ -145,7 +145,7 @@ function VIFHeatmap({ data }: { data: CoefficientRow[] }) {
           key={i}
           className={`${getColor(row.vif)} rounded-lg p-3 text-center transition-all duration-300 hover:scale-105 cursor-default`}
         >
-          <div className="text-[10px] text-white/80 font-medium truncate">{row.variable.replace(/_/g, ' ')}</div>
+          <div className="text-xs text-white/80 font-medium truncate">{row.variable.replace(/_/g, ' ')}</div>
           <div className="text-lg font-bold text-white mt-0.5">{row.vif.toFixed(2)}</div>
         </div>
       ))}
@@ -619,7 +619,7 @@ export default function AnalyzeIntelligence() {
                       {idx < 2 ? <i className="ri-check-line text-sm"></i> : phase[0]}
                     </div>
                     <span
-                      className={`text-[10px] font-semibold whitespace-nowrap ${
+                      className={`text-xs font-semibold whitespace-nowrap ${
                         phase === 'Analyze' ? 'text-teal-700' : idx < 2 ? 'text-teal-600' : 'text-slate-400'
                       }`}
                     >
@@ -634,7 +634,7 @@ export default function AnalyzeIntelligence() {
             {/* Right: Badges & Run Button */}
             <div className="flex items-center gap-4">
               <div className="text-right">
-                <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
+                <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">
                   AI Confidence
                 </div>
                 <div className="flex items-center gap-2">
@@ -650,7 +650,7 @@ export default function AnalyzeIntelligence() {
 
               <div className="px-3 py-1.5 bg-emerald-50/80 border border-emerald-200/60 rounded-lg flex items-center gap-1.5">
                 <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                <span className="text-[11px] font-semibold text-emerald-700 whitespace-nowrap">Data Quality: Excellent</span>
+                <span className="text-xs font-semibold text-emerald-700 whitespace-nowrap">Data Quality: Excellent</span>
               </div>
 
               <button
@@ -709,7 +709,7 @@ export default function AnalyzeIntelligence() {
               },
             ].map((sel) => (
               <div key={sel.label} className="group">
-                <label className="flex items-center gap-1.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
                   <i className={`${sel.icon} text-xs`}></i>
                   {sel.label}
                 </label>
@@ -740,13 +740,13 @@ export default function AnalyzeIntelligence() {
                 </div>
                 <div>
                   <h3 className="text-sm font-bold text-slate-800">Model Configuration</h3>
-                  <p className="text-[10px] text-slate-400">Select variables & parameters</p>
+                  <p className="text-xs text-slate-400">Select variables & parameters</p>
                 </div>
               </div>
 
               {/* Variables */}
               <div className="mb-5">
-                <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2 block">
+                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 block">
                   Independent Variables
                 </label>
                 <div className="space-y-1 max-h-52 overflow-y-auto pr-1 custom-scrollbar">
@@ -767,7 +767,7 @@ export default function AnalyzeIntelligence() {
                         }`}
                       >
                         {selectedVariables.includes(variable) && (
-                          <i className="ri-check-line text-white text-[10px]"></i>
+                          <i className="ri-check-line text-white text-xs"></i>
                         )}
                       </div>
                       <input
@@ -784,13 +784,13 @@ export default function AnalyzeIntelligence() {
 
               {/* Transformations */}
               <div className="mb-5">
-                <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2 block">
+                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 block">
                   Transformations
                 </label>
                 <div className="space-y-1.5">
                   {selectedVariables.slice(0, 3).map((variable) => (
                     <div key={variable} className="flex items-center gap-2">
-                      <span className="text-[10px] text-slate-500 w-24 truncate font-medium">{variable}</span>
+                      <span className="text-xs text-slate-500 w-24 truncate font-medium">{variable}</span>
                       <select
                         value={transformations[variable] || 'none'}
                         onChange={(e) =>
@@ -799,7 +799,7 @@ export default function AnalyzeIntelligence() {
                             [variable]: e.target.value,
                           }))
                         }
-                        className="flex-1 px-2 py-1 text-[10px] bg-slate-50/80 border border-slate-200/80 rounded-md focus:outline-none focus:ring-1 focus:ring-teal-500/30 cursor-pointer whitespace-nowrap"
+                        className="flex-1 px-2 py-1 text-xs bg-slate-50/80 border border-slate-200/80 rounded-md focus:outline-none focus:ring-1 focus:ring-teal-500/30 cursor-pointer whitespace-nowrap"
                       >
                         <option value="none">None</option>
                         <option value="log">Log</option>
@@ -841,7 +841,7 @@ export default function AnalyzeIntelligence() {
 
               {/* Regularization */}
               <div className="mb-5">
-                <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2 block">
+                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 block">
                   Regularization: {regularizationStrength.toFixed(1)}
                 </label>
                 <div className="relative">
@@ -887,7 +887,7 @@ export default function AnalyzeIntelligence() {
                     { label: 'Random Seed', defaultValue: '42' },
                   ].map((field) => (
                     <div key={field.label}>
-                      <label className="text-[10px] font-medium text-slate-500 mb-0.5 block">
+                      <label className="text-xs font-medium text-slate-500 mb-0.5 block">
                         {field.label}
                       </label>
                       <input
@@ -919,10 +919,10 @@ export default function AnalyzeIntelligence() {
                     </div>
                     <div className={`w-2 h-2 rounded-full ${getStatusDot(metric.status)}`} />
                   </div>
-                  <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">{metric.label}</div>
+                  <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">{metric.label}</div>
                   <div className="text-xl font-bold text-slate-800 tracking-tight">{metric.value}</div>
-                  {metric.delta && <div className="text-[10px] font-semibold text-emerald-600 mt-0.5">{metric.delta} vs prev</div>}
-                  <div className="text-[10px] text-slate-400 mt-1 leading-tight opacity-0 group-hover:opacity-100 transition-opacity duration-300">{metric.interpretation}</div>
+                  {metric.delta && <div className="text-xs font-semibold text-emerald-600 mt-0.5">{metric.delta} vs prev</div>}
+                  <div className="text-xs text-slate-400 mt-1 leading-tight opacity-0 group-hover:opacity-100 transition-opacity duration-300">{metric.interpretation}</div>
                 </div>
               ))}
             </div>
@@ -936,14 +936,14 @@ export default function AnalyzeIntelligence() {
                   </div>
                   <div>
                     <h3 className="text-sm font-bold text-slate-800">Coefficient Analysis</h3>
-                    <p className="text-[10px] text-slate-400">{coefficientData.length} predictors &middot; Sorted by {sortColumn}</p>
+                    <p className="text-xs text-slate-400">{coefficientData.length} predictors &middot; Sorted by {sortColumn}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <button className="px-2.5 py-1.5 text-[10px] font-semibold text-slate-500 hover:text-teal-600 hover:bg-teal-50/80 rounded-lg transition-colors cursor-pointer whitespace-nowrap">
+                  <button className="px-2.5 py-1.5 text-xs font-semibold text-slate-500 hover:text-teal-600 hover:bg-teal-50/80 rounded-lg transition-colors cursor-pointer whitespace-nowrap">
                     <i className="ri-filter-3-line mr-1"></i>Filter
                   </button>
-                  <button className="px-2.5 py-1.5 text-[10px] font-semibold text-slate-500 hover:text-teal-600 hover:bg-teal-50/80 rounded-lg transition-colors cursor-pointer whitespace-nowrap">
+                  <button className="px-2.5 py-1.5 text-xs font-semibold text-slate-500 hover:text-teal-600 hover:bg-teal-50/80 rounded-lg transition-colors cursor-pointer whitespace-nowrap">
                     <i className="ri-download-2-line mr-1"></i>Export
                   </button>
                 </div>
@@ -967,7 +967,7 @@ export default function AnalyzeIntelligence() {
                         <th
                           key={header.key}
                           onClick={() => header.key !== 'ci' && handleSort(header.key)}
-                          className={`px-3 py-2.5 text-left text-[10px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap ${
+                          className={`px-3 py-2.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap ${
                             header.key !== 'ci' ? 'cursor-pointer hover:text-teal-600' : ''
                           }`}
                         >
@@ -1028,12 +1028,12 @@ export default function AnalyzeIntelligence() {
                             {row.vif.toFixed(2)}
                           </span>
                         </td>
-                        <td className="px-3 py-2.5 text-[10px] font-mono text-slate-500">
+                        <td className="px-3 py-2.5 text-xs font-mono text-slate-500">
                           [{row.confidenceInterval[0].toFixed(2)}, {row.confidenceInterval[1].toFixed(2)}]
                         </td>
                         <td className="px-3 py-2.5">
                           <span
-                            className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${getSignificanceBadge(row.significance)}`}
+                            className={`px-2 py-0.5 rounded-md text-xs font-bold ${getSignificanceBadge(row.significance)}`}
                           >
                             {row.significance.toUpperCase()}
                           </span>
@@ -1043,7 +1043,7 @@ export default function AnalyzeIntelligence() {
                             <div className="w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden">
                               <div className={`h-full rounded-full ${getImpactBar(row.impact)}`} />
                             </div>
-                            <span className="text-[10px] font-semibold text-slate-500 capitalize">{row.impact}</span>
+                            <span className="text-xs font-semibold text-slate-500 capitalize">{row.impact}</span>
                           </div>
                         </td>
                       </tr>
@@ -1065,7 +1065,7 @@ export default function AnalyzeIntelligence() {
             </div>
             <div>
               <h3 className="text-sm font-bold text-slate-800">Diagnostics Laboratory</h3>
-              <p className="text-[10px] text-slate-400">Model assumption validation &amp; outlier detection</p>
+              <p className="text-xs text-slate-400">Model assumption validation &amp; outlier detection</p>
             </div>
           </div>
 
@@ -1116,15 +1116,15 @@ export default function AnalyzeIntelligence() {
 
                     <div className="bg-slate-50/60 rounded-xl p-4 space-y-3">
                       <div>
-                        <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Test Result</div>
+                        <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Test Result</div>
                         <div className="text-base font-bold font-mono text-slate-800">{test.value}</div>
                       </div>
                       <div>
-                        <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">AI Interpretation</div>
+                        <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">AI Interpretation</div>
                         <div className="text-xs text-slate-600 leading-relaxed">{test.interpretation}</div>
                       </div>
                       <div>
-                        <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Recommendation</div>
+                        <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Recommendation</div>
                         <div className="text-xs text-slate-600 leading-relaxed flex items-start gap-1.5">
                           <i className="ri-lightbulb-line text-teal-500 mt-0.5"></i>
                           {test.recommendation}
@@ -1155,7 +1155,7 @@ export default function AnalyzeIntelligence() {
                             })}
                           </div>
                         </div>
-                        <div className="text-[10px] text-slate-400 mt-2 font-medium">Q-Q Plot: Residuals vs Normal Distribution</div>
+                        <div className="text-xs text-slate-400 mt-2 font-medium">Q-Q Plot: Residuals vs Normal Distribution</div>
                       </div>
                     )}
                     {activeDiagnosticTab === 'homoscedasticity' && <ResidualPlot />}
@@ -1174,7 +1174,7 @@ export default function AnalyzeIntelligence() {
                           })}
                         </div>
                         <div className="w-full h-px bg-slate-200 mt-1" />
-                        <div className="text-[10px] text-slate-400 mt-2 font-medium">ACF Plot: Lag 1-20 &middot; DW = 1.98</div>
+                        <div className="text-xs text-slate-400 mt-2 font-medium">ACF Plot: Lag 1-20 &middot; DW = 1.98</div>
                       </div>
                     )}
                     {activeDiagnosticTab === 'outliers' && (
@@ -1197,7 +1197,7 @@ export default function AnalyzeIntelligence() {
                         <div className="w-full h-px bg-rose-300 mt-1 relative">
                           <span className="absolute right-0 -top-3 text-[9px] text-rose-500 font-semibold">Threshold (4/n)</span>
                         </div>
-                        <div className="text-[10px] text-slate-400 mt-2 font-medium">Cook\u2019s Distance: 3 points above threshold</div>
+                        <div className="text-xs text-slate-400 mt-2 font-medium">Cook\u2019s Distance: 3 points above threshold</div>
                       </div>
                     )}
                   </div>
@@ -1221,11 +1221,11 @@ export default function AnalyzeIntelligence() {
                   </div>
                   <div>
                     <h3 className="text-sm font-bold text-slate-800">Predictive Intelligence Lab</h3>
-                    <p className="text-[10px] text-slate-400">What-if scenario modeling &amp; Monte Carlo simulation</p>
+                    <p className="text-xs text-slate-400">What-if scenario modeling &amp; Monte Carlo simulation</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <label className="flex items-center gap-1.5 text-[10px] font-semibold text-slate-500 cursor-pointer">
+                  <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 cursor-pointer">
                     <button
                       onClick={() => setMonteCarloEnabled(!monteCarloEnabled)}
                       className={`relative w-8 h-4 rounded-full transition-all duration-300 cursor-pointer ${monteCarloEnabled ? 'bg-amber-500' : 'bg-slate-200'}`}
@@ -1237,7 +1237,7 @@ export default function AnalyzeIntelligence() {
                     Monte Carlo
                   </label>
                   {monteCarloEnabled && (
-                    <select className="px-2 py-1 text-[10px] bg-slate-50/80 border border-slate-200/80 rounded-md cursor-pointer whitespace-nowrap">
+                    <select className="px-2 py-1 text-xs bg-slate-50/80 border border-slate-200/80 rounded-md cursor-pointer whitespace-nowrap">
                       <option>10,000 iterations</option>
                       <option>50,000 iterations</option>
                     </select>
@@ -1300,7 +1300,7 @@ export default function AnalyzeIntelligence() {
                         );
                       })}
                     </div>
-                    <div className="absolute top-3 left-4 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                    <div className="absolute top-3 left-4 text-xs font-semibold text-slate-400 uppercase tracking-wider">
                       Forecast Projection
                     </div>
                     <div className="absolute top-3 right-4 flex items-center gap-3 text-[9px]">
@@ -1320,13 +1320,13 @@ export default function AnalyzeIntelligence() {
                     <div className="absolute top-0 right-0 w-24 h-24 bg-white/5 rounded-full -translate-y-8 translate-x-8" />
                     <div className="absolute bottom-0 left-0 w-16 h-16 bg-white/5 rounded-full translate-y-6 -translate-x-6" />
                     <div className="relative z-10">
-                      <div className="text-[10px] font-semibold uppercase tracking-wider mb-1 opacity-80">Predicted Outcome</div>
+                      <div className="text-xs font-semibold uppercase tracking-wider mb-1 opacity-80">Predicted Outcome</div>
                       <div className="text-3xl font-bold tracking-tight">
                         {predictedOutcome} <span className="text-base font-normal opacity-80">min</span>
                       </div>
                       <div className="text-xs opacity-80 mt-0.5">Wait Time</div>
                       <div className="mt-4 pt-3 border-t border-white/20">
-                        <div className="text-[10px] font-semibold uppercase tracking-wider mb-1 opacity-80">95% Confidence Interval</div>
+                        <div className="text-xs font-semibold uppercase tracking-wider mb-1 opacity-80">95% Confidence Interval</div>
                         <div className="text-sm font-mono font-semibold">
                           [{(parseFloat(predictedOutcome) - 2.2).toFixed(1)},{' '}
                           {(parseFloat(predictedOutcome) + 2.2).toFixed(1)}] min
@@ -1336,7 +1336,7 @@ export default function AnalyzeIntelligence() {
                   </div>
 
                   <div className="bg-slate-50/60 rounded-xl p-4 border border-slate-100/80">
-                    <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Risk Probability</div>
+                    <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Risk Probability</div>
                     <div className="space-y-2">
                       {[
                         { label: 'Low Risk', pct: 72, color: 'from-emerald-500 to-emerald-400' },
@@ -1344,7 +1344,7 @@ export default function AnalyzeIntelligence() {
                         { label: 'High Risk', pct: 6, color: 'from-rose-500 to-rose-400' },
                       ].map((risk) => (
                         <div key={risk.label}>
-                          <div className="flex items-center justify-between text-[10px] mb-0.5">
+                          <div className="flex items-center justify-between text-xs mb-0.5">
                             <span className="text-slate-500 font-medium">{risk.label}</span>
                             <span className="font-bold text-slate-700">{risk.pct}%</span>
                           </div>
@@ -1360,7 +1360,7 @@ export default function AnalyzeIntelligence() {
                   </div>
 
                   <div className="bg-slate-50/60 rounded-xl p-4 border border-slate-100/80">
-                    <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Sensitivity Matrix</div>
+                    <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Sensitivity Matrix</div>
                     <SensitivityHeatmap />
                   </div>
                 </div>
@@ -1378,7 +1378,7 @@ export default function AnalyzeIntelligence() {
                   </div>
                   <div>
                     <h3 className="text-sm font-bold text-slate-800">Root Cause Bridge</h3>
-                    <p className="text-[10px] text-slate-400">DMAIC Analyze → Improve</p>
+                    <p className="text-xs text-slate-400">DMAIC Analyze → Improve</p>
                   </div>
                 </div>
               </div>
@@ -1407,7 +1407,7 @@ export default function AnalyzeIntelligence() {
                         {cause.type}
                       </span>
                     </div>
-                    <div className="flex items-center justify-between text-[10px]">
+                    <div className="flex items-center justify-between text-xs">
                       <span className="text-slate-400">
                         Impact: <span className="font-semibold text-slate-600">{cause.impact}</span>
                       </span>
@@ -1440,7 +1440,7 @@ export default function AnalyzeIntelligence() {
             ].map((action) => (
               <button
                 key={action.label}
-                className="px-3 py-1.5 text-[10px] font-semibold text-slate-500 hover:text-teal-600 hover:bg-teal-50/80 rounded-lg transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5"
+                className="px-3 py-1.5 text-xs font-semibold text-slate-500 hover:text-teal-600 hover:bg-teal-50/80 rounded-lg transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5"
               >
                 <i className={`${action.icon} text-sm`}></i>
                 {action.label}
@@ -1449,7 +1449,7 @@ export default function AnalyzeIntelligence() {
             <select
               value={modelVersion}
               onChange={(e) => setModelVersion(e.target.value)}
-              className="px-2 py-1 text-[10px] bg-slate-50/80 border border-slate-200/80 rounded-md cursor-pointer font-mono text-slate-500"
+              className="px-2 py-1 text-xs bg-slate-50/80 border border-slate-200/80 rounded-md cursor-pointer font-mono text-slate-500"
             >
               <option>v3.2.1</option>
               <option>v3.1.0</option>
@@ -1459,16 +1459,16 @@ export default function AnalyzeIntelligence() {
           <div className="flex items-center gap-2">
             <button
               onClick={() => setShowAIPanel(true)}
-              className="px-3 py-1.5 text-[10px] font-bold text-teal-700 bg-teal-50/80 hover:bg-teal-100/80 rounded-lg transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 ring-1 ring-teal-200/60"
+              className="px-3 py-1.5 text-xs font-bold text-teal-700 bg-teal-50/80 hover:bg-teal-100/80 rounded-lg transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 ring-1 ring-teal-200/60"
             >
               <i className="ri-brain-line text-sm"></i>
               AI Insights
             </button>
-            <button className="px-3 py-1.5 text-[10px] font-semibold text-rose-600 hover:bg-rose-50/80 rounded-lg transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5">
+            <button className="px-3 py-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-50/80 rounded-lg transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5">
               <i className="ri-file-pdf-2-line text-sm"></i>
               PDF
             </button>
-            <button className="px-3 py-1.5 text-[10px] font-semibold text-emerald-600 hover:bg-emerald-50/80 rounded-lg transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5">
+            <button className="px-3 py-1.5 text-xs font-semibold text-emerald-600 hover:bg-emerald-50/80 rounded-lg transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5">
               <i className="ri-file-excel-2-line text-sm"></i>
               Excel
             </button>
@@ -1531,8 +1531,8 @@ export default function AnalyzeIntelligence() {
                         </div>
                         <span className={`text-xs font-bold ${theme.title}`}>{driver.variable}</span>
                       </div>
-                      <p className={`text-[11px] ${theme.effect} mb-0.5`}>{driver.effect}</p>
-                      <p className={`text-[10px] ${theme.impact} opacity-80`}>{driver.impact}</p>
+                      <p className={`text-xs ${theme.effect} mb-0.5`}>{driver.effect}</p>
+                      <p className={`text-xs ${theme.impact} opacity-80`}>{driver.impact}</p>
                     </div>
                   )})}
                 </div>
@@ -1541,7 +1541,7 @@ export default function AnalyzeIntelligence() {
               {/* Effect Size */}
               <div>
                 <h4 className="text-xs font-bold text-slate-800 mb-2">Effect Size Interpretation</h4>
-                <div className="bg-slate-50/80 rounded-xl p-3 text-[11px] text-slate-600 space-y-1.5 leading-relaxed">
+                <div className="bg-slate-50/80 rounded-xl p-3 text-xs text-slate-600 space-y-1.5 leading-relaxed">
                   <p>
                     <strong className="text-slate-800">Large Effect:</strong> {strongestDriver?.variable || 'The leading driver'} has the strongest standardized effect, making it the clearest operational lever in the current model.
                   </p>
@@ -1560,7 +1560,7 @@ export default function AnalyzeIntelligence() {
                   <i className="ri-alert-line text-rose-500"></i>
                   Risk Implications
                 </h4>
-                <div className="bg-rose-50/60 border border-rose-200/60 rounded-xl p-3 text-[11px] text-rose-700 space-y-1.5 leading-relaxed">
+                <div className="bg-rose-50/60 border border-rose-200/60 rounded-xl p-3 text-xs text-rose-700 space-y-1.5 leading-relaxed">
                   <p>
                     <strong>Critical Risk:</strong> {staffingDriver ? `The model still shows staffing pressure as the largest controllable risk, with a coefficient of ${staffingDriver.coefficient.toFixed(2)} per unit shift.` : 'Current operational capacity is still the largest controllable risk.'}
                   </p>
@@ -1576,7 +1576,7 @@ export default function AnalyzeIntelligence() {
               {/* Executive Summary */}
               <div>
                 <h4 className="text-xs font-bold text-slate-800 mb-2">Executive Summary</h4>
-                <div className="bg-indigo-50/60 border border-indigo-200/60 rounded-xl p-3 text-[11px] text-indigo-800 space-y-1.5 leading-relaxed">
+                <div className="bg-indigo-50/60 border border-indigo-200/60 rounded-xl p-3 text-xs text-indigo-800 space-y-1.5 leading-relaxed">
                   <p>
                     Statistical analysis shows that <strong>{strongestDriver?.variable || 'the leading driver'}</strong> offers the strongest immediate improvement path. A focused operational shift on that lever is projected to change the outcome by about <strong>{projectedStaffingLift.toFixed(1)} units</strong>, or roughly <strong>{projectedRelativeImprovement.toFixed(0)}%</strong> versus the current modeled baseline.
                   </p>
@@ -1603,7 +1603,7 @@ export default function AnalyzeIntelligence() {
                     'Deploy real-time monitoring dashboard for proactive intervention',
                     'Establish staffing thresholds: Alert when ratio exceeds 1:8',
                   ].map((action, idx) => (
-                    <div key={idx} className="flex items-start gap-2 text-[11px] text-slate-600 bg-slate-50/60 rounded-lg p-2">
+                    <div key={idx} className="flex items-start gap-2 text-xs text-slate-600 bg-slate-50/60 rounded-lg p-2">
                       <i className="ri-arrow-right-circle-fill text-teal-500 mt-0.5 text-sm"></i>
                       <span>{action}</span>
                     </div>

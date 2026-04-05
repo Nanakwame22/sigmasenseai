@@ -190,11 +190,11 @@ function DomainCard({ domain, config, onTakeAction }: { domain: CPIDomainSnapsho
         </div>
 
         <div className="mt-3 flex flex-wrap gap-1.5">
-          <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold ${freshnessClasses}`}>
+          <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${freshnessClasses}`}>
             {domain.freshness_label || `Updated ${timeLabel}`}
           </span>
           {domain.source_label && (
-            <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold ${sourceClasses}`}>
+            <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${sourceClasses}`}>
               {domain.source_label}
             </span>
           )}
@@ -202,7 +202,7 @@ function DomainCard({ domain, config, onTakeAction }: { domain: CPIDomainSnapsho
 
         {expanded && domain.evidence_summary && (
           <div className="mt-3 rounded-premium border border-border bg-white/80 p-3">
-            <p className="text-[11px] font-bold uppercase tracking-widest text-brand-400">Evidence</p>
+            <p className="text-xs font-bold uppercase tracking-widest text-brand-400">Evidence</p>
             <p className="mt-1 text-xs leading-relaxed text-brand-600">{domain.evidence_summary}</p>
           </div>
         )}

@@ -21,13 +21,13 @@ export function AIMSectionIntro({
           <div className="max-w-3xl">
             {eyebrow && (
               <div className="mb-3">
-                <span className="rounded-full bg-ai-100 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-ai-700">
+                <span className="rounded-full bg-ai-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-ai-700">
                   {eyebrow}
                 </span>
               </div>
             )}
             <h1 className="text-[2rem] font-bold tracking-tight text-brand-900 md:text-[2.2rem]">{title}</h1>
-            <p className="mt-3 max-w-2xl text-sm leading-6 text-brand-600 md:text-[15px]">{description}</p>
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-brand-600 md:text-sm">{description}</p>
           </div>
           {actions ? <div className="flex flex-wrap items-center gap-3">{actions}</div> : null}
         </div>
@@ -52,7 +52,7 @@ export function AIMMetricTiles({
     <div className={`grid gap-4 ${columns}`}>
       {items.map((item) => (
         <div key={item.label} className={`${AIM_SUBSURFACE} p-5 md:p-6`}>
-          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-500">{item.label}</div>
+          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-500">{item.label}</div>
           <div className={`mt-3 text-[2rem] font-bold tracking-tight ${item.accent || 'text-brand-900'}`}>{item.value}</div>
           {item.detail ? <div className="mt-2 text-sm text-brand-600">{item.detail}</div> : null}
         </div>

@@ -2695,7 +2695,7 @@ export const DefineStrategicHub: React.FC<DefineStrategicHubProps> = ({
                         <div className="col-start-1 row-start-1 flex items-center justify-center p-4">
                           <div className="bg-blue-500/90 text-white px-3 py-2 rounded-lg text-xs font-bold shadow-lg">
                             Keep Informed
-                            <div className="text-[10px] font-normal mt-0.5">
+                            <div className="text-xs font-normal mt-0.5">
                               ({stakeholders.filter(s => s.influence === 'low' && s.interest === 'high').length})
                             </div>
                           </div>
@@ -2705,7 +2705,7 @@ export const DefineStrategicHub: React.FC<DefineStrategicHubProps> = ({
                         <div className="col-start-3 row-start-1 flex items-center justify-center p-4">
                           <div className="bg-red-500/90 text-white px-3 py-2 rounded-lg text-xs font-bold shadow-lg">
                             Manage Closely
-                            <div className="text-[10px] font-normal mt-0.5">
+                            <div className="text-xs font-normal mt-0.5">
                               ({stakeholders.filter(s => s.influence === 'high' && s.interest === 'high').length})
                             </div>
                           </div>
@@ -2715,7 +2715,7 @@ export const DefineStrategicHub: React.FC<DefineStrategicHubProps> = ({
                         <div className="col-start-1 row-start-3 flex items-center justify-center p-4">
                           <div className="bg-gray-500/90 text-white px-3 py-2 rounded-lg text-xs font-bold shadow-lg">
                             Monitor
-                            <div className="text-[10px] font-normal mt-0.5">
+                            <div className="text-xs font-normal mt-0.5">
                               ({stakeholders.filter(s => s.influence === 'low' && s.interest === 'low').length})
                             </div>
                           </div>
@@ -2725,7 +2725,7 @@ export const DefineStrategicHub: React.FC<DefineStrategicHubProps> = ({
                         <div className="col-start-3 row-start-3 flex items-center justify-center p-4">
                           <div className="bg-orange-500/90 text-white px-3 py-2 rounded-lg text-xs font-bold shadow-lg">
                             Keep Satisfied
-                            <div className="text-[10px] font-normal mt-0.5">
+                            <div className="text-xs font-normal mt-0.5">
                               ({stakeholders.filter(s => s.influence === 'high' && s.interest === 'low').length})
                             </div>
                           </div>

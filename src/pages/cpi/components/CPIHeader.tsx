@@ -74,7 +74,7 @@ export default function CPIHeader() {
   const trendColor = {
     up: 'text-rose-400',
     down: 'text-emerald-400',
-    stable: 'text-slate-400',
+    stable: 'text-brand-400',
   };
 
   const latestDomainUpdate = useMemo(() => {
@@ -95,7 +95,7 @@ export default function CPIHeader() {
 
   return (
     <div className="relative overflow-hidden">
-      <div className="absolute inset-0 bg-gradient-to-br from-slate-900 via-teal-950 to-slate-900"></div>
+      <div className="absolute inset-0 bg-gradient-to-br from-brand-900 via-brand-900 to-brand-900"></div>
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_rgba(20,184,166,0.15)_0%,_transparent_60%)]"></div>
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_bottom_left,_rgba(6,182,212,0.08)_0%,_transparent_60%)]"></div>
       <div className="absolute inset-0 opacity-[0.03]" style={{
@@ -119,9 +119,9 @@ export default function CPIHeader() {
             <span className="text-white/20">/</span>
             <div className="flex items-center space-x-2">
               <div className="w-5 h-5 flex items-center justify-center">
-                <i className="ri-heart-pulse-line text-teal-400 text-sm"></i>
+                <i className="ri-heart-pulse-line text-ai-400 text-sm"></i>
               </div>
-              <span className="text-sm font-semibold text-teal-300">Clinical Process Intelligence</span>
+              <span className="text-sm font-semibold text-ai-300">Clinical Process Intelligence</span>
             </div>
           </div>
 
@@ -145,12 +145,12 @@ export default function CPIHeader() {
 
         <div className="max-w-3xl">
           <div className="flex items-center space-x-3 mb-3">
-            <div className="w-10 h-10 flex items-center justify-center bg-teal-500/20 border border-teal-500/30 rounded-xl">
-              <i className="ri-heart-pulse-line text-teal-400 text-xl"></i>
+            <div className="w-10 h-10 flex items-center justify-center bg-ai-500/20 border border-ai-500/30 rounded-xl">
+              <i className="ri-heart-pulse-line text-ai-400 text-xl"></i>
             </div>
             <div>
               <h1 className="text-3xl font-bold text-white tracking-tight">
-                Clinical Process Intelligence <span className="text-teal-400">CPI</span>
+                Clinical Process Intelligence <span className="text-ai-400">CPI</span>
               </h1>
             </div>
           </div>
@@ -179,11 +179,11 @@ export default function CPIHeader() {
             </div>
           ))}
 
-          <div className="flex-shrink-0 ml-auto flex items-center space-x-2 px-4 py-2.5 bg-teal-500/10 border border-teal-500/20 rounded-xl">
+          <div className="flex-shrink-0 ml-auto flex items-center space-x-2 px-4 py-2.5 bg-ai-500/10 border border-ai-500/20 rounded-xl">
             {['Sense', 'Analyze', 'Decide', 'Act', 'Learn'].map((stage, i) => (
               <div key={i} className="flex items-center">
-                <span className="text-xs font-semibold text-teal-400 whitespace-nowrap">{stage}</span>
-                {i < 4 && <i className="ri-arrow-right-s-line text-teal-600 mx-0.5 text-xs"></i>}
+                <span className="text-xs font-semibold text-ai-400 whitespace-nowrap">{stage}</span>
+                {i < 4 && <i className="ri-arrow-right-s-line text-ai-600 mx-0.5 text-xs"></i>}
               </div>
             ))}
           </div>
@@ -195,10 +195,10 @@ export default function CPIHeader() {
             <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></div>
             <span className="text-xs text-white/25">Operational metrics refreshed from live CPI domain telemetry</span>
           </div>
-          <div className="flex items-center space-x-1.5 px-2.5 py-1 bg-teal-500/10 border border-teal-500/20 rounded-full">
-            <i className="ri-arrow-left-right-line text-teal-400 text-xs"></i>
-            <span className="text-xs text-teal-400 font-medium">Connected to Analytics Layer</span>
-            <span className="text-xs text-teal-500/60">· Forecasting · AIM · Alerts</span>
+          <div className="flex items-center space-x-1.5 px-2.5 py-1 bg-ai-500/10 border border-ai-500/20 rounded-full">
+            <i className="ri-arrow-left-right-line text-ai-400 text-xs"></i>
+            <span className="text-xs text-ai-400 font-medium">Connected to Analytics Layer</span>
+            <span className="text-xs text-ai-500/60">· Forecasting · AIM · Alerts</span>
           </div>
         </div>
 
@@ -228,7 +228,7 @@ export default function CPIHeader() {
             {intelligenceHealth.issues.filter((issue) => issue.count > 0).slice(0, 3).map((issue) => (
               <span
                 key={issue.key}
-                className={`rounded-full px-3 py-1 text-[11px] font-medium ${
+                className={`rounded-full px-3 py-1 text-xs font-medium ${
                   issue.severity === 'Needs attention'
                     ? 'bg-rose-500/15 text-rose-200'
                     : issue.severity === 'Watch'

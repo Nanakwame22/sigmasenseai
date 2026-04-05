@@ -784,7 +784,7 @@ const ReportsSection: React.FC = () => {
                     <i className={`${template.icon} text-xl text-brand-700`}></i>
                   </div>
                   {isActive ? (
-                    <span className="rounded-full bg-ai-500 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-white">
+                    <span className="rounded-full bg-ai-500 px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-white">
                       Selected
                     </span>
                   ) : null}
