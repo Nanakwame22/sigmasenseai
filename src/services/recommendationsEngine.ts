@@ -208,6 +208,10 @@ function replaceTags(existingTags: string[] | null | undefined, nextTags: string
   return Array.from(new Set([...filtered, ...nextTags]));
 }
 
+function isAlertPressureRecommendation(rec: Recommendation | { source_data?: any }) {
+  return rec.source_data?.pattern_type === 'active_alert_pressure';
+}
+
 export class RecommendationsEngine {
   private userId: string;
   private organizationId: string | null = null;
@@ -340,8 +344,11 @@ export class RecommendationsEngine {
         if (seenSignatures.has(signature)) return false;
         seenSignatures.add(signature);
         if (activeSignatures.has(signature)) return false;
-        if (coolingDismissedSignatures.has(signature)) return false;
-        if (recentlyCompletedSignatures.has(signature)) return false;
+        const allowAlertRepromotion =
+          isAlertPressureRecommendation(rec) &&
+          (rec.confidence_score || 0) >= 75;
+        if (!allowAlertRepromotion && coolingDismissedSignatures.has(signature)) return false;
+        if (!allowAlertRepromotion && recentlyCompletedSignatures.has(signature)) return false;
         return true;
       });
 
