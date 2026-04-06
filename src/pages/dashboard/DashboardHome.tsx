@@ -26,22 +26,27 @@ interface StatCardProps {
 
 function StatCard({ title, value, subtitle, icon, iconBg, trend, accent }: StatCardProps) {
   return (
-    <div className="bg-white rounded-premium border border-border shadow-elevation-2 hover:shadow-elevation-3 transition-all duration-200 relative overflow-hidden group">
-      <div className={`absolute top-0 left-0 w-1 h-full ${accent}`}></div>
-      <div className="p-5 pl-6">
-        <div className="flex items-start justify-between">
-          <div className="flex-1">
-            <p className="text-xs font-bold text-brand-400 uppercase tracking-widest">{title}</p>
-            <p className="text-kpi-medium text-brand-900 mt-1 tabular-nums leading-none">{value}</p>
-            <p className="text-xs text-brand-400 mt-1.5">{subtitle}</p>
+    <div className="bg-white rounded-xl border border-border/60 shadow-elevation-2 hover:shadow-elevation-4 hover:-translate-y-0.5 transition-all duration-200 relative overflow-hidden group">
+      {/* Gradient top border */}
+      <div className={`absolute top-0 left-0 right-0 h-0.5 ${accent} opacity-80`}></div>
+      {/* Subtle inner glow on hover */}
+      <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 bg-gradient-to-br from-white to-brand-50/30 pointer-events-none rounded-xl"></div>
+      <div className="p-5 relative">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex-1 min-w-0">
+            <p className="text-[10px] font-bold text-brand-400 uppercase tracking-widest truncate">{title}</p>
+            <p className="text-kpi-medium text-brand-900 mt-1.5 tabular-nums leading-none font-bold">{value}</p>
+            <p className="text-xs text-brand-400 mt-1.5 leading-snug">{subtitle}</p>
           </div>
-          <div className={`w-10 h-10 ${iconBg} rounded-premium flex items-center justify-center shadow-elevation-1 group-hover:scale-105 transition-transform duration-200 flex-shrink-0`}>
+          <div className={`w-11 h-11 ${iconBg} rounded-xl flex items-center justify-center shadow-elevation-2 group-hover:scale-110 group-hover:shadow-glow-sm transition-all duration-200 flex-shrink-0`}>
             <i className={`${icon} text-white text-lg`}></i>
           </div>
         </div>
         {trend && (
           <div className={`mt-3 flex items-center gap-1.5 text-xs font-bold ${trend.up ? 'text-emerald-600' : 'text-red-500'}`}>
-            <i className={`${trend.up ? 'ri-arrow-up-line' : 'ri-arrow-down-line'} text-sm`}></i>
+            <div className={`w-4 h-4 rounded-full flex items-center justify-center ${trend.up ? 'bg-emerald-100' : 'bg-red-100'}`}>
+              <i className={`${trend.up ? 'ri-arrow-up-line' : 'ri-arrow-down-line'} text-[10px]`}></i>
+            </div>
             <span>{trend.value}</span>
           </div>
         )}
@@ -149,34 +154,55 @@ export default function DashboardHome() {
   return (
     <div className="space-y-6 animate-fade-in">
 
-      {/* ── Header ── */}
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="flex items-center gap-3">
-            <h1 className="text-xl font-bold text-brand-900 tracking-tight">Operations Intelligence</h1>
-            {isRealtimeConnected && (
-              <div className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 border border-emerald-200 rounded-full">
-                <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></div>
-                <span className="text-xs font-bold text-emerald-700 uppercase tracking-wide">Live</span>
-              </div>
-            )}
+      {/* ── Hero Header Strip ── */}
+      <div className="relative bg-gradient-to-r from-brand-900 via-brand-800 to-[#0B2545] rounded-2xl overflow-hidden shadow-elevation-4 p-6">
+        {/* Decorative blobs */}
+        <div className="absolute -top-10 -right-10 w-52 h-52 bg-ai-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div className="absolute -bottom-8 left-20 w-40 h-40 bg-sapphire-500/10 rounded-full blur-2xl pointer-events-none"></div>
+        <div className="absolute top-0 right-0 w-full h-full bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImdyaWQiIHdpZHRoPSI2MCIgaGVpZ2h0PSI2MCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzlIj48cGF0aCBkPSJNIDYwIDAgTCAwIDAgMCA2MCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLW9wYWNpdHk9IjAuMDMiIHN0cm9rZS13aWR0aD0iMSIvPjwvcGF0dGVybj48L2RlZnM+PHJlY3Qgd2lkdGg9IjEwMCUiIGhlaWdodD0iMTAwJSIgZmlsbD0idXJsKCNncmlkKSIvPjwvc3ZnPg==')] opacity-40 pointer-events-none"></div>
+
+        <div className="relative z-10 flex items-center justify-between">
+          <div>
+            <div className="flex items-center gap-3 mb-1.5">
+              <h1 className="text-xl font-bold text-white tracking-tight">Operations Intelligence</h1>
+              {isRealtimeConnected && (
+                <div className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-500/15 border border-emerald-400/30 rounded-full">
+                  <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse"></div>
+                  <span className="text-xs font-bold text-emerald-300 uppercase tracking-wide">Live</span>
+                </div>
+              )}
+            </div>
+            <div className="flex items-center gap-3 text-white/40 text-xs">
+              <span>{new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
+              <span className="text-white/20">·</span>
+              <span className="flex items-center gap-1">
+                <i className="ri-time-line"></i>
+                Updated {formatLastUpdated(lastUpdated)}
+              </span>
+            </div>
+            {/* Quick stats row */}
+            <div className="flex items-center gap-4 mt-4">
+              {[
+                { label: 'Metrics', value: stats.totalMetrics, icon: 'ri-line-chart-line', color: 'text-ai-300' },
+                { label: 'Alerts', value: stats.activeAlerts, icon: 'ri-alarm-warning-line', color: stats.activeAlerts > 0 ? 'text-amber-300' : 'text-emerald-300' },
+                { label: 'Avg Health', value: `${stats.avgMetricValue.toFixed(0)}%`, icon: 'ri-heart-pulse-line', color: 'text-sapphire-300' },
+              ].map((stat) => (
+                <div key={stat.label} className="flex items-center gap-2 bg-white/8 border border-white/10 rounded-xl px-3 py-2">
+                  <i className={`${stat.icon} ${stat.color} text-sm`}></i>
+                  <span className={`text-base font-bold tabular-nums ${stat.color}`}>{stat.value}</span>
+                  <span className="text-white/40 text-xs">{stat.label}</span>
+                </div>
+              ))}
+            </div>
           </div>
-          <div className="flex items-center gap-3 text-brand-400 text-xs mt-1">
-            <span>{new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
-            <span>·</span>
-            <span className="flex items-center gap-1">
-              <i className="ri-time-line"></i>
-              Updated {formatLastUpdated(lastUpdated)}
-            </span>
-          </div>
+          <Link
+            to="/dashboard/aim"
+            className="flex items-center gap-2.5 px-5 py-3 bg-gradient-to-r from-ai-400 to-ai-500 text-white font-bold rounded-xl hover:from-ai-500 hover:to-ai-600 transition-all shadow-glow-md hover:shadow-glow-lg hover:-translate-y-0.5 whitespace-nowrap text-sm"
+          >
+            <i className="ri-brain-line text-base"></i>
+            Launch AIM
+          </Link>
         </div>
-        <Link
-          to="/dashboard/aim"
-          className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-ai-500 to-ai-600 text-white font-bold rounded-premium hover:from-ai-600 hover:to-ai-700 transition-all shadow-glow-sm hover:shadow-glow-md hover:-translate-y-0.5 whitespace-nowrap text-sm"
-        >
-          <i className="ri-brain-line text-base"></i>
-          Launch AIM
-        </Link>
       </div>
 
       <OperationalTrustPanel
@@ -234,7 +260,7 @@ export default function DashboardHome() {
       <div className="grid grid-cols-3 gap-5">
 
         {/* Trend Chart — 2/3 */}
-        <div className="col-span-2 bg-white rounded-premium-lg border border-border shadow-elevation-2 p-6" style={{ minHeight: '340px' }}>
+        <div className="col-span-2 bg-white rounded-2xl border border-border/60 shadow-elevation-2 p-6" style={{ minHeight: '340px' }}>
           <MetricTrendChart series={stats.metricTrendSeries} />
         </div>
 
@@ -334,7 +360,7 @@ export default function DashboardHome() {
       </div>
 
       {/* ── KPI Health Grid ── */}
-      <div className="bg-white rounded-premium-lg border border-border shadow-elevation-2 p-6">
+      <div className="bg-white rounded-2xl border border-border/60 shadow-elevation-2 p-6">
         <div className="flex items-center justify-between mb-5">
           <div>
             <h2 className="text-base font-bold text-brand-900 tracking-tight">KPI Health Grid</h2>
@@ -369,7 +395,7 @@ export default function DashboardHome() {
       <div className="grid grid-cols-2 gap-5">
 
         {/* Recent Metrics */}
-        <div className="bg-white rounded-premium-lg border border-border shadow-elevation-2 p-5">
+        <div className="bg-white rounded-2xl border border-border/60 shadow-elevation-2 p-5">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-sm font-bold text-brand-900">Recent Data Points</h2>
             <Link to="/dashboard/metrics" className="text-xs font-bold text-ai-600 hover:text-ai-700 cursor-pointer whitespace-nowrap">
@@ -407,26 +433,29 @@ export default function DashboardHome() {
         </div>
 
         {/* Quick Actions */}
-        <div className="bg-white rounded-premium-lg border border-border shadow-elevation-2 p-5">
-          <h2 className="text-sm font-bold text-brand-900 mb-4">Quick Actions</h2>
-          <div className="grid grid-cols-2 gap-3">
+        <div className="bg-white rounded-2xl border border-border/60 shadow-elevation-2 p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-sm font-bold text-brand-900">Quick Actions</h2>
+            <span className="text-xs text-brand-400">6 tools</span>
+          </div>
+          <div className="grid grid-cols-2 gap-2.5">
             {[
-              { to: '/dashboard/dmaic',              icon: 'ri-flow-chart',            label: 'New DMAIC Project',   bg: 'from-sapphire-50 to-sapphire-100/60', iconBg: 'from-sapphire-500 to-sapphire-600', text: 'text-sapphire-700', border: 'border-sapphire-200/40' },
-              { to: '/dashboard/data-integration',   icon: 'ri-database-2-line',       label: 'Connect Data Source', bg: 'from-ai-50 to-ai-100/60',              iconBg: 'from-ai-500 to-ai-600',            text: 'text-ai-700',       border: 'border-ai-200/40' },
-              { to: '/dashboard/advanced-forecasting', icon: 'ri-line-chart-line',     label: 'Run Forecast',        bg: 'from-violet-50 to-violet-100/60',      iconBg: 'from-violet-500 to-violet-600',    text: 'text-violet-700',   border: 'border-violet-200/40' },
-              { to: '/dashboard/anomaly-detection',  icon: 'ri-radar-line',            label: 'Anomaly Scan',        bg: 'from-amber-50 to-amber-100/60',        iconBg: 'from-amber-500 to-amber-600',      text: 'text-amber-700',    border: 'border-amber-200/40' },
-              { to: '/dashboard/automation-rules',   icon: 'ri-robot-line',            label: 'Automation Rules',    bg: 'from-emerald-50 to-emerald-100/60',    iconBg: 'from-emerald-500 to-emerald-600',  text: 'text-emerald-700',  border: 'border-emerald-200/40' },
-              { to: '/dashboard/benchmarking',       icon: 'ri-bar-chart-grouped-line', label: 'Benchmarking',       bg: 'from-rose-50 to-rose-100/60',          iconBg: 'from-rose-500 to-rose-600',        text: 'text-rose-700',     border: 'border-rose-200/40' },
+              { to: '/dashboard/dmaic',              icon: 'ri-flow-chart',            label: 'New DMAIC Project',   iconBg: 'from-sapphire-500 to-sapphire-600', text: 'text-sapphire-700', bg: 'hover:bg-sapphire-50' },
+              { to: '/dashboard/data-integration',   icon: 'ri-database-2-line',       label: 'Connect Data Source', iconBg: 'from-ai-500 to-ai-600',            text: 'text-ai-700',       bg: 'hover:bg-ai-50' },
+              { to: '/dashboard/advanced-forecasting', icon: 'ri-line-chart-line',     label: 'Run Forecast',        iconBg: 'from-violet-500 to-violet-600',    text: 'text-violet-700',   bg: 'hover:bg-violet-50' },
+              { to: '/dashboard/anomaly-detection',  icon: 'ri-radar-line',            label: 'Anomaly Scan',        iconBg: 'from-amber-500 to-amber-600',      text: 'text-amber-700',    bg: 'hover:bg-amber-50' },
+              { to: '/dashboard/automation-rules',   icon: 'ri-robot-line',            label: 'Automation Rules',    iconBg: 'from-emerald-500 to-emerald-600',  text: 'text-emerald-700',  bg: 'hover:bg-emerald-50' },
+              { to: '/dashboard/benchmarking',       icon: 'ri-bar-chart-grouped-line', label: 'Benchmarking',       iconBg: 'from-rose-500 to-rose-600',        text: 'text-rose-700',     bg: 'hover:bg-rose-50' },
             ].map((action) => (
               <Link
                 key={action.to}
                 to={action.to}
-                className={`flex items-center gap-3 p-3.5 bg-gradient-to-br ${action.bg} rounded-premium hover:shadow-elevation-2 transition-all duration-200 group border ${action.border} cursor-pointer`}
+                className={`flex items-center gap-3 p-3 rounded-xl border border-border/60 ${action.bg} hover:border-border hover:shadow-elevation-1 transition-all duration-200 group cursor-pointer`}
               >
-                <div className={`w-9 h-9 bg-gradient-to-br ${action.iconBg} rounded-premium flex items-center justify-center group-hover:scale-105 transition-transform shadow-elevation-1 flex-shrink-0`}>
-                  <i className={`${action.icon} text-white text-base`}></i>
+                <div className={`w-8 h-8 bg-gradient-to-br ${action.iconBg} rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform shadow-elevation-1 flex-shrink-0`}>
+                  <i className={`${action.icon} text-white text-sm`}></i>
                 </div>
-                <span className={`text-xs font-bold ${action.text} leading-tight`}>{action.label}</span>
+                <span className={`text-xs font-semibold ${action.text} leading-tight`}>{action.label}</span>
               </Link>
             ))}
           </div>
