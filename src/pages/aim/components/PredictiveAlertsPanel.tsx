@@ -293,12 +293,16 @@ export default function PredictiveAlertsPanel() {
                         <div className="bg-background rounded-premium p-3 border border-border">
                           <div className="text-xs font-semibold text-brand-600 mb-2 uppercase tracking-wide">Recommended Actions</div>
                           <div className="space-y-1.5">
-                            {alert.actions.map((action, index) => (
-                              <div key={index} className="flex items-center gap-2">
-                                <i className="ri-checkbox-circle-line text-ai-500 text-sm flex-shrink-0"></i>
-                                <span className="text-xs text-brand-600">{action}</span>
-                              </div>
-                            ))}
+                            {alert.actions.map((action, index) => {
+                              const label = typeof action === 'string' ? action : (action as any)?.label ?? '';
+                              if (!label) return null;
+                              return (
+                                <div key={index} className="flex items-center gap-2">
+                                  <i className="ri-checkbox-circle-line text-ai-500 text-sm flex-shrink-0"></i>
+                                  <span className="text-xs text-brand-600">{label}</span>
+                                </div>
+                              );
+                            })}
                           </div>
                         </div>
                       )}

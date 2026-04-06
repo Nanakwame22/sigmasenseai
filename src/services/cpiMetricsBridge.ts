@@ -542,13 +542,14 @@ export class CPIMetricsBridge {
         title: `CPI Alert: ${def.name} ${domain.status === 'critical' ? 'Critical' : 'Elevated'}`,
         message: domain.predictive_insight ?? `${def.name} has reached ${domain.risk_score} — above threshold.`,
         description: `Risk score: ${domain.risk_score}/100. ${domain.predictive_insight ?? ''}`,
-        alert_type: 'threshold',
+        alert_type: 'warning',
         category: 'clinical',
-        status: 'active',
+        status: 'new',
         auto_generated: true,
+        is_read: false,
         actions: [
-          { label: 'View CPI Dashboard', url: '/dashboard/cpi' },
-          { label: 'Acknowledge', action: 'acknowledge' },
+          'Review CPI Dashboard for details',
+          'Acknowledge and assign an owner',
         ],
       });
     }
