@@ -1,0 +1,267 @@
+const SMART_STORAGE_KEY = 'oracle-health-smart-session';
+const SMART_RESULT_STORAGE_KEY = 'oracle-health-smart-result';
+
+export interface OracleSmartSession {
+  issuer: string;
+  launch?: string | null;
+  clientId: string;
+  redirectUri: string;
+  scope: string;
+  state: string;
+  codeVerifier: string;
+  codeChallenge: string;
+  tokenEndpoint: string;
+  authorizationEndpoint: string;
+  createdAt: string;
+}
+
+export interface OracleSmartTokenResponse {
+  access_token: string;
+  token_type: string;
+  expires_in?: number;
+  refresh_token?: string;
+  scope?: string;
+  patient?: string;
+  encounter?: string;
+  id_token?: string;
+}
+
+export interface OracleSmartConfig {
+  authorization_endpoint: string;
+  token_endpoint: string;
+  capabilities_supported?: string[];
+  scopes_supported?: string[];
+}
+
+export interface OracleSmartResourceSample {
+  resourceType: string;
+  total?: number;
+  sampleIds: string[];
+}
+
+export interface OracleSmartConnectionResult {
+  issuer: string;
+  accessToken: string;
+  tokenType: string;
+  scope?: string;
+  patient?: string;
+  encounter?: string;
+  expiresIn?: number;
+  connectedAt: string;
+  resources: OracleSmartResourceSample[];
+}
+
+function base64UrlEncode(input: ArrayBuffer | Uint8Array) {
+  const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
+  let binary = '';
+  bytes.forEach((byte) => {
+    binary += String.fromCharCode(byte);
+  });
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
+
+function randomString(length = 64) {
+  const bytes = new Uint8Array(length);
+  crypto.getRandomValues(bytes);
+  return base64UrlEncode(bytes).slice(0, length);
+}
+
+async function sha256(input: string) {
+  const encoded = new TextEncoder().encode(input);
+  const digest = await crypto.subtle.digest('SHA-256', encoded);
+  return base64UrlEncode(digest);
+}
+
+function getConfiguredClientId() {
+  return (import.meta.env.VITE_ORACLE_HEALTH_CLIENT_ID as string | undefined)?.trim() || '';
+}
+
+function getConfiguredScope() {
+  return (
+    (import.meta.env.VITE_ORACLE_HEALTH_SCOPE as string | undefined)?.trim() ||
+    'launch openid fhirUser user/Patient.read user/Encounter.read user/Observation.read user/Condition.read user/Procedure.read user/ServiceRequest.read user/Location.read user/Practitioner.read user/Organization.read user/Appointment.read user/CareTeam.read user/DiagnosticReport.read user/MedicationRequest.read user/DocumentReference.read'
+  );
+}
+
+export function getOracleSmartRedirectUri() {
+  return `${window.location.origin}/auth/oracle-health/callback`;
+}
+
+export function getOracleSmartLaunchUri() {
+  return `${window.location.origin}/integrations/oracle-health/launch`;
+}
+
+export async function fetchSmartConfiguration(issuer: string): Promise<OracleSmartConfig> {
+  const issuerBase = issuer.replace(/\/$/, '');
+  const candidates = [
+    `${issuerBase}/.well-known/smart-configuration`,
+    `${issuerBase}/metadata`,
+  ];
+
+  let lastError: Error | null = null;
+  for (const url of candidates) {
+    try {
+      const response = await fetch(url, {
+        headers: {
+          Accept: 'application/json',
+        },
+      });
+      if (!response.ok) {
+        throw new Error(`SMART discovery failed (${response.status})`);
+      }
+      const data = await response.json();
+      if (data.authorization_endpoint && data.token_endpoint) {
+        return data as OracleSmartConfig;
+      }
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error('SMART discovery failed');
+    }
+  }
+
+  throw lastError || new Error('Unable to discover SMART configuration');
+}
+
+export async function createSmartSession(issuer: string, launch?: string | null): Promise<OracleSmartSession> {
+  const clientId = getConfiguredClientId();
+  if (!clientId) {
+    throw new Error('Missing VITE_ORACLE_HEALTH_CLIENT_ID');
+  }
+
+  const config = await fetchSmartConfiguration(issuer);
+  const codeVerifier = randomString(96);
+  const codeChallenge = await sha256(codeVerifier);
+  const state = randomString(48);
+
+  const session: OracleSmartSession = {
+    issuer,
+    launch: launch || null,
+    clientId,
+    redirectUri: getOracleSmartRedirectUri(),
+    scope: getConfiguredScope(),
+    state,
+    codeVerifier,
+    codeChallenge,
+    tokenEndpoint: config.token_endpoint,
+    authorizationEndpoint: config.authorization_endpoint,
+    createdAt: new Date().toISOString(),
+  };
+
+  sessionStorage.setItem(SMART_STORAGE_KEY, JSON.stringify(session));
+  return session;
+}
+
+export function readSmartSession(): OracleSmartSession | null {
+  const raw = sessionStorage.getItem(SMART_STORAGE_KEY);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as OracleSmartSession;
+  } catch {
+    return null;
+  }
+}
+
+export function clearSmartSession() {
+  sessionStorage.removeItem(SMART_STORAGE_KEY);
+}
+
+export function saveSmartConnectionResult(result: OracleSmartConnectionResult) {
+  sessionStorage.setItem(SMART_RESULT_STORAGE_KEY, JSON.stringify(result));
+}
+
+export function readSmartConnectionResult(): OracleSmartConnectionResult | null {
+  const raw = sessionStorage.getItem(SMART_RESULT_STORAGE_KEY);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as OracleSmartConnectionResult;
+  } catch {
+    return null;
+  }
+}
+
+export function clearSmartConnectionResult() {
+  sessionStorage.removeItem(SMART_RESULT_STORAGE_KEY);
+}
+
+export function buildAuthorizationUrl(session: OracleSmartSession) {
+  const url = new URL(session.authorizationEndpoint);
+  url.searchParams.set('response_type', 'code');
+  url.searchParams.set('client_id', session.clientId);
+  url.searchParams.set('redirect_uri', session.redirectUri);
+  url.searchParams.set('scope', session.scope);
+  url.searchParams.set('aud', session.issuer);
+  url.searchParams.set('state', session.state);
+  url.searchParams.set('code_challenge', session.codeChallenge);
+  url.searchParams.set('code_challenge_method', 'S256');
+  if (session.launch) {
+    url.searchParams.set('launch', session.launch);
+  }
+  return url.toString();
+}
+
+export async function exchangeSmartCode(code: string, session: OracleSmartSession): Promise<OracleSmartTokenResponse> {
+  const body = new URLSearchParams({
+    grant_type: 'authorization_code',
+    code,
+    redirect_uri: session.redirectUri,
+    client_id: session.clientId,
+    code_verifier: session.codeVerifier,
+  });
+
+  const response = await fetch(session.tokenEndpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      Accept: 'application/json',
+    },
+    body: body.toString(),
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Token exchange failed (${response.status}): ${text || 'No response body'}`);
+  }
+
+  return response.json();
+}
+
+async function fetchResourceBundle(issuer: string, accessToken: string, resourceType: string) {
+  const url = new URL(`${issuer.replace(/\/$/, '')}/${resourceType}`);
+  url.searchParams.set('_count', '3');
+  const response = await fetch(url.toString(), {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      Accept: 'application/fhir+json, application/json',
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`${resourceType} fetch failed (${response.status})`);
+  }
+
+  return response.json();
+}
+
+export async function fetchOracleSmartSamples(
+  issuer: string,
+  accessToken: string
+): Promise<OracleSmartResourceSample[]> {
+  const resourceTypes = ['Patient', 'Encounter', 'Observation', 'Condition'];
+  const settled = await Promise.allSettled(
+    resourceTypes.map(async (resourceType) => {
+      const bundle = await fetchResourceBundle(issuer, accessToken, resourceType);
+      return {
+        resourceType,
+        total: typeof bundle.total === 'number' ? bundle.total : undefined,
+        sampleIds: Array.isArray(bundle.entry)
+          ? bundle.entry
+              .map((entry: any) => entry?.resource?.id)
+              .filter((id: unknown): id is string => typeof id === 'string')
+          : [],
+      } satisfies OracleSmartResourceSample;
+    })
+  );
+
+  return settled
+    .filter((item): item is PromiseFulfilledResult<OracleSmartResourceSample> => item.status === 'fulfilled')
+    .map((item) => item.value);
+}

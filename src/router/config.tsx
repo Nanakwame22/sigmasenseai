@@ -11,7 +11,9 @@ const NotFound = lazy(() => import('../pages/NotFound'));
 const LoginPage = lazy(() => import('../pages/auth/LoginPage'));
 const SignupPage = lazy(() => import('../pages/auth/SignupPage'));
 const ForgotPasswordPage = lazy(() => import('../pages/auth/ForgotPasswordPage'));
+const OracleHealthCallbackPage = lazy(() => import('../pages/auth/OracleHealthCallbackPage'));
 const OnboardingPage = lazy(() => import('../pages/onboarding/OnboardingPage'));
+const OracleHealthLaunchPage = lazy(() => import('../pages/integrations/OracleHealthLaunchPage'));
 const DashboardLayout = lazy(() => import('../components/layout/DashboardLayout'));
 const DashboardHome = lazy(() => import('../pages/dashboard/DashboardHome'));
 const MetricsPage = lazy(() => import('../pages/dashboard/MetricsPage'));
@@ -82,6 +84,14 @@ const routes: RouteObject[] = [
   {
     path: '/auth/resend-confirmation',
     element: <ResendConfirmationPage />,
+  },
+  {
+    path: '/auth/oracle-health/callback',
+    element: <OracleHealthCallbackPage />,
+  },
+  {
+    path: '/integrations/oracle-health/launch',
+    element: <OracleHealthLaunchPage />,
   },
   {
     path: '/onboarding',
