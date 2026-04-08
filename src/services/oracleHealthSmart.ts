@@ -43,6 +43,7 @@ export interface OracleSmartConnectionResult {
   issuer: string;
   accessToken: string;
   tokenType: string;
+  mode?: 'smart' | 'open-sandbox';
   scope?: string;
   patient?: string;
   encounter?: string;
@@ -89,6 +90,10 @@ export function getOracleSmartRedirectUri() {
 
 export function getOracleSmartLaunchUri() {
   return `${window.location.origin}/integrations/oracle-health/launch`;
+}
+
+export function isOracleOpenSandboxIssuer(issuer: string) {
+  return /fhir-open\.cerner\.com/i.test(issuer);
 }
 
 export async function fetchSmartConfiguration(issuer: string): Promise<OracleSmartConfig> {
@@ -264,4 +269,81 @@ export async function fetchOracleSmartSamples(
   return settled
     .filter((item): item is PromiseFulfilledResult<OracleSmartResourceSample> => item.status === 'fulfilled')
     .map((item) => item.value);
+}
+
+async function fetchOpenResourceBundle(issuer: string, resourceType: string) {
+  const url = new URL(`${issuer.replace(/\/$/, '')}/${resourceType}`);
+  url.searchParams.set('_count', '3');
+  const response = await fetch(url.toString(), {
+    headers: {
+      Accept: 'application/fhir+json, application/json',
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`${resourceType} fetch failed (${response.status})`);
+  }
+
+  return response.json();
+}
+
+async function fetchCapabilityStatement(issuer: string) {
+  const response = await fetch(`${issuer.replace(/\/$/, '')}/metadata`, {
+    headers: {
+      Accept: 'application/fhir+json, application/json',
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`CapabilityStatement fetch failed (${response.status})`);
+  }
+
+  return response.json();
+}
+
+export async function fetchOracleOpenSandboxSamples(
+  issuer: string
+): Promise<OracleSmartResourceSample[]> {
+  const resourceTypes = ['Patient', 'Encounter', 'Observation', 'Condition', 'Location'];
+  const settled = await Promise.allSettled(
+    resourceTypes.map(async (resourceType) => {
+      const bundle = await fetchOpenResourceBundle(issuer, resourceType);
+      return {
+        resourceType,
+        total: typeof bundle.total === 'number' ? bundle.total : undefined,
+        sampleIds: Array.isArray(bundle.entry)
+          ? bundle.entry
+              .map((entry: any) => entry?.resource?.id)
+              .filter((id: unknown): id is string => typeof id === 'string')
+          : [],
+      } satisfies OracleSmartResourceSample;
+    })
+  );
+
+  const samples = settled
+    .filter((item): item is PromiseFulfilledResult<OracleSmartResourceSample> => item.status === 'fulfilled')
+    .map((item) => item.value);
+
+  if (samples.length > 0) {
+    return samples;
+  }
+
+  const capabilityStatement = await fetchCapabilityStatement(issuer);
+  const softwareName = capabilityStatement?.software?.name;
+  const fhirVersion = capabilityStatement?.fhirVersion;
+  const restResources = Array.isArray(capabilityStatement?.rest?.[0]?.resource)
+    ? capabilityStatement.rest[0].resource
+        .map((resource: any) => resource?.type)
+        .filter((type: unknown): type is string => typeof type === 'string')
+        .slice(0, 5)
+    : [];
+
+  return [
+    {
+      resourceType: 'CapabilityStatement',
+      sampleIds: [softwareName, fhirVersion, ...restResources].filter(
+        (value): value is string => typeof value === 'string' && value.length > 0
+      ),
+    },
+  ];
 }
