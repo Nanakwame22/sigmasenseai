@@ -1,6 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../../lib/supabase';
 import IntegrationConfigModal from './IntegrationConfigModal';
+import {
+  type OracleSmartConnectionResult,
+  readSmartConnectionResult,
+} from '../../../services/oracleHealthSmart';
 
 interface DomainSnapshot {
   domain_id: string;
@@ -264,6 +268,7 @@ const statusConfig = {
 export default function HealthcareIntegrations() {
   const [snapshots, setSnapshots] = useState<Record<string, DomainSnapshot>>({});
   const [configs, setConfigs] = useState<Record<string, IntegrationConfigRow>>({});
+  const [oracleConnection, setOracleConnection] = useState<OracleSmartConnectionResult | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [configuring, setConfiguring] = useState<Integration | null>(null);
   const [filter, setFilter] = useState<string>('all');
@@ -310,6 +315,21 @@ export default function HealthcareIntegrations() {
     return () => { supabase.removeChannel(channel); };
   }, []);
 
+  useEffect(() => {
+    const syncOracleConnection = () => {
+      setOracleConnection(readSmartConnectionResult());
+    };
+
+    syncOracleConnection();
+    window.addEventListener('focus', syncOracleConnection);
+    window.addEventListener('storage', syncOracleConnection);
+
+    return () => {
+      window.removeEventListener('focus', syncOracleConnection);
+      window.removeEventListener('storage', syncOracleConnection);
+    };
+  }, []);
+
   // Refresh events/min deterministically from live domain signals
   useEffect(() => {
     if (Object.keys(snapshots).length === 0) return;
@@ -333,6 +353,21 @@ export default function HealthcareIntegrations() {
 
   const connectedCount = INTEGRATIONS.filter(i => deriveStatus(i, snapshots, configs) === 'connected').length;
   const totalEventsPerMin = INTEGRATIONS.reduce((sum, i) => sum + (tickEventsPerMin[i.id] ?? 0), 0);
+  const oracleSummary = oracleConnection
+    ? oracleConnection.resources.slice(0, 4).map((resource) => {
+        const total = typeof resource.total === 'number' ? `${resource.total} total` : 'total unavailable';
+        const ids = resource.sampleIds.length > 0 ? resource.sampleIds.join(', ') : 'no sample ids';
+        return `${resource.resourceType}: ${total}, ${ids}`;
+      })
+    : [];
+  const oracleConnectedAt = oracleConnection
+    ? new Date(oracleConnection.connectedAt).toLocaleString([], {
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+      })
+    : null;
 
   if (loading) {
     return (
@@ -365,6 +400,71 @@ export default function HealthcareIntegrations() {
             <span className="text-xs font-semibold text-teal-700">Live</span>
           </div>
         </div>
+      </div>
+
+      <div className="mb-6 rounded-2xl border border-slate-200 bg-white p-5">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Oracle Health Live Test</p>
+            <h3 className="mt-2 text-lg font-bold text-slate-900">Oracle open-sandbox connection status</h3>
+            <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">
+              This panel shows the latest Oracle Health sandbox result SigmaSense captured from the launch flow so you
+              can verify live Oracle data inside the app instead of only on the launch page.
+            </p>
+          </div>
+          <Link
+            to="/integrations/oracle-health/launch"
+            className="inline-flex items-center gap-2 rounded-xl border border-teal-200 bg-teal-50 px-4 py-2.5 text-sm font-semibold text-teal-700 hover:border-teal-300"
+          >
+            <i className="ri-external-link-line" />
+            Open Oracle Test Flow
+          </Link>
+        </div>
+
+        {oracleConnection ? (
+          <div className="mt-5 grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
+            <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
+              <div className="flex items-center gap-2">
+                <div className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
+                <p className="text-sm font-semibold text-emerald-800">
+                  {oracleConnection.mode === 'open-sandbox' ? 'Open sandbox reachable' : 'SMART connection active'}
+                </p>
+              </div>
+              <div className="mt-4 space-y-2 text-sm text-emerald-900">
+                <p><span className="font-semibold">Source:</span> {oracleConnection.issuer}</p>
+                <p><span className="font-semibold">Connection mode:</span> {oracleConnection.mode === 'open-sandbox' ? 'Public read-only Oracle sandbox' : 'Authenticated SMART on FHIR session'}</p>
+                {oracleConnectedAt && <p><span className="font-semibold">Last verified:</span> {oracleConnectedAt}</p>}
+                <p><span className="font-semibold">Resources captured:</span> {oracleConnection.resources.length}</p>
+              </div>
+              <div className="mt-4 rounded-xl border border-emerald-100 bg-white/80 p-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700">What this means</p>
+                <p className="mt-2 text-sm leading-6 text-emerald-900">
+                  SigmaSense has already reached Oracle Health and pulled live FHIR data from the sandbox. The next step
+                  is mapping those resources into CPI signals and healthcare integration workflows.
+                </p>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Latest Oracle resource summary</p>
+              <div className="mt-3 space-y-2">
+                {oracleSummary.map((item) => (
+                  <div key={item} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
+                    {item}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+            <p className="text-sm font-semibold text-amber-800">No Oracle Health sandbox result found yet</p>
+            <p className="mt-1 text-sm leading-6 text-amber-900">
+              Run the Oracle launch test once from the open-sandbox page, then come back here. SigmaSense will read the
+              latest Oracle session result automatically.
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Data flow diagram */}
@@ -489,7 +589,14 @@ export default function HealthcareIntegrations() {
           const metricRows = getDomainMetricRows(integration, snapshots);
           const config = configs[integration.id];
           const latency = config?.last_test_result?.latency_ms;
-          const lastMessage = config?.last_test_result?.message;
+          const oracleIsLive = integration.id === 'ehr-cerner' && Boolean(oracleConnection);
+          const lastMessage =
+            oracleIsLive
+              ? oracleConnection?.mode === 'open-sandbox'
+                ? 'Oracle open sandbox is live in SigmaSense. Public FHIR reads succeeded and the latest resource summary is available above.'
+                : 'Oracle SMART-on-FHIR session is active in SigmaSense and the latest verified resource summary is available above.'
+              : config?.last_test_result?.message;
+          const latencyLabel = oracleIsLive ? 'Live sandbox read' : latency != null ? `${latency} ms` : '—';
 
           return (
             <div
@@ -530,7 +637,7 @@ export default function HealthcareIntegrations() {
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-xs text-slate-400">Latency</span>
-                    <span className="text-xs text-slate-500">{latency != null ? `${latency} ms` : '—'}</span>
+                    <span className="text-xs text-slate-500">{latencyLabel}</span>
                   </div>
                 </div>
 
@@ -560,9 +667,9 @@ export default function HealthcareIntegrations() {
                         <div className="flex items-center justify-between">
                           <span className="text-xs text-slate-500">Config status</span>
                           <span className={`text-xs font-semibold ${
-                            status === 'connected' ? 'text-emerald-600' : status === 'syncing' ? 'text-amber-600' : 'text-slate-500'
+                            oracleIsLive || status === 'connected' ? 'text-emerald-600' : status === 'syncing' ? 'text-amber-600' : 'text-slate-500'
                           }`}>
-                            {config?.status ?? status}
+                            {oracleIsLive ? 'connected' : config?.status ?? status}
                           </span>
                         </div>
                         {lastMessage && (
