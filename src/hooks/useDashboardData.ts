@@ -4,6 +4,11 @@ import { useAuth } from '../contexts/AuthContext';
 import { readSmartConnectionResult } from '../services/oracleHealthSmart';
 import { buildOraclePlatformMetrics } from '../services/oraclePlatformMetrics';
 
+const ORACLE_PLATFORM_METRIC_NAMES = [
+  'Oracle Sandbox Reachability',
+  'Oracle Verified FHIR Resources',
+];
+
 export interface MetricTrendSeries {
   metricId: string;
   name: string;
@@ -163,7 +168,13 @@ export function useDashboardData() {
         .select('id, name, unit, target_value, category')
         .eq('organization_id', organizationId);
       const oracleConnection = readSmartConnectionResult();
-      const oraclePlatformMetrics = oracleConnection ? buildOraclePlatformMetrics(oracleConnection) : [];
+      const hasPersistedOracleMetrics = (metricsWithData || []).some((metric: any) =>
+        ORACLE_PLATFORM_METRIC_NAMES.includes(metric.name)
+      );
+      const oraclePlatformMetrics =
+        oracleConnection && !hasPersistedOracleMetrics
+          ? buildOraclePlatformMetrics(oracleConnection)
+          : [];
 
       const metricTrendSeries: MetricTrendSeries[] = [];
       const kpiHealthGrid: KPIHealthItem[] = [];

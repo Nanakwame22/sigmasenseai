@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { summarizeAIMAlerts, dedupeAIMAlerts } from '../services/aimAlertSummary';
 import { summarizeAIMTrackedWorkRecords } from '../services/aimTrackedWorkSummary';
 import { readSmartConnectionResult } from '../services/oracleHealthSmart';
+import { ORACLE_SANDBOX_SOURCE_NAME } from '../services/oracleIngestionBridge';
 import {
   buildAIMEvidenceContract,
   getAIMDecisionReadiness,
@@ -76,7 +77,7 @@ export const useAIMData = () => {
       const oracleConnection = readSmartConnectionResult();
 
       const [
-        { count: dataSourcesCount },
+        { data: dataSourcesData },
         { data: latestMetricData },
         { count: recommendationsCount },
         { data: actionItemsData },
@@ -90,7 +91,7 @@ export const useAIMData = () => {
       ] = await Promise.all([
         supabase
           .from('data_sources')
-          .select('*', { count: 'exact', head: true })
+          .select('id, name')
           .eq('organization_id', orgId)
           .eq('status', 'active'),
         supabase
@@ -189,7 +190,11 @@ export const useAIMData = () => {
 
       const latestSignalTimestamp = latestMetricData?.timestamp || oracleConnection?.connectedAt || null;
       const hasFreshMetrics = Boolean(latestSignalTimestamp);
-      const platformDataSourceCount = (dataSourcesCount || 0) + (oracleConnection ? 1 : 0);
+      const hasPersistedOracleSource = (dataSourcesData || []).some(
+        (source: any) => source.name === ORACLE_SANDBOX_SOURCE_NAME
+      );
+      const platformDataSourceCount =
+        (dataSourcesData?.length || 0) + (oracleConnection && !hasPersistedOracleSource ? 1 : 0);
       const liveSignalCount = [
         platformDataSourceCount > 0,
         hasFreshMetrics,

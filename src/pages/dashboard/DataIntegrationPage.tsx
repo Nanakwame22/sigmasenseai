@@ -6,6 +6,10 @@ import {
   readSmartConnectionResult,
   type OracleSmartConnectionResult,
 } from '../../services/oracleHealthSmart';
+import {
+  ORACLE_SANDBOX_SOURCE_NAME,
+  syncOraclePlatformArtifacts,
+} from '../../services/oracleIngestionBridge';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
 import ConfirmDialog from '../../components/common/ConfirmDialog';
@@ -237,6 +241,18 @@ export default function DataIntegrationPage() {
   }, []);
 
   useEffect(() => {
+    if (!organizationId || !user?.id || !oracleConnection) return;
+
+    syncOraclePlatformArtifacts({
+      organizationId,
+      userId: user.id,
+      connection: oracleConnection,
+    }).catch((error) => {
+      console.warn('Oracle platform sync did not complete from Data Integration:', error);
+    });
+  }, [organizationId, user?.id, oracleConnection?.connectedAt]);
+
+  useEffect(() => {
     const sourceId = new URLSearchParams(location.search).get('source');
     if (!sourceId || dataSources.length === 0 || selectedSource?.id === sourceId) return;
 
@@ -448,9 +464,14 @@ export default function DataIntegrationPage() {
         } as DataSource;
       });
 
-      const platformSources = oracleConnection
-        ? [buildOracleDataSource(oracleConnection), ...enrichedSources]
-        : enrichedSources;
+      const hasPersistedOracleSource = enrichedSources.some(
+        (source) => source.name === ORACLE_SANDBOX_SOURCE_NAME
+      );
+
+      const platformSources =
+        oracleConnection && !hasPersistedOracleSource
+          ? [buildOracleDataSource(oracleConnection), ...enrichedSources]
+          : enrichedSources;
 
       setDataSources(platformSources);
     } catch (error) {

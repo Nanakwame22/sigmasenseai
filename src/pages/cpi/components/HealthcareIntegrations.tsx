@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../../lib/supabase';
+import { useAuth } from '../../../contexts/AuthContext';
 import IntegrationConfigModal from './IntegrationConfigModal';
 import {
   type OracleSmartConnectionResult,
   readSmartConnectionResult,
 } from '../../../services/oracleHealthSmart';
+import { syncOraclePlatformArtifacts } from '../../../services/oracleIngestionBridge';
 
 interface DomainSnapshot {
   domain_id: string;
@@ -266,6 +268,7 @@ const statusConfig = {
 };
 
 export default function HealthcareIntegrations() {
+  const { user, organizationId } = useAuth();
   const [snapshots, setSnapshots] = useState<Record<string, DomainSnapshot>>({});
   const [configs, setConfigs] = useState<Record<string, IntegrationConfigRow>>({});
   const [oracleConnection, setOracleConnection] = useState<OracleSmartConnectionResult | null>(null);
@@ -329,6 +332,18 @@ export default function HealthcareIntegrations() {
       window.removeEventListener('storage', syncOracleConnection);
     };
   }, []);
+
+  useEffect(() => {
+    if (!organizationId || !user?.id || !oracleConnection) return;
+
+    syncOraclePlatformArtifacts({
+      organizationId,
+      userId: user.id,
+      connection: oracleConnection,
+    }).catch((error) => {
+      console.warn('Oracle platform sync did not complete from Healthcare Integrations:', error);
+    });
+  }, [organizationId, user?.id, oracleConnection?.connectedAt]);
 
   // Refresh events/min deterministically from live domain signals
   useEffect(() => {
