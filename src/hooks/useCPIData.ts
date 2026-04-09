@@ -3,6 +3,10 @@ import { supabase } from '../lib/supabase';
 import { syncCPIToMetrics } from '../services/cpiMetricsBridge';
 import { useAuth } from '../contexts/AuthContext';
 import {
+  readSmartConnectionResult,
+  type OracleSmartConnectionResult,
+} from '../services/oracleHealthSmart';
+import {
   buildCPIEvidenceContract,
   type IntelligenceFreshnessState,
   type IntelligenceSourceLabel,
@@ -290,6 +294,39 @@ function buildLiveFeed(metrics: MetricRecord[], metricPoints: MetricPointRecord[
     .slice(0, 8);
 }
 
+function buildOracleIntegrationFeed(connection: OracleSmartConnectionResult | null): CPIFeedItem[] {
+  if (!connection) return [];
+
+  const resourceSummary =
+    connection.resources.length > 0
+      ? connection.resources
+          .slice(0, 3)
+          .map((resource) => resource.resourceType)
+          .join(', ')
+      : 'FHIR capability metadata';
+
+  return [
+    {
+      id: `live-feed:oracle-health:${connection.connectedAt}`,
+      category: 'oracle',
+      severity: 'info',
+      title:
+        connection.mode === 'open-sandbox'
+          ? 'Oracle Health sandbox connection verified'
+          : 'Oracle Health SMART session verified',
+      body:
+        connection.mode === 'open-sandbox'
+          ? `SigmaSense reached Oracle's public FHIR sandbox and captured ${connection.resources.length} resource sample set(s), including ${resourceSummary}.`
+          : `SigmaSense completed an authenticated Oracle SMART session and verified live FHIR resource access, including ${resourceSummary}.`,
+      action_label: 'Review Oracle integration',
+      icon: 'ri-links-line',
+      acknowledged: false,
+      acknowledged_at: null,
+      created_at: connection.connectedAt,
+    },
+  ];
+}
+
 function buildLiveDomains(metrics: MetricRecord[], metricPoints: MetricPointRecord[]): CPIDomainSnapshot[] {
   if (!metrics.length) return [];
 
@@ -570,6 +607,7 @@ export function useCPIData(): UseCPIDataReturn {
   const { organizationId } = useAuth();
   const [domains, setDomains] = useState<CPIDomainSnapshot[]>([]);
   const [feed, setFeed] = useState<CPIFeedItem[]>([]);
+  const [oracleConnection, setOracleConnection] = useState<OracleSmartConnectionResult | null>(null);
   const [loadingDomains, setLoadingDomains] = useState(true);
   const [loadingFeed, setLoadingFeed] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -589,6 +627,21 @@ export function useCPIData(): UseCPIDataReturn {
           : item
       )
     );
+  }, []);
+
+  useEffect(() => {
+    const syncOracleConnection = () => {
+      setOracleConnection(readSmartConnectionResult());
+    };
+
+    syncOracleConnection();
+    window.addEventListener('focus', syncOracleConnection);
+    window.addEventListener('storage', syncOracleConnection);
+
+    return () => {
+      window.removeEventListener('focus', syncOracleConnection);
+      window.removeEventListener('storage', syncOracleConnection);
+    };
   }, []);
 
   const fetchDomains = useCallback(async () => {
@@ -670,13 +723,19 @@ export function useCPIData(): UseCPIDataReturn {
       }
     }
 
+    const oracleFeed = buildOracleIntegrationFeed(oracleConnection);
+    if (oracleFeed.length > 0) {
+      const existingIds = new Set(oracleFeed.map(item => item.id));
+      mergedFeed = [...oracleFeed, ...mergedFeed.filter(item => !existingIds.has(item.id))];
+    }
+
     if (err) {
       setError(err.message);
     } else {
       setFeed(mergedFeed);
     }
     setLoadingFeed(false);
-  }, [organizationId]);
+  }, [organizationId, oracleConnection]);
 
   const acknowledgeFeedItem = useCallback(async (id: string) => {
     const now = new Date().toISOString();
