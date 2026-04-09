@@ -2,6 +2,10 @@ import { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import {
+  readSmartConnectionResult,
+  type OracleSmartConnectionResult,
+} from '../../services/oracleHealthSmart';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
 import ConfirmDialog from '../../components/common/ConfirmDialog';
@@ -64,6 +68,58 @@ interface SourceIngestionEvent {
   details?: Record<string, unknown> | null;
 }
 
+function buildOracleDataSource(connection: OracleSmartConnectionResult): DataSource {
+  const sampleResourceTypes = connection.resources.map((resource) => resource.resourceType);
+  const latestResourceSummary =
+    connection.resources.length > 0
+      ? connection.resources
+          .slice(0, 4)
+          .map((resource) => resource.resourceType)
+          .join(', ')
+      : 'FHIR capability metadata';
+
+  return {
+    id: 'oracle-health-open-sandbox',
+    name: 'Oracle Health Open Sandbox',
+    type: 'api',
+    status: 'active',
+    last_sync: connection.connectedAt,
+    records_count: connection.resources.length,
+    connection_config: {
+      auth_type: connection.mode === 'open-sandbox' ? 'none' : 'bearer',
+      base_url: connection.issuer,
+      current_columns: sampleResourceTypes,
+      columns: sampleResourceTypes,
+      resource_types: sampleResourceTypes,
+      mode: connection.mode,
+    },
+    health_status: 'healthy',
+    linked_pipelines: 0,
+    recent_records_processed: connection.resources.length,
+    last_success_at: connection.connectedAt,
+    last_failure_at: null,
+    last_run_status: 'completed',
+    last_error_message: null,
+    attention_message:
+      connection.mode === 'open-sandbox'
+        ? 'Oracle public FHIR sandbox is reachable and ready for mapping into platform metrics.'
+        : 'Oracle SMART session is active and ready for platform-level ingestion mapping.',
+    recent_event_count: connection.resources.length,
+    schema_drift_status: 'stable',
+    missing_fields: [],
+    new_fields: [],
+    schema_field_count: sampleResourceTypes.length,
+    reliability_score: 96,
+    auth_health: connection.mode === 'open-sandbox' ? 'not_required' : 'configured',
+    avg_duration_seconds: 1,
+    failure_trend: 'stable',
+    ai_health_summary:
+      connection.mode === 'open-sandbox'
+        ? `Oracle Health is connected through the public sandbox and currently exposing ${latestResourceSummary} for shared platform validation.`
+        : `Oracle Health SMART connectivity is active and exposing ${latestResourceSummary} for shared platform validation.`,
+  };
+}
+
 interface SourceDetailRun {
   id: string;
   pipeline_id: string;
@@ -118,6 +174,7 @@ export default function DataIntegrationPage() {
   const [sourceDetailEvents, setSourceDetailEvents] = useState<SourceIngestionEvent[]>([]);
   const [sourceDetailPipelines, setSourceDetailPipelines] = useState<SourcePipeline[]>([]);
   const [loadingSourceDetail, setLoadingSourceDetail] = useState(false);
+  const [oracleConnection, setOracleConnection] = useState<OracleSmartConnectionResult | null>(null);
 
   const healthSummary = dataSources.reduce(
     (summary, source) => {
@@ -158,6 +215,26 @@ export default function DataIntegrationPage() {
       setLoading(false);
     }
   }, [organizationId]);
+
+  useEffect(() => {
+    if (!organizationId) return;
+    fetchDataSources();
+  }, [oracleConnection, organizationId]);
+
+  useEffect(() => {
+    const syncOracleConnection = () => {
+      setOracleConnection(readSmartConnectionResult());
+    };
+
+    syncOracleConnection();
+    window.addEventListener('focus', syncOracleConnection);
+    window.addEventListener('storage', syncOracleConnection);
+
+    return () => {
+      window.removeEventListener('focus', syncOracleConnection);
+      window.removeEventListener('storage', syncOracleConnection);
+    };
+  }, []);
 
   useEffect(() => {
     const sourceId = new URLSearchParams(location.search).get('source');
@@ -371,7 +448,11 @@ export default function DataIntegrationPage() {
         } as DataSource;
       });
 
-      setDataSources(enrichedSources);
+      const platformSources = oracleConnection
+        ? [buildOracleDataSource(oracleConnection), ...enrichedSources]
+        : enrichedSources;
+
+      setDataSources(platformSources);
     } catch (error) {
       console.error('Error fetching data sources:', error);
       setErrorMessage('Failed to load data sources');
