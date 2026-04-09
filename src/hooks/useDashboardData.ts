@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { readSmartConnectionResult } from '../services/oracleHealthSmart';
+import { buildOraclePlatformMetrics } from '../services/oraclePlatformMetrics';
 
 export interface MetricTrendSeries {
   metricId: string;
@@ -160,6 +162,8 @@ export function useDashboardData() {
         .from('metrics')
         .select('id, name, unit, target_value, category')
         .eq('organization_id', organizationId);
+      const oracleConnection = readSmartConnectionResult();
+      const oraclePlatformMetrics = oracleConnection ? buildOraclePlatformMetrics(oracleConnection) : [];
 
       const metricTrendSeries: MetricTrendSeries[] = [];
       const kpiHealthGrid: KPIHealthItem[] = [];
@@ -359,6 +363,54 @@ export function useDashboardData() {
           : 0;
       }
 
+      if (oraclePlatformMetrics.length > 0) {
+        if (recentMetrics.length < 5) {
+          recentMetrics.unshift(
+            ...oraclePlatformMetrics.slice(0, 2).map((metric) => ({
+              id: metric.id,
+              name: metric.name,
+              value: metric.currentValue,
+              timestamp: metric.timestamp,
+              unit: metric.unit,
+            }))
+          );
+        }
+
+        if (kpiHealthGrid.length === 0) {
+          kpiHealthGrid.push(
+            ...oraclePlatformMetrics.map((metric) => {
+              const ratio = metric.targetValue > 0 ? (metric.currentValue / metric.targetValue) * 100 : 0;
+              return {
+                id: metric.id,
+                name: metric.name,
+                unit: metric.unit,
+                currentValue: metric.currentValue,
+                targetValue: metric.targetValue,
+                trend: 'stable' as const,
+                trendPct: 0,
+                status: ratio >= 90 ? 'on-track' : ratio >= 70 ? 'at-risk' : 'critical',
+                sparkline: [metric.currentValue],
+                category: metric.category,
+                historyPoints: 1,
+                lastTimestamp: metric.timestamp,
+                evidenceSummary: metric.evidenceSummary,
+                lineageSummary: metric.lineageSummary,
+                provenanceSummary: metric.provenanceSummary,
+              };
+            })
+          );
+        }
+
+        if (avgValue === 0) {
+          avgValue = Math.round(
+            oraclePlatformMetrics.reduce((sum, metric) => {
+              const ratio = metric.targetValue > 0 ? (metric.currentValue / metric.targetValue) * 100 : 0;
+              return sum + Math.min(100, Math.max(0, ratio));
+            }, 0) / oraclePlatformMetrics.length
+          );
+        }
+      }
+
       // --- Recent alerts ---
       const { data: recentAlertsData } = await supabase
         .from('alerts')
@@ -368,7 +420,7 @@ export function useDashboardData() {
         .limit(5);
 
       setStats({
-        totalMetrics: metricsCount || 0,
+        totalMetrics: (metricsCount || 0) + oraclePlatformMetrics.length,
         activeAlerts: alertsCount || 0,
         completedActions: actionsCount || 0,
         avgMetricValue: avgValue,
@@ -419,6 +471,20 @@ export function useDashboardData() {
       supabase.removeChannel(alertsChannel);
       supabase.removeChannel(actionsChannel);
       setIsRealtimeConnected(false);
+    };
+  }, [organizationId]);
+
+  useEffect(() => {
+    const refreshOracleSignals = () => {
+      fetchDashboardData();
+    };
+
+    window.addEventListener('focus', refreshOracleSignals);
+    window.addEventListener('storage', refreshOracleSignals);
+
+    return () => {
+      window.removeEventListener('focus', refreshOracleSignals);
+      window.removeEventListener('storage', refreshOracleSignals);
     };
   }, [organizationId]);
 

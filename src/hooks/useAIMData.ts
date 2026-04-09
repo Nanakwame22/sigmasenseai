@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { summarizeAIMAlerts, dedupeAIMAlerts } from '../services/aimAlertSummary';
 import { summarizeAIMTrackedWorkRecords } from '../services/aimTrackedWorkSummary';
+import { readSmartConnectionResult } from '../services/oracleHealthSmart';
 import {
   buildAIMEvidenceContract,
   getAIMDecisionReadiness,
@@ -72,6 +73,7 @@ export const useAIMData = () => {
   const fetchAIMStats = useCallback(async (orgId: string) => {
     try {
       setStats(prev => ({ ...prev, loading: true, error: null }));
+      const oracleConnection = readSmartConnectionResult();
 
       const [
         { count: dataSourcesCount },
@@ -185,9 +187,11 @@ export const useAIMData = () => {
           ? activeLeadWindowAlerts.reduce((sum, a) => sum + (a.days_until || 0), 0) / activeLeadWindowAlerts.length
           : 0;
 
-      const hasFreshMetrics = Boolean(latestMetricData?.timestamp);
+      const latestSignalTimestamp = latestMetricData?.timestamp || oracleConnection?.connectedAt || null;
+      const hasFreshMetrics = Boolean(latestSignalTimestamp);
+      const platformDataSourceCount = (dataSourcesCount || 0) + (oracleConnection ? 1 : 0);
       const liveSignalCount = [
-        (dataSourcesCount || 0) > 0,
+        platformDataSourceCount > 0,
         hasFreshMetrics,
         (recommendationsCount || 0) > 0,
         trackedWorkSummary.total > 0,
@@ -195,8 +199,8 @@ export const useAIMData = () => {
       ].filter(Boolean).length;
 
       const evidenceCoverage = Math.round((liveSignalCount / 5) * 100);
-      const freshnessAgeHours = latestMetricData?.timestamp
-        ? (Date.now() - new Date(latestMetricData.timestamp).getTime()) / 3600000
+      const freshnessAgeHours = latestSignalTimestamp
+        ? (Date.now() - new Date(latestSignalTimestamp).getTime()) / 3600000
         : Number.POSITIVE_INFINITY;
 
       const decisionReadiness = getAIMDecisionReadiness({
@@ -231,9 +235,9 @@ export const useAIMData = () => {
 
       setStats(prev => ({
         ...prev,
-        dataSourcesCount: dataSourcesCount || 0,
-        lastRefreshTime: latestMetricData?.timestamp
-          ? new Date(latestMetricData.timestamp)
+        dataSourcesCount: platformDataSourceCount,
+        lastRefreshTime: latestSignalTimestamp
+          ? new Date(latestSignalTimestamp)
           : null,
         recommendationsCount: recommendationsCount || 0,
         actionCenterCount: trackedWorkSummary.total,
@@ -331,6 +335,23 @@ export const useAIMData = () => {
       supabase.removeChannel(actionChannel);
     };
   }, [organization?.id, fetchAIMStats, triggerPulse]);
+
+  useEffect(() => {
+    const orgId = organization?.id;
+    if (!orgId) return;
+
+    const refreshOracleSignals = () => {
+      fetchAIMStats(orgId);
+    };
+
+    window.addEventListener('focus', refreshOracleSignals);
+    window.addEventListener('storage', refreshOracleSignals);
+
+    return () => {
+      window.removeEventListener('focus', refreshOracleSignals);
+      window.removeEventListener('storage', refreshOracleSignals);
+    };
+  }, [organization?.id, fetchAIMStats]);
 
   return stats;
 };
