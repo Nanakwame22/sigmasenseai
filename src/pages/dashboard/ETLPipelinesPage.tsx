@@ -81,6 +81,23 @@ interface FieldMapping {
   targetMetricId?: string;
 }
 
+interface TransformationOperation {
+  type: 'filter';
+  field: string;
+  condition: 'equals' | 'not_equals' | 'contains' | 'greater_than' | 'less_than';
+  value: string;
+}
+
+interface OraclePipelineTemplate {
+  id: string;
+  name: string;
+  description: string;
+  schedule: string;
+  mappings: FieldMapping[];
+  operations: TransformationOperation[];
+  helperText: string;
+}
+
 interface PipelineValidationResult {
   valid: boolean;
   issues: string[];
@@ -96,6 +113,47 @@ interface FieldInsight {
 function isManagedOracleSource(source?: DataSource | null) {
   return source?.type === 'api' && source.connection_config?.managed_connector === 'oracle-health-sandbox';
 }
+
+const ORACLE_NORMALIZED_FIELD_MAPPINGS: FieldMapping[] = [
+  { sourceField: 'metric_name', destinationType: 'metric_name' },
+  { sourceField: 'value', destinationType: 'value' },
+  { sourceField: 'timestamp', destinationType: 'timestamp' },
+  { sourceField: 'unit', destinationType: 'unit' },
+];
+
+const ORACLE_PIPELINE_TEMPLATES: OraclePipelineTemplate[] = [
+  {
+    id: 'oracle-health-sync',
+    name: 'Oracle Health Sync Pipeline',
+    description: 'Sync normalized Oracle sandbox metrics into SigmaSense so shared source health and coverage stay current.',
+    schedule: 'daily',
+    mappings: ORACLE_NORMALIZED_FIELD_MAPPINGS,
+    operations: [],
+    helperText: 'Use this first when you want a broad Oracle connector sync without filtering to one metric.',
+  },
+  {
+    id: 'oracle-sandbox-reachability',
+    name: 'Oracle Sandbox Reachability Pipeline',
+    description: 'Track whether Oracle FHIR endpoints remain reachable and ready for downstream CPI/AIM use.',
+    schedule: 'daily',
+    mappings: ORACLE_NORMALIZED_FIELD_MAPPINGS,
+    operations: [
+      { type: 'filter', field: 'metric_name', condition: 'equals', value: 'Oracle Sandbox Reachability' },
+    ],
+    helperText: 'Good for monitoring source reliability before deeper healthcare pipelines depend on Oracle.',
+  },
+  {
+    id: 'oracle-fhir-resource-coverage',
+    name: 'Oracle FHIR Resource Coverage Pipeline',
+    description: 'Track how many Oracle FHIR resource types SigmaSense can verify from the open sandbox.',
+    schedule: 'daily',
+    mappings: ORACLE_NORMALIZED_FIELD_MAPPINGS,
+    operations: [
+      { type: 'filter', field: 'metric_name', condition: 'equals', value: 'Oracle Verified FHIR Resources' },
+    ],
+    helperText: 'Use this to watch Oracle coverage growth while secure sandbox and richer mappings are still being built.',
+  },
+];
 
 export default function ETLPipelinesPage() {
   const { user, organizationId } = useAuth();
@@ -998,6 +1056,28 @@ export default function ETLPipelinesPage() {
     return pipeline.status === filter;
   });
   const mappingSuggestion = buildMappingSuggestion(sourceFields, fieldInsights as any, sourcePreview);
+  const selectedSource = dataSources.find((source) => source.id === formData.source_id) || null;
+  const selectedSourceIsManagedOracle = isManagedOracleSource(selectedSource);
+
+  const applyOracleTemplate = async (template: OraclePipelineTemplate) => {
+    setFormData((current) => ({
+      ...current,
+      name: template.name,
+      description: template.description,
+      schedule: template.schedule,
+      transformation_rules: {
+        ...current.transformation_rules,
+        operations: template.operations,
+      },
+    }));
+    setFieldMappings(template.mappings);
+
+    if (formData.source_id) {
+      await loadSourcePreview(formData.source_id);
+    }
+
+    showToast(`${template.name} template applied`, 'success');
+  };
 
   const stats = {
     total: pipelines.length,
@@ -1695,6 +1775,44 @@ export default function ETLPipelinesPage() {
                       <option value="monthly">Monthly</option>
                     </select>
                   </div>
+
+                  {selectedSourceIsManagedOracle && (
+                    <div className="rounded-xl border border-teal-200 bg-teal-50/70 p-4 space-y-4">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <i className="ri-stack-line text-teal-700"></i>
+                          <p className="text-sm font-semibold text-teal-900">Oracle pipeline templates</p>
+                        </div>
+                        <p className="mt-1 text-sm text-teal-900/85">
+                          These templates use the Oracle fields SigmaSense persists today. They are production-honest integration pipelines, not mock clinical transformations.
+                        </p>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {ORACLE_PIPELINE_TEMPLATES.map((template) => (
+                          <button
+                            key={template.id}
+                            type="button"
+                            onClick={() => applyOracleTemplate(template)}
+                            className="rounded-xl border border-teal-200 bg-white px-4 py-4 text-left hover:border-teal-400 hover:bg-teal-50 transition-colors"
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <p className="text-sm font-semibold text-slate-900">{template.name}</p>
+                              <span className="rounded-full bg-teal-100 px-2 py-1 text-[11px] font-semibold text-teal-700">
+                                {template.schedule}
+                              </span>
+                            </div>
+                            <p className="mt-2 text-sm text-slate-600">{template.description}</p>
+                            <p className="mt-3 text-xs text-teal-700">{template.helperText}</p>
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-xs text-amber-800">
+                        Operational pipelines like <span className="font-semibold">ED Wait Time</span> or <span className="font-semibold">Bed Availability</span> need richer secure-sandbox ingestion and normalized Oracle records first. Today’s open sandbox is strong enough for connector health and resource coverage pipelines.
+                      </div>
+                    </div>
+                  )}
                 </>
               )}
 
