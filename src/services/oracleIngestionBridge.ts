@@ -15,6 +15,7 @@ interface DataSourceRow {
   id: string;
   name: string;
   connection_config?: Record<string, unknown> | null;
+  file_data?: Record<string, unknown>[] | null;
 }
 
 interface PipelineRow {
@@ -28,6 +29,10 @@ interface MetricRow {
 
 function buildSourceConfig(connection: OracleSmartConnectionResult) {
   const resourceTypes = connection.resources.map((resource) => resource.resourceType);
+  const normalizedRecordCount = connection.resources.reduce(
+    (sum, resource) => sum + (resource.sampleRecords?.length || 0),
+    0
+  );
   return {
     base_url: connection.issuer,
     auth_type: connection.mode === 'open-sandbox' ? 'none' : 'bearer',
@@ -35,9 +40,55 @@ function buildSourceConfig(connection: OracleSmartConnectionResult) {
     resource_types: resourceTypes,
     current_columns: resourceTypes,
     columns: resourceTypes,
+    normalized_fields: [
+      'resource_type',
+      'resource_id',
+      'status',
+      'category',
+      'code',
+      'display',
+      'value',
+      'unit',
+      'effective_at',
+      'authored_at',
+      'recorded_at',
+      'period_start',
+      'period_end',
+      'subject_ref',
+      'encounter_ref',
+      'location_ref',
+      'source',
+      'evidence_summary',
+    ],
+    normalized_record_count: normalizedRecordCount,
     managed_connector: 'oracle-health-sandbox',
     last_verified_at: connection.connectedAt,
   };
+}
+
+function buildNormalizedOracleRows(connection: OracleSmartConnectionResult): Record<string, unknown>[] {
+  const rows = connection.resources.flatMap((resource) =>
+    (resource.sampleRecords || []).map((record) => ({
+      ...record,
+      connector_mode: connection.mode || 'smart',
+      issuer: connection.issuer,
+      ingested_at: connection.connectedAt,
+    }))
+  );
+
+  if (rows.length > 0) {
+    return rows;
+  }
+
+  return connection.resources.map((resource) => ({
+    resource_type: resource.resourceType,
+    resource_id: resource.sampleIds[0] || `${resource.resourceType}-metadata`,
+    source: `${connection.issuer.replace(/\/$/, '')}/${resource.resourceType}`,
+    evidence_summary: `Oracle FHIR ${resource.resourceType} endpoint verified, but no sample resource rows were returned.`,
+    connector_mode: connection.mode || 'smart',
+    issuer: connection.issuer,
+    ingested_at: connection.connectedAt,
+  }));
 }
 
 export async function syncOraclePlatformArtifacts({
@@ -58,6 +109,7 @@ export async function syncOraclePlatformArtifacts({
   if (existingSourceError) throw existingSourceError;
 
   const sourceConfig = buildSourceConfig(connection);
+  const normalizedOracleRows = buildNormalizedOracleRows(connection);
   let sourceRow = existingSourceData as DataSourceRow | null;
 
   if (!sourceRow?.id) {
@@ -68,8 +120,9 @@ export async function syncOraclePlatformArtifacts({
         type: 'api',
         status: 'active',
         organization_id: organizationId,
-        records_count: totalSamples,
+        records_count: normalizedOracleRows.length || totalSamples,
         connection_config: sourceConfig,
+        file_data: normalizedOracleRows,
         last_sync: connection.connectedAt,
         created_by: userId,
       })
@@ -83,11 +136,12 @@ export async function syncOraclePlatformArtifacts({
       .from('data_sources')
       .update({
         status: 'active',
-        records_count: totalSamples,
+        records_count: normalizedOracleRows.length || totalSamples,
         connection_config: {
           ...(sourceRow.connection_config || {}),
           ...sourceConfig,
         },
+        file_data: normalizedOracleRows,
         last_sync: connection.connectedAt,
       })
       .eq('id', sourceRow.id);

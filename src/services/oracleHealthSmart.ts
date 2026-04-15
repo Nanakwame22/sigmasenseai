@@ -37,6 +37,28 @@ export interface OracleSmartResourceSample {
   resourceType: string;
   total?: number;
   sampleIds: string[];
+  sampleRecords?: OracleNormalizedFhirRecord[];
+}
+
+export interface OracleNormalizedFhirRecord {
+  resource_type: string;
+  resource_id: string;
+  status?: string;
+  category?: string;
+  code?: string;
+  display?: string;
+  value?: number | string;
+  unit?: string;
+  effective_at?: string;
+  authored_at?: string;
+  recorded_at?: string;
+  period_start?: string;
+  period_end?: string;
+  subject_ref?: string;
+  encounter_ref?: string;
+  location_ref?: string;
+  source: string;
+  evidence_summary: string;
 }
 
 export interface OracleSmartConnectionResult {
@@ -246,6 +268,67 @@ async function fetchResourceBundle(issuer: string, accessToken: string, resource
   return response.json();
 }
 
+function firstCodingDisplay(resource: any): { code?: string; display?: string; category?: string } {
+  const coding = resource?.code?.coding?.[0] || resource?.category?.[0]?.coding?.[0] || resource?.category?.coding?.[0];
+  const categoryCoding = resource?.category?.[0]?.coding?.[0] || resource?.category?.coding?.[0];
+  return {
+    code: typeof coding?.code === 'string' ? coding.code : undefined,
+    display: typeof coding?.display === 'string' ? coding.display : undefined,
+    category: typeof categoryCoding?.display === 'string' ? categoryCoding.display : undefined,
+  };
+}
+
+function normalizeFhirResource(resource: any, issuer: string): OracleNormalizedFhirRecord | null {
+  if (!resource || typeof resource !== 'object') return null;
+
+  const resourceType = typeof resource.resourceType === 'string' ? resource.resourceType : 'Unknown';
+  const resourceId = typeof resource.id === 'string' ? resource.id : `${resourceType}-${crypto.randomUUID()}`;
+  const coding = firstCodingDisplay(resource);
+  const valueQuantity = resource.valueQuantity || {};
+  const period = resource.period || {};
+
+  const normalized: OracleNormalizedFhirRecord = {
+    resource_type: resourceType,
+    resource_id: resourceId,
+    status: typeof resource.status === 'string' ? resource.status : undefined,
+    category: coding.category,
+    code: coding.code,
+    display: coding.display,
+    value: typeof valueQuantity.value === 'number'
+      ? valueQuantity.value
+      : typeof resource.valueString === 'string'
+        ? resource.valueString
+        : undefined,
+    unit: typeof valueQuantity.unit === 'string' ? valueQuantity.unit : undefined,
+    effective_at: typeof resource.effectiveDateTime === 'string' ? resource.effectiveDateTime : undefined,
+    authored_at: typeof resource.authoredOn === 'string' ? resource.authoredOn : undefined,
+    recorded_at: typeof resource.recordedDate === 'string' ? resource.recordedDate : undefined,
+    period_start: typeof period.start === 'string' ? period.start : undefined,
+    period_end: typeof period.end === 'string' ? period.end : undefined,
+    subject_ref: typeof resource.subject?.reference === 'string' ? resource.subject.reference : undefined,
+    encounter_ref: typeof resource.encounter?.reference === 'string' ? resource.encounter.reference : undefined,
+    location_ref: typeof resource.location?.[0]?.location?.reference === 'string'
+      ? resource.location[0].location.reference
+      : typeof resource.location?.reference === 'string'
+        ? resource.location.reference
+        : undefined,
+    source: `${issuer.replace(/\/$/, '')}/${resourceType}/${resourceId}`,
+    evidence_summary: `Oracle FHIR ${resourceType} sample ${resourceId} normalized for SigmaSense ingestion.`,
+  };
+
+  return Object.fromEntries(
+    Object.entries(normalized).filter(([, value]) => value !== undefined && value !== '')
+  ) as OracleNormalizedFhirRecord;
+}
+
+function normalizeBundleEntries(bundle: any, issuer: string): OracleNormalizedFhirRecord[] {
+  if (!Array.isArray(bundle?.entry)) return [];
+
+  return bundle.entry
+    .map((entry: any) => normalizeFhirResource(entry?.resource, issuer))
+    .filter((record: OracleNormalizedFhirRecord | null): record is OracleNormalizedFhirRecord => Boolean(record));
+}
+
 export async function fetchOracleSmartSamples(
   issuer: string,
   accessToken: string
@@ -262,6 +345,7 @@ export async function fetchOracleSmartSamples(
               .map((entry: any) => entry?.resource?.id)
               .filter((id: unknown): id is string => typeof id === 'string')
           : [],
+        sampleRecords: normalizeBundleEntries(bundle, issuer),
       } satisfies OracleSmartResourceSample;
     })
   );
@@ -316,6 +400,7 @@ export async function fetchOracleOpenSandboxSamples(
               .map((entry: any) => entry?.resource?.id)
               .filter((id: unknown): id is string => typeof id === 'string')
           : [],
+        sampleRecords: normalizeBundleEntries(bundle, issuer),
       } satisfies OracleSmartResourceSample;
     })
   );
