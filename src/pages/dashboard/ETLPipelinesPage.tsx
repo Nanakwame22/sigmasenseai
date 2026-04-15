@@ -88,11 +88,14 @@ interface TransformationOperation {
   value: string;
 }
 
+type OracleSourceView = 'platform_metrics' | 'normalized_fhir';
+
 interface OraclePipelineTemplate {
   id: string;
   name: string;
   description: string;
   schedule: string;
+  sourceView: OracleSourceView;
   mappings: FieldMapping[];
   operations: TransformationOperation[];
   helperText: string;
@@ -121,12 +124,20 @@ const ORACLE_NORMALIZED_FIELD_MAPPINGS: FieldMapping[] = [
   { sourceField: 'unit', destinationType: 'unit' },
 ];
 
+const ORACLE_OBSERVATION_FIELD_MAPPINGS: FieldMapping[] = [
+  { sourceField: 'display', destinationType: 'metric_name' },
+  { sourceField: 'value', destinationType: 'value' },
+  { sourceField: 'ingested_at', destinationType: 'timestamp' },
+  { sourceField: 'unit', destinationType: 'unit' },
+];
+
 const ORACLE_PIPELINE_TEMPLATES: OraclePipelineTemplate[] = [
   {
     id: 'oracle-health-sync',
     name: 'Oracle Health Sync Pipeline',
     description: 'Sync normalized Oracle sandbox metrics into SigmaSense so shared source health and coverage stay current.',
     schedule: 'daily',
+    sourceView: 'platform_metrics',
     mappings: ORACLE_NORMALIZED_FIELD_MAPPINGS,
     operations: [],
     helperText: 'Use this first when you want a broad Oracle connector sync without filtering to one metric.',
@@ -136,6 +147,7 @@ const ORACLE_PIPELINE_TEMPLATES: OraclePipelineTemplate[] = [
     name: 'Oracle Sandbox Reachability Pipeline',
     description: 'Track whether Oracle FHIR endpoints remain reachable and ready for downstream CPI/AIM use.',
     schedule: 'daily',
+    sourceView: 'platform_metrics',
     mappings: ORACLE_NORMALIZED_FIELD_MAPPINGS,
     operations: [
       { type: 'filter', field: 'metric_name', condition: 'equals', value: 'Oracle Sandbox Reachability' },
@@ -147,11 +159,24 @@ const ORACLE_PIPELINE_TEMPLATES: OraclePipelineTemplate[] = [
     name: 'Oracle FHIR Resource Coverage Pipeline',
     description: 'Track how many Oracle FHIR resource types SigmaSense can verify from the open sandbox.',
     schedule: 'daily',
+    sourceView: 'platform_metrics',
     mappings: ORACLE_NORMALIZED_FIELD_MAPPINGS,
     operations: [
       { type: 'filter', field: 'metric_name', condition: 'equals', value: 'Oracle Verified FHIR Resources' },
     ],
     helperText: 'Use this to watch Oracle coverage growth while secure sandbox and richer mappings are still being built.',
+  },
+  {
+    id: 'oracle-observation-normalization',
+    name: 'Oracle Observation Normalization Pipeline',
+    description: 'Load numeric Oracle FHIR Observation rows into SigmaSense metrics using the persisted normalized FHIR payload.',
+    schedule: 'daily',
+    sourceView: 'normalized_fhir',
+    mappings: ORACLE_OBSERVATION_FIELD_MAPPINGS,
+    operations: [
+      { type: 'filter', field: 'resource_type', condition: 'equals', value: 'Observation' },
+    ],
+    helperText: 'Use this when you want real FHIR row ingestion. Open sandbox rows are limited, but this is the production path for richer Oracle feeds.',
   },
 ];
 
@@ -211,7 +236,8 @@ export default function ETLPipelinesPage() {
     schedule: 'daily',
     transformation_rules: {
       operations: [] as any[],
-      field_mappings: [] as FieldMapping[]
+      field_mappings: [] as FieldMapping[],
+      source_view: 'platform_metrics' as OracleSourceView,
     }
   });
 
@@ -489,7 +515,27 @@ export default function ETLPipelinesPage() {
     }));
   };
 
-  const loadManagedOraclePreview = async (source: DataSource) => {
+  const buildOracleNormalizedFhirPreview = (source: DataSource) => {
+    if (!Array.isArray(source.file_data) || source.file_data.length === 0) {
+      return [];
+    }
+
+    return source.file_data
+      .filter((row) => row && typeof row === 'object')
+      .slice(0, 8);
+  };
+
+  const loadManagedOraclePreview = async (source: DataSource, sourceView?: OracleSourceView) => {
+    const normalizedRows = buildOracleNormalizedFhirPreview(source);
+
+    if (sourceView === 'normalized_fhir' && normalizedRows.length > 0) {
+      return normalizedRows;
+    }
+
+    if (!sourceView && normalizedRows.length > 0) {
+      return normalizedRows;
+    }
+
     if (!organizationId) {
       return buildOracleFallbackPreview(source);
     }
@@ -552,7 +598,7 @@ export default function ETLPipelinesPage() {
     });
   };
 
-  const loadSourcePreview = async (sourceId: string) => {
+  const loadSourcePreview = async (sourceId: string, oracleSourceView?: OracleSourceView) => {
     if (!sourceId) return;
 
     setLoadingPreview(true);
@@ -564,7 +610,7 @@ export default function ETLPipelinesPage() {
       let fields: string[] = [];
 
       if (isManagedOracleSource(source)) {
-        previewData = await loadManagedOraclePreview(source);
+        previewData = await loadManagedOraclePreview(source, oracleSourceView);
       } else if (source.type === 'api' && source.connection_config) {
         // Fetch from API
         const config = source.connection_config;
@@ -989,7 +1035,7 @@ export default function ETLPipelinesPage() {
     }
     
     if (pipeline.source_id) {
-      loadSourcePreview(pipeline.source_id);
+      loadSourcePreview(pipeline.source_id, pipeline.transformation_rules?.source_view);
     }
     
     setCurrentStep(1);
@@ -1003,7 +1049,11 @@ export default function ETLPipelinesPage() {
       source_id: '',
       destination_type: 'metrics',
       schedule: 'daily',
-      transformation_rules: { operations: [] }
+      transformation_rules: {
+        operations: [],
+        field_mappings: [] as FieldMapping[],
+        source_view: 'platform_metrics' as OracleSourceView,
+      }
     });
     setCurrentStep(1);
     setSourcePreview([]);
@@ -1068,12 +1118,13 @@ export default function ETLPipelinesPage() {
       transformation_rules: {
         ...current.transformation_rules,
         operations: template.operations,
+        source_view: template.sourceView,
       },
     }));
     setFieldMappings(template.mappings);
 
     if (formData.source_id) {
-      await loadSourcePreview(formData.source_id);
+      await loadSourcePreview(formData.source_id, template.sourceView);
     }
 
     showToast(`${template.name} template applied`, 'success');
@@ -1799,7 +1850,7 @@ export default function ETLPipelinesPage() {
                             <div className="flex items-center justify-between gap-3">
                               <p className="text-sm font-semibold text-slate-900">{template.name}</p>
                               <span className="rounded-full bg-teal-100 px-2 py-1 text-[11px] font-semibold text-teal-700">
-                                {template.schedule}
+                                {template.sourceView === 'normalized_fhir' ? 'FHIR rows' : 'source metrics'}
                               </span>
                             </div>
                             <p className="mt-2 text-sm text-slate-600">{template.description}</p>

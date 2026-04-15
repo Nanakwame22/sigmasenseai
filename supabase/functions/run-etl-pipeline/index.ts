@@ -18,6 +18,7 @@ interface Pipeline {
   transformation_rules?: {
     operations?: TransformationOperation[];
     field_mappings?: FieldMapping[];
+    source_view?: 'platform_metrics' | 'normalized_fhir';
   };
 }
 
@@ -94,6 +95,16 @@ function buildOracleFallbackRecords(source: DataSource): Record<string, unknown>
     source: `oracle-health:${String(resourceType).toLowerCase()}`,
     evidence_summary: `Managed Oracle sandbox connector verified ${String(resourceType)} from the live public FHIR endpoint.`,
   }));
+}
+
+function loadManagedOracleNormalizedRows(source: DataSource): Record<string, unknown>[] {
+  if (!Array.isArray(source.file_data)) {
+    return [];
+  }
+
+  return source.file_data
+    .filter((row) => row && typeof row === 'object')
+    .map((row) => row as Record<string, unknown>);
 }
 
 async function loadManagedOracleRecords(
@@ -574,7 +585,15 @@ serve(async (req) => {
     let records: Record<string, unknown>[] = [];
 
     if (isManagedOracleSource(source)) {
-      records = await loadManagedOracleRecords(adminClient, organizationId, source);
+      const oracleSourceView = pipeline.transformation_rules?.source_view || 'platform_metrics';
+      records =
+        oracleSourceView === 'normalized_fhir'
+          ? loadManagedOracleNormalizedRows(source)
+          : await loadManagedOracleRecords(adminClient, organizationId, source);
+
+      if (oracleSourceView === 'normalized_fhir' && records.length === 0) {
+        records = buildOracleFallbackRecords(source);
+      }
 
       await logIngestionEvent(adminClient, {
         organization_id: organizationId,
@@ -583,10 +602,14 @@ serve(async (req) => {
         source_id: sourceId,
         level: 'info',
         stage: 'fetch',
-        message: 'Loaded managed Oracle sandbox records from persisted platform metrics',
+        message:
+          oracleSourceView === 'normalized_fhir'
+            ? 'Loaded managed Oracle sandbox records from normalized FHIR rows'
+            : 'Loaded managed Oracle sandbox records from persisted platform metrics',
         details: {
           source_type: source.type,
           managed_connector: source.connection_config?.managed_connector,
+          source_view: oracleSourceView,
           records_detected: records.length,
         },
       });
