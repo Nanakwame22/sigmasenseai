@@ -591,10 +591,6 @@ serve(async (req) => {
           ? loadManagedOracleNormalizedRows(source)
           : await loadManagedOracleRecords(adminClient, organizationId, source);
 
-      if (oracleSourceView === 'normalized_fhir' && records.length === 0) {
-        records = buildOracleFallbackRecords(source);
-      }
-
       await logIngestionEvent(adminClient, {
         organization_id: organizationId,
         pipeline_id: pipelineId,
@@ -667,8 +663,10 @@ serve(async (req) => {
     const operations = Array.isArray(pipeline.transformation_rules?.operations)
       ? pipeline.transformation_rules?.operations
       : [];
+    const sourceRecordsLoaded = records.length;
     const operationResult = applyTransformationOperations(records, operations);
     records = operationResult.records;
+    const recordsAfterOperations = records.length;
 
     if (operationResult.operationsApplied > 0 && isInitialBatch) {
       await logIngestionEvent(adminClient, {
@@ -695,6 +693,7 @@ serve(async (req) => {
       windowEnd,
     );
     records = backfillResult.records;
+    const recordsAfterBackfill = records.length;
 
     if ((replayRunId || backfillResult.applied) && isInitialBatch) {
       await logIngestionEvent(adminClient, {
@@ -713,6 +712,26 @@ serve(async (req) => {
           window_end: windowEnd ?? null,
           excluded_records: backfillResult.excludedRecords,
           remaining_records: records.length,
+        },
+      });
+    }
+
+    if (records.length === 0 && isInitialBatch) {
+      await logIngestionEvent(adminClient, {
+        organization_id: organizationId,
+        pipeline_id: pipelineId,
+        run_id: runId,
+        source_id: sourceId,
+        level: 'warning',
+        stage: 'transform',
+        message: 'No source records remained after pipeline filters and run window checks',
+        details: {
+          source_records_loaded: sourceRecordsLoaded,
+          records_after_operations: recordsAfterOperations,
+          records_after_backfill: recordsAfterBackfill,
+          excluded_by_operations: operationResult.excludedRecords,
+          excluded_by_backfill: backfillResult.excludedRecords,
+          operations_applied: operationResult.operationsApplied,
         },
       });
     }
@@ -753,6 +772,9 @@ serve(async (req) => {
       details: {
           records_received: records.length,
           total_records_available: totalRecordsAfterFilters,
+          source_records_loaded: sourceRecordsLoaded,
+          records_after_operations: recordsAfterOperations,
+          records_after_backfill: recordsAfterBackfill,
           batch_offset: batchOffset,
           batch_size: batchSize,
           mapping_count: mappings.length,
@@ -1022,6 +1044,9 @@ serve(async (req) => {
         records_processed: cumulativeProcessed,
         records_success: cumulativeSuccess,
         records_failed: cumulativeFailed,
+        source_records_loaded: sourceRecordsLoaded,
+        records_after_operations: recordsAfterOperations,
+        records_after_backfill: recordsAfterBackfill,
         excluded_by_operations: operationResult.excludedRecords,
         excluded_by_backfill: backfillResult.excludedRecords,
         operations_applied: operationResult.operationsApplied,

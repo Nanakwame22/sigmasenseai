@@ -1201,6 +1201,45 @@ export default function ETLPipelinesPage() {
     }
   };
 
+  const getEventDetailNumber = (event: IngestionEvent | undefined, key: string) => {
+    const value = event?.details?.[key];
+    const numericValue = Number(value);
+    return Number.isFinite(numericValue) ? numericValue : 0;
+  };
+
+  const getEventDetailString = (event: IngestionEvent | undefined, key: string) => {
+    const value = event?.details?.[key];
+    return typeof value === 'string' && value.trim() ? value : 'Not reported';
+  };
+
+  const getLatestRunDiagnostics = () => {
+    const latestRun = pipelineRuns[0];
+    const scopedEvents = latestRun
+      ? ingestionEvents.filter((event) => event.run_id === latestRun.id)
+      : ingestionEvents;
+
+    const fetchEvent = scopedEvents.find((event) => event.stage === 'fetch');
+    const transformEvent = scopedEvents.find((event) => event.stage === 'transform' && event.details);
+    const warningEvent = scopedEvents.find((event) => event.level === 'warning' || event.level === 'error');
+    const completeEvent = scopedEvents.find((event) => event.stage === 'complete');
+
+    return {
+      latestRun,
+      fetchEvent,
+      transformEvent,
+      warningEvent,
+      completeEvent,
+      sourceRecordsLoaded:
+        getEventDetailNumber(completeEvent, 'source_records_loaded') ||
+        getEventDetailNumber(transformEvent, 'source_records_loaded') ||
+        getEventDetailNumber(fetchEvent, 'records_detected'),
+      excludedRecords:
+        getEventDetailNumber(completeEvent, 'excluded_by_operations') +
+        getEventDetailNumber(completeEvent, 'excluded_by_backfill'),
+      sourceView: getEventDetailString(fetchEvent, 'source_view'),
+    };
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-96">
@@ -1517,6 +1556,79 @@ export default function ETLPipelinesPage() {
             </div>
 
             <div className="p-6 space-y-6">
+              {pipelineRuns.length > 0 && (() => {
+                const diagnostics = getLatestRunDiagnostics();
+                const latestRun = diagnostics.latestRun;
+                const failureSamples = Array.isArray(diagnostics.warningEvent?.details?.sample_failures)
+                  ? diagnostics.warningEvent.details.sample_failures.slice(0, 3)
+                  : [];
+
+                return (
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                          Latest Run Diagnostics
+                        </p>
+                        <h3 className="mt-1 text-base font-semibold text-slate-900">
+                          What happened in the last pipeline run
+                        </h3>
+                        <p className="mt-1 text-sm text-slate-600">
+                          Plain-English summary of source fetch, filtering, mapped loads, and failed rows.
+                        </p>
+                      </div>
+                      <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${getRunStatusBadge(latestRun.status)}`}>
+                        {latestRun.status}
+                      </span>
+                    </div>
+
+                    <div className="mt-4 grid grid-cols-1 sm:grid-cols-5 gap-3">
+                      <div className="rounded-lg border border-white bg-white p-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Fetched</p>
+                        <p className="mt-1 text-xl font-bold text-slate-900">{diagnostics.sourceRecordsLoaded}</p>
+                        <p className="mt-1 text-xs text-slate-500">source rows loaded</p>
+                      </div>
+                      <div className="rounded-lg border border-white bg-white p-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Loaded</p>
+                        <p className="mt-1 text-xl font-bold text-emerald-700">{latestRun.records_success}</p>
+                        <p className="mt-1 text-xs text-slate-500">metric points written</p>
+                      </div>
+                      <div className="rounded-lg border border-white bg-white p-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Failed</p>
+                        <p className="mt-1 text-xl font-bold text-red-700">{latestRun.records_failed}</p>
+                        <p className="mt-1 text-xs text-slate-500">rows rejected</p>
+                      </div>
+                      <div className="rounded-lg border border-white bg-white p-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Filtered</p>
+                        <p className="mt-1 text-xl font-bold text-amber-700">{diagnostics.excludedRecords}</p>
+                        <p className="mt-1 text-xs text-slate-500">rows excluded</p>
+                      </div>
+                      <div className="rounded-lg border border-white bg-white p-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Source View</p>
+                        <p className="mt-1 text-sm font-bold text-slate-900">{diagnostics.sourceView}</p>
+                        <p className="mt-1 text-xs text-slate-500">{latestRun.duration_seconds || 0}s duration</p>
+                      </div>
+                    </div>
+
+                    {diagnostics.warningEvent && (
+                      <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-3">
+                        <p className="text-sm font-semibold text-amber-900">{diagnostics.warningEvent.message}</p>
+                        {failureSamples.length > 0 && (
+                          <div className="mt-2 space-y-2">
+                            {failureSamples.map((sample: any, index: number) => (
+                              <p key={index} className="text-xs text-amber-800">
+                                Row {sample.row_index ?? index}: {sample.reason || 'No reason reported'}
+                                {sample.value_field ? ` (${sample.value_field})` : ''}
+                              </p>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
               <div>
                 <h3 className="text-sm font-semibold text-gray-900 mb-3">Recent Runs</h3>
                 <div className="space-y-3">
