@@ -12,9 +12,8 @@ import {
   reactivateSnoozedAlerts,
   getAlertPreferences,
   saveAlertPreferences,
-  Alert,
-  AlertPreferences
 } from '../../../services/alertMonitoring';
+import type { Alert, AlertPreferences } from '../../../services/alertMonitoring';
 import { addToast } from '../../../hooks/useToast';
 
 export default function PredictiveAlertsPanel() {
