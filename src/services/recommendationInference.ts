@@ -1,3 +1,5 @@
+import { assessDecisionAutonomy } from './intelligenceGovernance';
+
 export interface RecommendationRecordLike {
   id: string;
   user_id: string;
@@ -174,6 +176,17 @@ function getPatternGeneratedFrom(pattern: RecommendationPattern): string[] {
     default:
       return ['aim'];
   }
+}
+
+function getPatternFreshnessState(pattern: RecommendationPattern) {
+  const timestamp = getPatternRefreshTimestamp(pattern);
+  if (!timestamp) return 'stale';
+  const ageMs = Date.now() - new Date(timestamp).getTime();
+  if (!Number.isFinite(ageMs) || ageMs < 0) return 'live';
+  const ageHours = ageMs / 3600000;
+  if (ageHours <= 6) return 'live';
+  if (ageHours <= 24) return 'delayed';
+  return 'stale';
 }
 
 function getPatternEvidenceStrength(pattern: RecommendationPattern): number {
@@ -750,6 +763,63 @@ function createDirectionalRecommendation(pattern: RecommendationPattern, context
   };
 }
 
+function attachRecommendationGovernance(
+  recommendation: RecommendationRecordLike,
+  pattern: RecommendationPattern
+): RecommendationRecordLike {
+  const generatedFrom = Array.from(new Set(recommendation.source_data?.generated_from || getPatternGeneratedFrom(pattern)));
+  const evidenceStrength = normalizePatternNumber(recommendation.source_data?.evidence_strength || getPatternEvidenceStrength(pattern));
+  const actionCoverage = recommendation.recommended_actions?.length
+    ? Math.min(20, recommendation.recommended_actions.length * 4)
+    : 0;
+  const sourceCoverage = Math.min(40, generatedFrom.length * 14);
+  const evidenceCoverage = Math.min(100, Math.round(evidenceStrength * 0.4 + sourceCoverage + actionCoverage));
+  const sourceLabel =
+    generatedFrom.some((source) => ['metrics', 'metric_data', 'forecasts', 'alerts', 'anomalies'].includes(source))
+      ? 'Source-backed'
+      : generatedFrom.length > 1
+        ? 'Derived'
+        : 'Heuristic';
+
+  const governance = assessDecisionAutonomy({
+    confidence: recommendation.confidence_score,
+    impact: recommendation.impact_score,
+    evidenceCoverage,
+    sourceLabel,
+    freshnessState: getPatternFreshnessState(pattern),
+    lastEvidenceAt: recommendation.source_data?.refresh_timestamp,
+    outcomeCount: normalizePatternNumber(recommendation.source_data?.verified_outcome_count),
+    linkedExecutionCount: normalizePatternNumber(recommendation.source_data?.linked_execution_count),
+    activeAlertCount: pattern.type === 'active_alert_pressure' ? 1 : 0,
+    riskSeverity: recommendation.priority,
+    hasDedicatedInferenceService: Boolean(recommendation.source_data?.pattern_type),
+  });
+
+  return {
+    ...recommendation,
+    source_data: {
+      ...(recommendation.source_data || {}),
+      ai_governance: {
+        autonomy_level: governance.autonomyLevel,
+        score: governance.score,
+        can_auto_act: governance.canAutoAct,
+        can_create_work: governance.canCreateWork,
+        can_recommend: governance.canRecommend,
+        reasons: governance.reasons,
+        required_controls: governance.requiredControls,
+        evidence_coverage: evidenceCoverage,
+        source_label: sourceLabel,
+        freshness_state: getPatternFreshnessState(pattern),
+        assessed_at: contextlessNowIso(),
+      },
+    },
+  };
+}
+
+function contextlessNowIso() {
+  return new Date().toISOString();
+}
+
 function getRecommendationMetricName(rec: RecommendationRecordLike) {
   return (
     rec.source_data?.raw?.metric?.name ||
@@ -845,7 +915,10 @@ export function inferRecommendationCandidates(
     .slice(0, 6);
 
   const candidates = rankedPatterns
-    .map((pattern) => createActionReadyRecommendation(pattern, context))
+    .map((pattern) => {
+      const recommendation = createActionReadyRecommendation(pattern, context);
+      return recommendation ? attachRecommendationGovernance(recommendation, pattern) : null;
+    })
     .filter((candidate): candidate is RecommendationRecordLike => Boolean(candidate));
 
   let directionalFallbackUsed = false;
@@ -862,7 +935,7 @@ export function inferRecommendationCandidates(
     if (directionalWatchPattern) {
       const fallback = createDirectionalRecommendation(directionalWatchPattern, context);
       if (fallback) {
-        candidates.push(fallback);
+        candidates.push(attachRecommendationGovernance(fallback, directionalWatchPattern));
         directionalFallbackUsed = true;
       }
     }

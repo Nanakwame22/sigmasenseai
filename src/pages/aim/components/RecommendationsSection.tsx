@@ -9,6 +9,11 @@ import { AIMEmptyState, AIMMetricTiles, AIMPanel, AIMSectionIntro } from './AIMS
 import {
   getIntelligenceConfidenceState,
 } from '../../../services/intelligenceContract';
+import {
+  assessDecisionAutonomy,
+  type AutonomyLevel,
+  type IntelligenceDecisionGovernanceAssessment,
+} from '../../../services/intelligenceGovernance';
 import { toRecommendationSignal } from '../../../services/intelligenceObjects';
 
 // Track which recommendation IDs have already been pushed this session
@@ -54,6 +59,80 @@ function getRecommendationReadiness(rec: Recommendation) {
     return { label: readiness, tone: 'bg-amber-100 text-amber-700 border-amber-200' };
   }
   return { label: readiness, tone: 'bg-sky-100 text-sky-700 border-sky-200' };
+}
+
+const autonomyStyles: Record<AutonomyLevel, { badge: string; dot: string; text: string }> = {
+  Autonomous: {
+    badge: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+    dot: 'bg-emerald-500',
+    text: 'text-emerald-700',
+  },
+  Supervised: {
+    badge: 'bg-sky-100 text-sky-700 border-sky-200',
+    dot: 'bg-sky-500',
+    text: 'text-sky-700',
+  },
+  Advisory: {
+    badge: 'bg-amber-100 text-amber-700 border-amber-200',
+    dot: 'bg-amber-500',
+    text: 'text-amber-700',
+  },
+  Blocked: {
+    badge: 'bg-red-100 text-red-700 border-red-200',
+    dot: 'bg-red-500',
+    text: 'text-red-700',
+  },
+};
+
+function getStoredGovernance(rec: Recommendation): IntelligenceDecisionGovernanceAssessment | null {
+  const stored = rec.source_data?.ai_governance;
+  if (!stored) return null;
+
+  const autonomyLevel = (stored.autonomy_level || 'Advisory') as AutonomyLevel;
+  const score = Number(stored.score ?? 0);
+  const explanation =
+    autonomyLevel === 'Autonomous'
+      ? 'Can execute inside configured guardrails with monitoring and audit capture.'
+      : autonomyLevel === 'Supervised'
+        ? 'Can recommend and create tracked work, but a person should approve the operational decision.'
+        : autonomyLevel === 'Advisory'
+          ? 'Useful for prioritization and review, not enough for operational execution.'
+          : 'Blocked from decision support until evidence, freshness, and controls improve.';
+
+  return {
+    autonomyLevel,
+    score,
+    label: `${autonomyLevel} · ${score}/100`,
+    explanation,
+    reasons: Array.isArray(stored.reasons) && stored.reasons.length > 0 ? stored.reasons : ['Stored governance assessment is available.'],
+    requiredControls: Array.isArray(stored.required_controls) ? stored.required_controls : [],
+    canAutoAct: Boolean(stored.can_auto_act),
+    canCreateWork: Boolean(stored.can_create_work),
+    canRecommend: Boolean(stored.can_recommend),
+  };
+}
+
+function getRecommendationAutonomy(rec: Recommendation): IntelligenceDecisionGovernanceAssessment {
+  const stored = getStoredGovernance(rec);
+  if (stored) return stored;
+
+  const signal = toRecommendationSignal(rec);
+  const generatedFrom = Array.isArray(rec.source_data?.generated_from) ? rec.source_data.generated_from : [];
+  const evidenceCoverage = signal.evidence.evidenceCoverage ?? Math.min(100, generatedFrom.length * 18 + (rec.recommended_actions?.length || 0) * 4);
+
+  return assessDecisionAutonomy({
+    confidence: rec.confidence_score,
+    impact: rec.impact_score,
+    evidenceCoverage,
+    sourceLabel: signal.evidence.sourceLabel,
+    freshnessState: signal.evidence.freshnessState,
+    lastEvidenceAt: rec.source_data?.refresh_timestamp || rec.updated_at || rec.created_at,
+    outcomeCount: rec.source_data?.verified_outcome_count || (rec.actual_impact ? 1 : 0),
+    linkedExecutionCount: rec.source_data?.linked_execution_count || (rec.status === 'in_progress' || rec.status === 'completed' ? 1 : 0),
+    activeAlertCount: rec.source_data?.pattern_type === 'active_alert_pressure' ? 1 : 0,
+    riskSeverity: rec.priority,
+    hasDedicatedInferenceService: Boolean(rec.source_data?.pattern_type),
+  });
 }
 
 function getRecommendationRationale(rec: Recommendation) {
@@ -334,8 +413,38 @@ export default function RecommendationsSection() {
         assigned_to: null,
       };
 
-      const { error } = await supabase.from('action_items').insert([actionData]);
-      if (error) throw error;
+      const { data: existingActions, error: existingError } = await supabase
+        .from('action_items')
+        .select('id, title, status, tags')
+        .eq('organization_id', organizationId)
+        .order('updated_at', { ascending: false })
+        .limit(30);
+
+      if (existingError) throw existingError;
+
+      const reusableAction = (existingActions || []).find((item: any) => {
+        const tags: string[] = item.tags || [];
+        const openLike = item.status === 'open' || item.status === 'in_progress' || item.status === 'blocked' || item.status === 'on_hold';
+        return openLike && (tags.includes(`rec:${rec.id}`) || (item.title === rec.title && tags.includes('aim-source:recommendation')));
+      });
+
+      if (reusableAction) {
+        const { error } = await supabase
+          .from('action_items')
+          .update({
+            description: actionData.description,
+            priority: actionData.priority,
+            due_date: actionData.due_date,
+            category: actionData.category,
+            tags: Array.from(new Set([...(reusableAction.tags || []), ...actionData.tags])),
+          })
+          .eq('id', reusableAction.id);
+
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('action_items').insert([actionData]);
+        if (error) throw error;
+      }
 
       setPushedIds((prev) => new Set([...prev, rec.id]));
       pushedSet.add(rec.id);
@@ -687,6 +796,9 @@ export default function RecommendationsSection() {
             const readiness = getRecommendationReadiness(rec);
             const isExpanded = expandedId === rec.id;
             const rationale = getRecommendationRationale(rec);
+            const governance = getRecommendationAutonomy(rec);
+            const autonomy = autonomyStyles[governance.autonomyLevel];
+            const pushBlocked = !governance.canCreateWork;
 
             return (
               <div
@@ -708,6 +820,9 @@ export default function RecommendationsSection() {
                           </span>
                           <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(rec.status)}`}>
                             {formatStatus(rec.status)}
+                          </span>
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium border ${autonomy.badge}`}>
+                            {governance.autonomyLevel}
                           </span>
                           {isPushed && (
                             <span className="px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700 flex items-center gap-1">
@@ -761,6 +876,15 @@ export default function RecommendationsSection() {
                           <p className="mt-1 text-xs leading-5 text-brand-400">
                             Lineage: {categoryLineage[rec.category] || 'Operational signals → AIM recommendation engine'}
                           </p>
+                          <div className="mt-3 rounded-xl border border-white bg-white/80 p-3">
+                            <div className="flex items-start gap-2">
+                              <span className={`mt-1 h-2 w-2 rounded-full ${autonomy.dot}`}></span>
+                              <div>
+                                <p className={`text-xs font-bold ${autonomy.text}`}>Autonomy gate: {governance.label}</p>
+                                <p className="mt-1 text-xs leading-5 text-brand-500">{governance.explanation}</p>
+                              </div>
+                            </div>
+                          </div>
                         </div>
 
                         {isExpanded && (
@@ -819,6 +943,51 @@ export default function RecommendationsSection() {
                                 </p>
                               </div>
                             </div>
+                            <div className="rounded-2xl border border-brand-200 bg-white/90 p-4">
+                              <div className="flex flex-wrap items-center justify-between gap-3">
+                                <div>
+                                  <div className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-500">Production autonomy controls</div>
+                                  <p className="mt-1 text-sm leading-6 text-brand-700">
+                                    {governance.canAutoAct
+                                      ? 'This recommendation can run inside configured guardrails.'
+                                      : governance.canCreateWork
+                                        ? 'This recommendation can become tracked work, but needs human approval before execution.'
+                                        : 'This recommendation should stay in review until controls are satisfied.'}
+                                  </p>
+                                </div>
+                                <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${autonomy.badge}`}>
+                                  {governance.label}
+                                </span>
+                              </div>
+                              <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                                <div>
+                                  <div className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-400">Why this gate applies</div>
+                                  <ul className="mt-2 space-y-2">
+                                    {governance.reasons.slice(0, 4).map((reason) => (
+                                      <li key={reason} className="flex gap-2 text-xs leading-5 text-brand-600">
+                                        <span className={`mt-1.5 h-1.5 w-1.5 rounded-full ${autonomy.dot}`}></span>
+                                        <span>{reason}</span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                                <div>
+                                  <div className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-400">Controls needed for more autonomy</div>
+                                  {governance.requiredControls.length > 0 ? (
+                                    <ul className="mt-2 space-y-2">
+                                      {governance.requiredControls.slice(0, 4).map((control) => (
+                                        <li key={control} className="flex gap-2 text-xs leading-5 text-brand-600">
+                                          <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-brand-300"></span>
+                                          <span>{control}</span>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  ) : (
+                                    <p className="mt-2 text-xs leading-5 text-emerald-700">Current controls are satisfied for this autonomy level.</p>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
                             {rec.recommended_actions && rec.recommended_actions.length > 0 && (
                               <div>
                                 <h4 className="text-sm font-semibold text-brand-900 mb-2">Recommended Actions:</h4>
@@ -856,12 +1025,14 @@ export default function RecommendationsSection() {
                     <div className="flex flex-col gap-2 flex-shrink-0">
                       {/* ── Push to Action Tracker ── */}
                       <button
-                        onClick={() => !isPushed && handlePushToActionTracker(rec)}
-                        disabled={isPushed || isPushing}
-                        title={isPushed ? 'Already in Action Tracker' : 'Push to Action Tracker'}
+                        onClick={() => !isPushed && !pushBlocked && handlePushToActionTracker(rec)}
+                        disabled={isPushed || isPushing || pushBlocked}
+                        title={isPushed ? 'Already in Action Tracker' : pushBlocked ? 'Governance gate requires more evidence before tracked execution' : 'Push to Action Tracker'}
                         className={`px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap flex items-center gap-2 ${
                           isPushed
                             ? 'bg-green-100 text-green-700 cursor-default'
+                            : pushBlocked
+                            ? 'bg-brand-100 text-brand-400 cursor-not-allowed'
                             : isPushing
                             ? 'bg-ai-100 text-ai-600 cursor-wait'
                             : 'bg-ai-600 text-white hover:bg-ai-700 cursor-pointer'
