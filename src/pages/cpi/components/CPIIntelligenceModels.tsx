@@ -4,6 +4,10 @@ import { useAuth } from '../../../contexts/AuthContext';
 import AddModelModal from './AddModelModal';
 import EditModelPanel from './EditModelPanel';
 import type { ModelEditFields } from './EditModelPanel';
+import {
+  assessIntelligenceModelGovernance,
+  type IntelligenceModelGovernanceAssessment,
+} from '../../../services/intelligenceGovernance';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -103,6 +107,46 @@ const MODEL_KEY_TO_FEED_CATEGORY: Record<string, string> = {
   'lab-escalation': 'lab',
   'lab': 'lab',
 };
+
+const autonomyConfig: Record<IntelligenceModelGovernanceAssessment['autonomyLevel'], {
+  badge: string;
+  text: string;
+  dot: string;
+}> = {
+  Autonomous: {
+    badge: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+    text: 'text-emerald-700',
+    dot: 'bg-emerald-500',
+  },
+  Supervised: {
+    badge: 'bg-sky-100 text-sky-700 border-sky-200',
+    text: 'text-sky-700',
+    dot: 'bg-sky-500',
+  },
+  Advisory: {
+    badge: 'bg-amber-100 text-amber-700 border-amber-200',
+    text: 'text-amber-700',
+    dot: 'bg-amber-500',
+  },
+  Blocked: {
+    badge: 'bg-rose-100 text-rose-700 border-rose-200',
+    text: 'text-rose-700',
+    dot: 'bg-rose-500',
+  },
+};
+
+function assessModelGovernance(model: CPIModel, unackedAlertCount = 0) {
+  return assessIntelligenceModelGovernance({
+    status: model.status,
+    reliability: model.accuracy,
+    confidence: model.prediction_confidence,
+    learnCount: model.learn_count,
+    lastRunAt: model.last_run_at,
+    alertCount: unackedAlertCount || model.alert_count,
+    featureCount: model.features.length,
+    hasDedicatedInferenceService: SMART_MODELS.has(model.model_key),
+  });
+}
 
 const LIVE_METRIC_PRIORITY = [
   'ED Wait Time',
@@ -418,6 +462,8 @@ function ModelCard({
   const isSmart = SMART_MODELS.has(model.model_key);
   const [editMode, setEditMode] = useState(false);
   const hasAlert = unackedAlertCount > 0;
+  const governance = assessModelGovernance(model, unackedAlertCount);
+  const autonomy = autonomyConfig[governance.autonomyLevel];
 
   // Reset edit mode when card collapses
   useEffect(() => {
@@ -484,6 +530,9 @@ function ModelCard({
                     <i className="ri-flashlight-line mr-1"></i>Edge Fn
                   </span>
                 )}
+                <span className={`text-xs px-1.5 py-0.5 rounded-full font-semibold border whitespace-nowrap ${autonomy.badge}`}>
+                  {governance.autonomyLevel}
+                </span>
               </div>
               <div className="flex items-center space-x-1.5 mt-0.5">
                 <span className="text-xs text-slate-400">{model.category}</span>
@@ -549,6 +598,15 @@ function ModelCard({
           </p>
         </div>
 
+        {/* Autonomy gate */}
+        <div className="flex items-start space-x-2 p-3 bg-white border border-slate-100 rounded-lg mb-3">
+          <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${autonomy.dot}`}></div>
+          <div>
+            <p className={`text-xs font-bold ${autonomy.text}`}>Autonomy gate: {governance.label}</p>
+            <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">{governance.explanation}</p>
+          </div>
+        </div>
+
         {/* Footer row */}
         <div className="flex items-center justify-between text-xs">
           <div className="flex items-center space-x-1.5 text-emerald-600">
@@ -591,6 +649,45 @@ function ModelCard({
                 <p className="text-xs text-slate-600 leading-relaxed mb-4">
                   {model.description ?? 'No description available.'}
                 </p>
+
+                <div className="p-3 bg-slate-50 border border-slate-100 rounded-lg mb-4">
+                  <div className="flex items-center justify-between gap-3 mb-2">
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                      Production Autonomy Controls
+                    </p>
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-semibold border whitespace-nowrap ${autonomy.badge}`}>
+                      {governance.canAutoAct ? 'Auto-action allowed' : governance.canRecommend ? 'Review required' : 'Advisory only'}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                      <p className="text-xs font-semibold text-slate-600 mb-1">Why this level?</p>
+                      <ul className="space-y-1">
+                        {governance.reasons.slice(0, 4).map((reason) => (
+                          <li key={reason} className="flex items-start gap-1.5 text-xs text-slate-500 leading-relaxed">
+                            <i className="ri-information-line text-slate-400 mt-0.5"></i>
+                            <span>{reason}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-slate-600 mb-1">Required controls</p>
+                      {governance.requiredControls.length > 0 ? (
+                        <ul className="space-y-1">
+                          {governance.requiredControls.slice(0, 4).map((control) => (
+                            <li key={control} className="flex items-start gap-1.5 text-xs text-slate-500 leading-relaxed">
+                              <i className="ri-shield-check-line text-teal-500 mt-0.5"></i>
+                              <span>{control}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="text-xs text-emerald-600">Current controls are satisfied for this autonomy level.</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
 
                 {model.features.length > 0 && (
                   <>
