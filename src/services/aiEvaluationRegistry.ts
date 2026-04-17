@@ -93,6 +93,31 @@ interface BuildPredictiveAlertEvaluationInput {
   organizationId: string;
 }
 
+interface BuildCPIModelEvaluationInput {
+  model: {
+    id: string;
+    model_key: string;
+    name: string;
+    category?: string | null;
+    accuracy?: number | null;
+    status?: 'running' | 'training' | 'paused' | string | null;
+    last_run_at?: string | null;
+    predictions?: string | null;
+    impact?: string | null;
+    description?: string | null;
+    features?: string[] | null;
+    run_count_today?: number | null;
+    prediction_confidence?: number | null;
+    alert_count?: number | null;
+    learn_count?: number | null;
+    last_learned_at?: string | null;
+    updated_at?: string | null;
+  };
+  organizationId?: string | null;
+  unackedAlertCount?: number;
+  hasDedicatedInferenceService?: boolean;
+}
+
 function stableId() {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID();
   return `eval-${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -127,6 +152,18 @@ function getOutcomeFromForecast(mape: number, directionalAccuracy: number): AIEv
   if (mape <= 15 && directionalAccuracy >= 65) return 'positive';
   if (mape > 30 || directionalAccuracy < 45) return 'negative';
   return 'inconclusive';
+}
+
+function getModelDriftState(input: {
+  reliability: number;
+  confidence: number;
+  alertCount: number;
+  lastRunAt?: string | null;
+}) {
+  const ageHours = input.lastRunAt ? (Date.now() - new Date(input.lastRunAt).getTime()) / 3600000 : Number.POSITIVE_INFINITY;
+  if (input.reliability < 72 || input.confidence < 60 || input.alertCount >= 4 || ageHours > 48) return 'drift';
+  if (input.reliability < 82 || input.confidence < 75 || input.alertCount > 0 || ageHours > 24) return 'watch';
+  return 'stable';
 }
 
 function isMissingEvaluationTable(error: any) {
@@ -393,6 +430,87 @@ export function buildPredictiveAlertEvaluationEvent({
       predicted_date: alert.predictedDate,
       days_until: alert.daysUntil,
       action_count: actionCount,
+    },
+  };
+}
+
+export function buildCPIModelEvaluationEvent({
+  model,
+  organizationId,
+  unackedAlertCount,
+  hasDedicatedInferenceService = true,
+}: BuildCPIModelEvaluationInput): AIEvaluationEvent {
+  const reliability = toNumber(model.accuracy, 0);
+  const confidence = toNumber(model.prediction_confidence, reliability);
+  const learnCount = toNumber(model.learn_count, 0);
+  const alertCount = unackedAlertCount ?? toNumber(model.alert_count, 0);
+  const features = Array.isArray(model.features) ? model.features : [];
+  const governance = assessIntelligenceModelGovernance({
+    status: model.status,
+    reliability,
+    confidence,
+    learnCount,
+    lastRunAt: model.last_run_at,
+    alertCount,
+    featureCount: features.length,
+    hasDedicatedInferenceService,
+  });
+  const driftState = getModelDriftState({
+    reliability,
+    confidence,
+    alertCount,
+    lastRunAt: model.last_run_at,
+  });
+  const evidenceCoverage = clamp(
+    Math.round(features.length * 12 + Math.min(24, learnCount * 4) + (model.last_run_at ? 18 : 0) + (hasDedicatedInferenceService ? 18 : 4)),
+    0,
+    100
+  );
+  const outcome: AIEvaluationOutcome =
+    governance.autonomyLevel === 'Autonomous' || governance.autonomyLevel === 'Supervised'
+      ? 'positive'
+      : governance.autonomyLevel === 'Blocked'
+        ? 'negative'
+        : 'inconclusive';
+
+  return {
+    id: stableId(),
+    organization_id: organizationId ?? null,
+    subject_type: 'cpi_model',
+    subject_id: model.id,
+    subject_key: model.model_key,
+    phase: 'drift_check',
+    promotion_stage: getPromotionStage(governance.autonomyLevel),
+    autonomy_level: governance.autonomyLevel,
+    evaluation_score: governance.score,
+    confidence_score: confidence,
+    evidence_coverage: evidenceCoverage,
+    source_label: hasDedicatedInferenceService ? 'CPI model reliability service' : 'CPI model registry',
+    freshness_state: getFreshnessState(model.last_run_at || model.updated_at),
+    outcome,
+    drift_state: driftState,
+    can_auto_act: governance.canAutoAct,
+    can_create_work: governance.canRecommend,
+    can_recommend: governance.canRecommend,
+    reasons: governance.reasons,
+    required_controls: governance.requiredControls,
+    evaluated_at: new Date().toISOString(),
+    metadata: {
+      title: model.name,
+      model_key: model.model_key,
+      category: model.category,
+      status: model.status,
+      prediction: model.predictions,
+      impact: model.impact,
+      description: model.description,
+      features,
+      reliability,
+      confidence,
+      alert_count: alertCount,
+      learn_count: learnCount,
+      run_count_today: model.run_count_today ?? 0,
+      last_run_at: model.last_run_at,
+      last_learned_at: model.last_learned_at,
     },
   };
 }

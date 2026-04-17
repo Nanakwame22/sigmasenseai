@@ -8,6 +8,10 @@ import {
   assessIntelligenceModelGovernance,
   type IntelligenceModelGovernanceAssessment,
 } from '../../../services/intelligenceGovernance';
+import {
+  buildCPIModelEvaluationEvent,
+  persistAIEvaluationEvent,
+} from '../../../services/aiEvaluationRegistry';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -807,8 +811,39 @@ export default function CPIIntelligenceModels() {
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const modelsRef = useRef<CPIModel[]>([]);
+  const modelEvaluationFingerprintsRef = useRef<Record<string, string>>({});
 
   useEffect(() => { modelsRef.current = models; }, [models]);
+
+  const persistModelEvaluations = useCallback((rows: CPIModel[]) => {
+    if (!organizationId || rows.length === 0) return;
+
+    rows.forEach((model) => {
+      const unackedAlertCount = unackedByCategory[MODEL_KEY_TO_FEED_CATEGORY[model.model_key] || model.model_key] || 0;
+      const fingerprint = [
+        model.updated_at,
+        model.last_run_at,
+        model.accuracy,
+        model.prediction_confidence,
+        model.alert_count,
+        model.learn_count,
+        model.status,
+        unackedAlertCount,
+      ].join('|');
+
+      if (modelEvaluationFingerprintsRef.current[model.id] === fingerprint) return;
+      modelEvaluationFingerprintsRef.current[model.id] = fingerprint;
+
+      void persistAIEvaluationEvent(
+        buildCPIModelEvaluationEvent({
+          model,
+          organizationId,
+          unackedAlertCount,
+          hasDedicatedInferenceService: SMART_MODELS.has(model.model_key),
+        })
+      ).catch((error) => console.error('Error persisting CPI model evaluation:', error));
+    });
+  }, [organizationId, unackedByCategory]);
 
   // ── Fetch models ─────────────────────────────────────────────────────────
   const fetchModels = useCallback(async () => {
@@ -851,9 +886,10 @@ export default function CPIIntelligenceModels() {
         }
       }
       setModels(rows);
+      persistModelEvaluations(rows);
     }
     setLoading(false);
-  }, [organizationId]);
+  }, [organizationId, persistModelEvaluations]);
 
   // ── Fetch unacked counts per feed category ───────────────────────────────
   const fetchUnackedCounts = useCallback(async () => {
