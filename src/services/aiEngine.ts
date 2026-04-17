@@ -1,4 +1,8 @@
 import { supabase } from '../lib/supabase';
+import {
+  buildPredictiveAlertEvaluationEvent,
+  persistAIEvaluationEvent,
+} from './aiEvaluationRegistry';
 
 export interface PredictiveAlert {
   id: string;
@@ -774,7 +778,7 @@ export async function generatePredictiveAlerts(organizationId: string): Promise<
       });
     }
 
-    return alerts.sort((a, b) => {
+    const sortedAlerts = alerts.sort((a, b) => {
       // Sort by financial impact and urgency
       const typePriority = { critical: 0, warning: 1, info: 2 };
       const typeDiff = typePriority[a.type] - typePriority[b.type];
@@ -782,6 +786,19 @@ export async function generatePredictiveAlerts(organizationId: string): Promise<
       
       return a.daysUntil - b.daysUntil;
     });
+
+    await Promise.allSettled(
+      sortedAlerts.map((alert) =>
+        persistAIEvaluationEvent(
+          buildPredictiveAlertEvaluationEvent({
+            alert,
+            organizationId,
+          })
+        )
+      )
+    );
+
+    return sortedAlerts;
   } catch (error) {
     console.error('Error generating predictive alerts:', error);
     return [];

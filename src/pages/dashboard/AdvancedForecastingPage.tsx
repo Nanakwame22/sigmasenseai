@@ -6,6 +6,10 @@ import { useToast } from '../../hooks/useToast';
 import ConfirmDialog from '../../components/common/ConfirmDialog';
 import { Link } from 'react-router-dom';
 import InsightSummary from '../../components/common/InsightSummary';
+import {
+  buildForecastEvaluationEvent,
+  persistAIEvaluationEvent,
+} from '../../services/aiEvaluationRegistry';
 
 interface Forecast {
   id: string;
@@ -423,7 +427,7 @@ export default function AdvancedForecastingPage() {
       );
       const accuracy = calculateAccuracy(historical, forecast);
 
-      const { error } = await supabase.from('forecasts').insert({
+      const { data: createdForecast, error } = await supabase.from('forecasts').insert({
         organization_id: organization.id,
         name: formData.name,
         metric_id: formData.metric_id,
@@ -434,9 +438,17 @@ export default function AdvancedForecastingPage() {
         forecast_data: forecast,
         accuracy_metrics: accuracy,
         status: 'completed'
-      });
+      }).select('*').single();
 
       if (!error) {
+        if (createdForecast) {
+          await persistAIEvaluationEvent(
+            buildForecastEvaluationEvent({
+              forecast: createdForecast,
+              metricName: getMetricLabel(createdForecast.metric_id, metrics),
+            })
+          );
+        }
         showToast('Forecast created successfully', 'success');
         setShowCreateModal(false);
         setFormData({
@@ -506,7 +518,7 @@ export default function AdvancedForecastingPage() {
           const { historical, forecast } = await generateForecast(metric.id, 30, 'arima', 95);
           const accuracy = calculateAccuracy(historical, forecast);
 
-          const { error } = await supabase.from('forecasts').insert({
+          const { data: createdForecast, error } = await supabase.from('forecasts').insert({
             organization_id: organization.id,
             name: `${metric.name} - 30 Day Forecast`,
             metric_id: metric.id,
@@ -517,9 +529,17 @@ export default function AdvancedForecastingPage() {
             forecast_data: forecast,
             accuracy_metrics: accuracy,
             status: 'completed'
-          });
+          }).select('*').single();
 
           if (!error) {
+            if (createdForecast) {
+              await persistAIEvaluationEvent(
+                buildForecastEvaluationEvent({
+                  forecast: createdForecast,
+                  metricName: metric.name,
+                })
+              );
+            }
             successCount++;
           } else {
             failCount++;

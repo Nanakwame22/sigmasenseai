@@ -59,6 +59,40 @@ interface BuildRecommendationEvaluationInput {
   linkedExecutionCount?: number;
 }
 
+interface BuildForecastEvaluationInput {
+  forecast: {
+    id: string;
+    organization_id?: string | null;
+    name?: string | null;
+    metric_id?: string | null;
+    model_type?: string | null;
+    forecast_horizon?: number | null;
+    confidence_level?: number | null;
+    historical_data?: any;
+    forecast_data?: any;
+    accuracy_metrics?: any;
+    status?: string | null;
+    created_at?: string | null;
+  };
+  metricName?: string | null;
+}
+
+interface BuildPredictiveAlertEvaluationInput {
+  alert: {
+    id: string;
+    type: 'critical' | 'warning' | 'info';
+    title: string;
+    description: string;
+    predictedDate: string;
+    daysUntil: number;
+    confidence: number;
+    category: string;
+    metricId?: string;
+    actions: string[];
+  };
+  organizationId: string;
+}
+
 function stableId() {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID();
   return `eval-${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -69,6 +103,10 @@ function toNumber(value: unknown, fallback = 0) {
   return Number.isFinite(next) ? next : fallback;
 }
 
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
 function getFreshnessState(timestamp?: string | null) {
   if (!timestamp) return 'stale';
   const ageMs = Date.now() - new Date(timestamp).getTime();
@@ -77,6 +115,18 @@ function getFreshnessState(timestamp?: string | null) {
   if (ageHours <= 6) return 'live';
   if (ageHours <= 24) return 'delayed';
   return 'stale';
+}
+
+function getForecastDriftState(mape: number, directionalAccuracy: number) {
+  if (mape > 30 || directionalAccuracy < 45) return 'drift';
+  if (mape > 18 || directionalAccuracy < 60) return 'watch';
+  return 'stable';
+}
+
+function getOutcomeFromForecast(mape: number, directionalAccuracy: number): AIEvaluationOutcome {
+  if (mape <= 15 && directionalAccuracy >= 65) return 'positive';
+  if (mape > 30 || directionalAccuracy < 45) return 'negative';
+  return 'inconclusive';
 }
 
 function isMissingEvaluationTable(error: any) {
@@ -188,6 +238,161 @@ export function buildRecommendationEvaluationEvent({
       evidence_summary: evidenceSummary || sourceData?.verification_feedback?.evidence_summary || null,
       generated_from: sourceData?.generated_from || [],
       pattern_type: sourceData?.pattern_type || null,
+    },
+  };
+}
+
+export function buildForecastEvaluationEvent({
+  forecast,
+  metricName,
+}: BuildForecastEvaluationInput): AIEvaluationEvent {
+  const historical = Array.isArray(forecast.historical_data) ? forecast.historical_data : [];
+  const forecastData = Array.isArray(forecast.forecast_data) ? forecast.forecast_data : [];
+  const accuracyMetrics = forecast.accuracy_metrics || {};
+  const mape = toNumber(accuracyMetrics.mape, 100);
+  const rSquared = toNumber(accuracyMetrics.r_squared, 0);
+  const directionalAccuracy = toNumber(
+    accuracyMetrics.directional_accuracy ?? accuracyMetrics.directionalAccuracy,
+    Math.max(0, 100 - mape)
+  );
+  const horizon = toNumber(forecast.forecast_horizon, forecastData.length || 30);
+  const confidenceLevel = toNumber(forecast.confidence_level, 95);
+  const historyScore = clamp((historical.length / 30) * 28, 0, 28);
+  const accuracyScore = clamp(38 - mape * 1.4, 0, 38);
+  const fitScore = clamp(rSquared * 18, 0, 18);
+  const horizonScore = clamp(16 - Math.max(0, horizon - 30) * 0.35, 0, 16);
+  const evaluationScore = Math.round(historyScore + accuracyScore + fitScore + horizonScore);
+  const evidenceCoverage = clamp(
+    Math.round(historyScore + clamp(forecastData.length * 2, 0, 18) + clamp(confidenceLevel / 2, 0, 50)),
+    0,
+    100
+  );
+  const freshnessState = getFreshnessState(forecast.created_at);
+  const outcome = getOutcomeFromForecast(mape, directionalAccuracy);
+  const driftState = getForecastDriftState(mape, directionalAccuracy);
+
+  const governance = assessDecisionAutonomy({
+    confidence: evaluationScore,
+    impact: Math.min(100, horizon <= 14 ? 72 : horizon <= 30 ? 64 : 52),
+    evidenceCoverage,
+    sourceLabel: 'Forecast backtest',
+    freshnessState,
+    lastEvidenceAt: forecast.created_at,
+    outcomeCount: outcome === 'positive' || outcome === 'negative' ? 1 : 0,
+    linkedExecutionCount: 0,
+    activeAlertCount: driftState === 'drift' ? 1 : 0,
+    riskSeverity: driftState === 'drift' ? 'critical' : driftState === 'watch' ? 'high' : 'medium',
+    hasDedicatedInferenceService: true,
+  });
+
+  const reasons = [
+    `Backtest error is ${Math.round(mape * 10) / 10}% with ${Math.round(directionalAccuracy)}% directional accuracy.`,
+    historical.length < 14 ? 'Historical depth is still limited.' : 'Historical depth is sufficient for near-term validation.',
+    driftState === 'stable' ? 'Forecast behavior is stable enough for planning review.' : 'Forecast needs review before high-stakes use.',
+  ];
+
+  return {
+    id: stableId(),
+    organization_id: forecast.organization_id ?? null,
+    subject_type: 'forecast',
+    subject_id: forecast.id,
+    subject_key: `${metricName || forecast.name || forecast.metric_id || 'Forecast'}:${forecast.model_type || 'model'}`,
+    phase: 'backtest',
+    promotion_stage: getPromotionStage(governance.autonomyLevel),
+    autonomy_level: governance.autonomyLevel,
+    evaluation_score: evaluationScore,
+    confidence_score: evaluationScore,
+    evidence_coverage: evidenceCoverage,
+    source_label: 'Forecast backtest',
+    freshness_state: freshnessState,
+    outcome,
+    drift_state: driftState,
+    can_auto_act: governance.canAutoAct,
+    can_create_work: governance.canCreateWork,
+    can_recommend: governance.canRecommend,
+    reasons: [...governance.reasons, ...reasons],
+    required_controls: governance.requiredControls,
+    evaluated_at: new Date().toISOString(),
+    metadata: {
+      title: forecast.name,
+      metric_id: forecast.metric_id,
+      metric_name: metricName,
+      model_type: forecast.model_type,
+      forecast_horizon: horizon,
+      confidence_level: confidenceLevel,
+      mape,
+      r_squared: rSquared,
+      directional_accuracy: directionalAccuracy,
+      forecast_points: forecastData.length,
+      historical_points: historical.length,
+      status: forecast.status,
+    },
+  };
+}
+
+export function buildPredictiveAlertEvaluationEvent({
+  alert,
+  organizationId,
+}: BuildPredictiveAlertEvaluationInput): AIEvaluationEvent {
+  const actionCount = Array.isArray(alert.actions) ? alert.actions.length : 0;
+  const urgencyScore = clamp(100 - alert.daysUntil * 4, 20, 100);
+  const evidenceCoverage = clamp(42 + actionCount * 8 + (alert.metricId ? 20 : 0), 0, 100);
+  const evaluationScore = Math.round(clamp(alert.confidence * 0.72 + urgencyScore * 0.18 + evidenceCoverage * 0.1, 0, 100));
+  const freshnessState = 'live';
+  const driftState =
+    alert.confidence < 65 ? 'drift' :
+    alert.confidence < 78 || alert.daysUntil > 21 ? 'watch' :
+    'stable';
+
+  const governance = assessDecisionAutonomy({
+    confidence: evaluationScore,
+    impact: alert.type === 'critical' ? 88 : alert.type === 'warning' ? 70 : 52,
+    evidenceCoverage,
+    sourceLabel: 'Predictive alert signal',
+    freshnessState,
+    lastEvidenceAt: new Date().toISOString(),
+    outcomeCount: 0,
+    linkedExecutionCount: 0,
+    activeAlertCount: 1,
+    riskSeverity: alert.type,
+    hasDedicatedInferenceService: true,
+  });
+
+  return {
+    id: stableId(),
+    organization_id: organizationId,
+    subject_type: 'aim_alert',
+    subject_id: alert.id,
+    subject_key: alert.metricId ? `metric:${alert.metricId}` : alert.title,
+    phase: 'generated',
+    promotion_stage: getPromotionStage(governance.autonomyLevel),
+    autonomy_level: governance.autonomyLevel,
+    evaluation_score: evaluationScore,
+    confidence_score: alert.confidence,
+    evidence_coverage: evidenceCoverage,
+    source_label: 'Predictive alert signal',
+    freshness_state: freshnessState,
+    outcome: 'pending',
+    drift_state: driftState,
+    can_auto_act: governance.canAutoAct,
+    can_create_work: governance.canCreateWork,
+    can_recommend: governance.canRecommend,
+    reasons: [
+      ...governance.reasons,
+      `${alert.type} alert predicted ${alert.daysUntil} day${alert.daysUntil === 1 ? '' : 's'} out with ${Math.round(alert.confidence)}% confidence.`,
+      actionCount > 0 ? 'Alert includes concrete response actions.' : 'Alert needs response actions before it can drive work.',
+    ],
+    required_controls: governance.requiredControls,
+    evaluated_at: new Date().toISOString(),
+    metadata: {
+      title: alert.title,
+      description: alert.description,
+      category: alert.category,
+      severity: alert.type,
+      metric_id: alert.metricId || null,
+      predicted_date: alert.predictedDate,
+      days_until: alert.daysUntil,
+      action_count: actionCount,
     },
   };
 }
