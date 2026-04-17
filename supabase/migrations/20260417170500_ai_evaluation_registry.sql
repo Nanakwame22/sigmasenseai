@@ -1,6 +1,5 @@
 -- AI evaluation registry
--- Run in Supabase SQL Editor to persist model/recommendation/forecast evaluation events.
--- The app also embeds compact events in source_data so it remains safe before this table exists.
+-- Durable audit storage for model, recommendation, forecast, and decision evaluation events.
 
 CREATE TABLE IF NOT EXISTS ai_evaluation_events (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
