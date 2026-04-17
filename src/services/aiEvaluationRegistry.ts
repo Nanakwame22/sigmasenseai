@@ -44,6 +44,13 @@ export interface AIEvaluationEvent {
   metadata: Record<string, unknown>;
 }
 
+export interface AIEvaluationRegistryResult {
+  events: AIEvaluationEvent[];
+  source: 'registry' | 'embedded' | 'empty';
+  needsMigration: boolean;
+  errorMessage?: string;
+}
+
 interface BuildRecommendationEvaluationInput {
   recommendation: AIEvaluationSubject;
   phase: AIEvaluationPhase;
@@ -70,6 +77,15 @@ function getFreshnessState(timestamp?: string | null) {
   if (ageHours <= 6) return 'live';
   if (ageHours <= 24) return 'delayed';
   return 'stale';
+}
+
+function isMissingEvaluationTable(error: any) {
+  const message = typeof error?.message === 'string' ? error.message : '';
+  return (
+    message.includes('ai_evaluation_events') ||
+    message.includes('schema cache') ||
+    error?.code === '42P01'
+  );
 }
 
 function getPromotionStage(autonomyLevel: AutonomyLevel): AIPromotionStage {
@@ -226,13 +242,135 @@ export async function persistAIEvaluationEvent(event: AIEvaluationEvent) {
   });
 
   if (error) {
-    const missingTable = typeof error.message === 'string' && (
-      error.message.includes('ai_evaluation_events') ||
-      error.message.includes('schema cache')
-    );
+    const missingTable = isMissingEvaluationTable(error);
     if (!missingTable) console.error('Error persisting AI evaluation event:', error);
     return { ok: false, error };
   }
 
   return { ok: true, error: null };
+}
+
+function normalizeEmbeddedEvaluation(recommendation: any, compactEvent: any, index: number): AIEvaluationEvent {
+  const sourceData = recommendation.source_data || {};
+  const governance = sourceData.ai_governance || {};
+  const generatedAt = compactEvent?.evaluated_at || recommendation.updated_at || recommendation.created_at || new Date().toISOString();
+  const autonomyLevel = (compactEvent?.autonomy_level || governance.autonomy_level || 'Advisory') as AutonomyLevel;
+  const promotionStage = (compactEvent?.promotion_stage || getPromotionStage(autonomyLevel)) as AIPromotionStage;
+
+  return {
+    id: compactEvent?.id || `embedded-${recommendation.id}-${index}`,
+    organization_id: recommendation.organization_id ?? null,
+    subject_type: 'recommendation',
+    subject_id: recommendation.id,
+    subject_key: sourceData.signature || recommendation.title || recommendation.id,
+    phase: (compactEvent?.phase || 'generated') as AIEvaluationPhase,
+    promotion_stage: promotionStage,
+    autonomy_level: autonomyLevel,
+    evaluation_score: toNumber(compactEvent?.evaluation_score, toNumber(governance.score, 0)),
+    confidence_score: toNumber(compactEvent?.confidence_score, toNumber(recommendation.confidence_score, 0)),
+    evidence_coverage: toNumber(compactEvent?.evidence_coverage, toNumber(governance.evidence_coverage, 0)),
+    source_label: governance.source_label || (sourceData.generated_from ? 'Source-backed' : 'Embedded fallback'),
+    freshness_state: governance.freshness_state || getFreshnessState(sourceData.refresh_timestamp || recommendation.updated_at),
+    outcome: (compactEvent?.outcome || 'pending') as AIEvaluationOutcome,
+    drift_state: (compactEvent?.drift_state || 'watch') as AIEvaluationEvent['drift_state'],
+    can_auto_act: Boolean(governance.can_auto_act),
+    can_create_work: Boolean(governance.can_create_work ?? recommendation.status !== 'completed'),
+    can_recommend: Boolean(governance.can_recommend ?? true),
+    reasons: Array.isArray(governance.reasons) ? governance.reasons : [],
+    required_controls: Array.isArray(governance.required_controls) ? governance.required_controls : [],
+    evaluated_at: generatedAt,
+    metadata: {
+      title: recommendation.title,
+      category: recommendation.category,
+      priority: recommendation.priority,
+      status: recommendation.status,
+      embedded: true,
+    },
+  };
+}
+
+async function loadEmbeddedRecommendationEvaluations(organizationId?: string | null, userId?: string | null) {
+  let query = supabase
+    .from('recommendations')
+    .select('id, organization_id, user_id, title, category, priority, status, confidence_score, source_data, created_at, updated_at')
+    .order('updated_at', { ascending: false })
+    .limit(100);
+
+  if (organizationId) {
+    query = query.eq('organization_id', organizationId);
+  } else if (userId) {
+    query = query.eq('user_id', userId);
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+  return (data || [])
+    .flatMap((recommendation: any) => {
+      const sourceData = recommendation.source_data || {};
+      const compactEvents = Array.isArray(sourceData.ai_evaluation_events)
+        ? sourceData.ai_evaluation_events
+        : sourceData.latest_ai_evaluation
+          ? [sourceData.latest_ai_evaluation]
+          : [];
+
+      return compactEvents.map((event: any, index: number) =>
+        normalizeEmbeddedEvaluation(recommendation, event, index)
+      );
+    })
+    .sort((a, b) => new Date(b.evaluated_at).getTime() - new Date(a.evaluated_at).getTime());
+}
+
+export async function loadAIEvaluationRegistry({
+  organizationId,
+  userId,
+}: {
+  organizationId?: string | null;
+  userId?: string | null;
+}): Promise<AIEvaluationRegistryResult> {
+  try {
+    let query = supabase
+      .from('ai_evaluation_events')
+      .select('*')
+      .order('evaluated_at', { ascending: false })
+      .limit(150);
+
+    if (organizationId) query = query.eq('organization_id', organizationId);
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    return {
+      events: (data || []) as AIEvaluationEvent[],
+      source: data && data.length > 0 ? 'registry' : 'empty',
+      needsMigration: false,
+    };
+  } catch (error: any) {
+    if (!isMissingEvaluationTable(error)) {
+      console.error('Error loading AI evaluation registry:', error);
+      return {
+        events: [],
+        source: 'empty',
+        needsMigration: false,
+        errorMessage: error?.message || 'Unable to load AI evaluation registry.',
+      };
+    }
+
+    try {
+      const events = await loadEmbeddedRecommendationEvaluations(organizationId, userId);
+      return {
+        events,
+        source: events.length > 0 ? 'embedded' : 'empty',
+        needsMigration: true,
+      };
+    } catch (fallbackError: any) {
+      console.error('Error loading embedded AI evaluations:', fallbackError);
+      return {
+        events: [],
+        source: 'empty',
+        needsMigration: true,
+        errorMessage: fallbackError?.message || 'Unable to load embedded AI evaluations.',
+      };
+    }
+  }
 }

@@ -49,6 +49,7 @@ const ClusteringPage = lazy(() => import('../pages/dashboard/ClusteringPage'));
 const ClassificationPage = lazy(() => import('../pages/dashboard/ClassificationPage'));
 const AdvancedForecastingPage = lazy(() => import('../pages/dashboard/AdvancedForecastingPage'));
 const AIInsightsPage = lazy(() => import('../pages/dashboard/AIInsightsPage'));
+const AIHealthPage = lazy(() => import('../pages/dashboard/AIHealthPage'));
 const ControlPage = lazy(() => import('../pages/dashboard/ControlPage'));
 const AnalyzePage = lazy(() => import('../pages/dashboard/AnalyzePage'));
 
@@ -134,6 +135,7 @@ const routes: RouteObject[] = [
       { path: 'classification', element: <ClassificationPage /> },
       { path: 'advanced-forecasting', element: <AdvancedForecastingPage /> },
       { path: 'ai-insights', element: <AIInsightsPage /> },
+      { path: 'ai-health', element: <AIHealthPage /> },
       { path: 'aim', element: <AIMPage /> },
       { path: 'cpi', element: <CPIPage /> },
       { path: 'analyze', element: <AnalyzePage /> },
