@@ -5,6 +5,11 @@ import {
   type AIEvaluationEvent,
   type AIPromotionStage,
 } from '../../services/aiEvaluationRegistry';
+import {
+  buildAILearningQueue,
+  getLearningActionLabel,
+  type AILearningDecisionAction,
+} from '../../services/aiLearningQueue';
 
 const stageLabels: Record<AIPromotionStage, string> = {
   shadow: 'Shadow',
@@ -26,6 +31,20 @@ const driftClasses: Record<AIEvaluationEvent['drift_state'], string> = {
   stable: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   watch: 'bg-amber-50 text-amber-700 border-amber-200',
   drift: 'bg-rose-50 text-rose-700 border-rose-200',
+};
+
+const learningActionClasses: Record<AILearningDecisionAction, string> = {
+  promote: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  hold: 'bg-slate-50 text-slate-700 border-slate-200',
+  demote: 'bg-rose-50 text-rose-700 border-rose-200',
+  investigate: 'bg-amber-50 text-amber-700 border-amber-200',
+};
+
+const learningActionIcons: Record<AILearningDecisionAction, string> = {
+  promote: 'ri-arrow-up-circle-line',
+  hold: 'ri-pause-circle-line',
+  demote: 'ri-arrow-down-circle-line',
+  investigate: 'ri-search-eye-line',
 };
 
 function formatTime(value?: string | null) {
@@ -137,6 +156,8 @@ export default function AIHealthPage() {
       outcomeVerified,
     };
   }, [events]);
+
+  const learningQueue = useMemo(() => buildAILearningQueue(events), [events]);
 
   const stageMeaning = getStageMeaning(
     summary.latestEvents.length,
@@ -296,6 +317,107 @@ export default function AIHealthPage() {
             <p className="mt-2 text-sm leading-5 text-brand-500">{card.text}</p>
           </div>
         ))}
+      </section>
+
+      <section className="rounded-2xl border border-border bg-white shadow-sm">
+        <div className="flex flex-col gap-4 border-b border-border p-6 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <div className="inline-flex items-center gap-2 rounded-full border border-ai-100 bg-ai-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.24em] text-ai-700">
+              <i className="ri-loop-left-line"></i>
+              Outcome Learning
+            </div>
+            <h2 className="mt-3 text-xl font-black text-brand-900">AI Learning Queue</h2>
+            <p className="mt-1 max-w-3xl text-sm leading-6 text-brand-500">
+              Verified outcomes are converted into promotion, demotion, and investigation decisions so the intelligence layer can become safer over time instead of just changing labels.
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {(['demote', 'investigate', 'promote', 'hold'] as AILearningDecisionAction[]).map((action) => {
+              const count = learningQueue.filter((item) => item.action === action).length;
+              return (
+                <div key={action} className={`rounded-xl border px-3 py-2 ${learningActionClasses[action]}`}>
+                  <p className="text-[10px] font-black uppercase tracking-widest">{getLearningActionLabel(action)}</p>
+                  <p className="mt-1 text-2xl font-black">{count}</p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {loading ? (
+          <div className="flex min-h-[220px] items-center justify-center text-brand-500">
+            <i className="ri-loader-4-line mr-2 animate-spin text-xl"></i>
+            Building learning decisions...
+          </div>
+        ) : learningQueue.length === 0 ? (
+          <div className="flex min-h-[220px] flex-col items-center justify-center px-6 text-center">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-brand-400">
+              <i className="ri-loop-left-line text-2xl"></i>
+            </div>
+            <h3 className="mt-4 text-lg font-black text-brand-900">No learning decisions yet</h3>
+            <p className="mt-2 max-w-xl text-sm leading-6 text-brand-500">
+              Resolve cases, verify forecast outcomes, or close recommendation work. Once outcomes exist,
+              SigmaSense will decide whether each AI output should be promoted, held, investigated, or demoted.
+            </p>
+          </div>
+        ) : (
+          <div className="grid gap-4 p-6 lg:grid-cols-2">
+            {learningQueue.slice(0, 8).map((item) => (
+              <article key={item.id} className="rounded-2xl border border-border bg-slate-50/70 p-5">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-black ${learningActionClasses[item.action]}`}>
+                        <i className={learningActionIcons[item.action]}></i>
+                        {getLearningActionLabel(item.action)}
+                      </span>
+                      <span className="rounded-full border border-border bg-white px-3 py-1 text-xs font-bold capitalize text-brand-500">
+                        {item.subjectType.replace('_', ' ')}
+                      </span>
+                    </div>
+                    <h3 className="mt-3 line-clamp-2 text-lg font-black text-brand-900">{item.title}</h3>
+                    <p className="mt-2 text-sm leading-6 text-brand-600">{item.rationale}</p>
+                  </div>
+                  <div className="shrink-0 rounded-2xl border border-white bg-white p-3 text-center shadow-sm">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-brand-400">Priority</p>
+                    <p className="mt-1 text-2xl font-black text-brand-900">{item.priority}</p>
+                  </div>
+                </div>
+
+                <div className="mt-5 grid gap-3 sm:grid-cols-4">
+                  <div className="rounded-xl bg-white p-3">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-brand-400">Stage</p>
+                    <p className="mt-1 text-sm font-black text-brand-800">
+                      {stageLabels[item.currentStage]} → {stageLabels[item.proposedStage]}
+                    </p>
+                  </div>
+                  <div className="rounded-xl bg-white p-3">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-brand-400">Outcomes</p>
+                    <p className="mt-1 text-sm font-black text-brand-800">
+                      {item.positiveOutcomes}+ / {item.negativeOutcomes}-
+                    </p>
+                  </div>
+                  <div className="rounded-xl bg-white p-3">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-brand-400">Trust</p>
+                    <p className="mt-1 text-sm font-black text-brand-800">{item.averageScore}%</p>
+                  </div>
+                  <div className="rounded-xl bg-white p-3">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-brand-400">Drift</p>
+                    <p className="mt-1 text-sm font-black text-brand-800">{item.driftEvents} drift · {item.watchEvents} watch</p>
+                  </div>
+                </div>
+
+                <div className="mt-4 rounded-xl border border-border bg-white p-4">
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-brand-400">Next control</p>
+                  <p className="mt-2 text-sm leading-6 text-brand-600">{item.nextControl}</p>
+                  <p className="mt-3 text-xs text-brand-400">
+                    Evidence {item.averageEvidence}% · confidence {item.confidence}% · last evaluated {formatTime(item.latestEvaluatedAt)} · {item.sourceLabel}
+                  </p>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
       </section>
 
       <section className="rounded-2xl border border-border bg-white shadow-sm">
