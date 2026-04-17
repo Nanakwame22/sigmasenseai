@@ -4,6 +4,13 @@ import {
   curateRecommendationQueue,
   inferRecommendationCandidates,
 } from './recommendationInference';
+import {
+  appendEvaluationToSourceData,
+  buildRecommendationEvaluationEvent,
+  persistAIEvaluationEvent,
+  type AIEvaluationOutcome,
+  type AIEvaluationPhase,
+} from './aiEvaluationRegistry';
 
 export interface Recommendation {
   id: string;
@@ -329,6 +336,34 @@ function buildRecommendationInsertVariants(rec: Recommendation) {
   delete (minimalPayloadOrg as any).organization_id;
 
   return [fullPayload, withoutId, withoutOrganizationId, withoutRichMetadata, withoutRichMetadataOrg, minimalPayload, minimalPayloadOrg];
+}
+
+function appendRecommendationEvaluation(
+  recommendation: Recommendation,
+  phase: AIEvaluationPhase,
+  options: {
+    sourceData?: any;
+    outcome?: AIEvaluationOutcome;
+    evidenceSummary?: string;
+    linkedExecutionCount?: number;
+  } = {}
+) {
+  const subject = {
+    ...recommendation,
+    source_data: options.sourceData ?? recommendation.source_data,
+  };
+  const event = buildRecommendationEvaluationEvent({
+    recommendation: subject,
+    phase,
+    outcome: options.outcome,
+    evidenceSummary: options.evidenceSummary,
+    linkedExecutionCount: options.linkedExecutionCount,
+  });
+
+  return {
+    event,
+    sourceData: appendEvaluationToSourceData(subject.source_data, event),
+  };
 }
 
 function getMetricPriorityBoost(metricName?: string) {
@@ -1110,6 +1145,15 @@ export class RecommendationsEngine {
           actor_id: this.userId,
           note: item.next.description,
         });
+        const evaluated = appendRecommendationEvaluation(
+          {
+            ...item.next,
+            id: item.existing.id,
+            organization_id: item.existing.organization_id ?? item.next.organization_id,
+          },
+          'generated',
+          { sourceData: nextSourceData }
+        );
 
         const { data: reactivated, error: reactivateError } = await this.updateRecommendationById(item.existing.id, {
             title: item.next.title,
@@ -1130,11 +1174,15 @@ export class RecommendationsEngine {
             dismissed_at: null,
             dismissed_reason: null,
             updated_at: new Date().toISOString(),
-            source_data: nextSourceData,
+            source_data: evaluated.sourceData,
           });
 
         if (!reactivateError && reactivated) {
           reactivatedResults.push(reactivated as Recommendation);
+          await persistAIEvaluationEvent({
+            ...evaluated.event,
+            organization_id: reactivated.organization_id ?? evaluated.event.organization_id,
+          });
         }
       }
       diagnostics.reactivated = reactivatedResults.length;
@@ -1145,8 +1193,13 @@ export class RecommendationsEngine {
         for (const recommendation of recommendationsToInsert) {
           let insertedRow: Recommendation | null = null;
           let lastError: any = null;
+          const evaluated = appendRecommendationEvaluation(recommendation, 'generated');
+          const recommendationWithEvaluation = {
+            ...recommendation,
+            source_data: evaluated.sourceData,
+          };
 
-          for (const payload of buildRecommendationInsertVariants(recommendation)) {
+          for (const payload of buildRecommendationInsertVariants(recommendationWithEvaluation)) {
             const { data, error } = await supabase
               .from('recommendations')
               .insert(payload)
@@ -1163,6 +1216,13 @@ export class RecommendationsEngine {
 
           if (insertedRow) {
             insertedResults.push(insertedRow);
+            await persistAIEvaluationEvent({
+              ...buildRecommendationEvaluationEvent({
+                recommendation: insertedRow,
+                phase: 'generated',
+              }),
+              organization_id: insertedRow.organization_id ?? evaluated.event.organization_id,
+            });
             continue;
           }
 
@@ -1773,21 +1833,29 @@ export class RecommendationsEngine {
 
   async startRecommendation(id: string, assignedTo?: string): Promise<boolean> {
     const existing = await this.getRecommendationById(id);
+    if (!existing) return false;
+    const evaluated = appendRecommendationEvaluation(existing, 'started', {
+      sourceData: appendLifecycleEvent(existing.source_data, {
+        event: 'started',
+        at: new Date().toISOString(),
+        actor_id: this.userId
+      }),
+    });
 
     const updates: any = {
       status: 'in_progress',
       updated_at: new Date().toISOString(),
-      source_data: appendLifecycleEvent(existing?.source_data, {
-        event: 'started',
-        at: new Date().toISOString(),
-        actor_id: this.userId
-      })
+      source_data: evaluated.sourceData,
     };
     if (assignedTo) updates.assigned_to = assignedTo;
 
-    const { error } = await this.updateRecommendationById(id, updates);
+    const { data, error } = await this.updateRecommendationById(id, updates);
 
     if (!error) {
+      await persistAIEvaluationEvent({
+        ...evaluated.event,
+        organization_id: data?.organization_id ?? existing.organization_id ?? evaluated.event.organization_id,
+      });
       await this.syncLinkedActionItems(id, ['aim-source:recommendation', 'aim-outcome:monitoring', 'aim-verification:pending'], {
         status: 'in_progress',
         progress: 35,
@@ -1807,30 +1875,43 @@ export class RecommendationsEngine {
       true,
       linkedActions
     );
+    const completedSourceData = {
+      ...appendLifecycleEvent(existing.source_data, {
+      event: 'completed',
+      at: new Date().toISOString(),
+      actor_id: this.userId,
+      note: notes || actualImpact
+      }),
+      verification_feedback: {
+        direction: 'positive',
+        evidence_strength: learningFeedback.evidenceStrength.toLowerCase(),
+        evidence_summary: learningFeedback.evidenceSummary,
+        reliability_delta: learningFeedback.delta,
+        verification_status: learningFeedback.verificationStatus,
+        linked_action_count: linkedActions.length,
+        max_linked_progress: linkedActions.reduce((max, item) => Math.max(max, item.progress || 0), 0),
+        verified_at: new Date().toISOString(),
+      },
+      verified_outcome_count: Number(existing.source_data?.verified_outcome_count || 0) + 1,
+      linked_execution_count: linkedActions.length,
+    };
+    const evaluated = appendRecommendationEvaluation(
+      { ...existing, confidence_score: learningFeedback.adjustedConfidence },
+      'outcome_positive',
+      {
+        sourceData: completedSourceData,
+        outcome: 'positive',
+        evidenceSummary: learningFeedback.evidenceSummary,
+        linkedExecutionCount: linkedActions.length,
+      }
+    );
 
     const updates: any = {
       status: 'completed',
       completed_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       confidence_score: learningFeedback.adjustedConfidence,
-      source_data: {
-        ...appendLifecycleEvent(existing.source_data, {
-        event: 'completed',
-        at: new Date().toISOString(),
-        actor_id: this.userId,
-        note: notes || actualImpact
-        }),
-        verification_feedback: {
-          direction: 'positive',
-          evidence_strength: learningFeedback.evidenceStrength.toLowerCase(),
-          evidence_summary: learningFeedback.evidenceSummary,
-          reliability_delta: learningFeedback.delta,
-          verification_status: learningFeedback.verificationStatus,
-          linked_action_count: linkedActions.length,
-          max_linked_progress: linkedActions.reduce((max, item) => Math.max(max, item.progress || 0), 0),
-          verified_at: new Date().toISOString(),
-        },
-      }
+      source_data: evaluated.sourceData,
     };
     if (actualImpact) updates.actual_impact = actualImpact;
     if (notes) updates.implementation_notes = notes;
@@ -1838,6 +1919,10 @@ export class RecommendationsEngine {
     const { error } = await this.updateRecommendationById(id, updates);
 
     if (!error) {
+      await persistAIEvaluationEvent({
+        ...evaluated.event,
+        organization_id: existing.organization_id ?? evaluated.event.organization_id,
+      });
       await this.syncLinkedActionItems(
         id,
         [
@@ -1866,6 +1951,36 @@ export class RecommendationsEngine {
       false,
       linkedActions
     );
+    const dismissedSourceData = {
+      ...appendLifecycleEvent(existing.source_data, {
+      event: 'dismissed',
+      at: new Date().toISOString(),
+      actor_id: this.userId,
+      note: reason
+      }),
+      verification_feedback: {
+        direction: 'negative',
+        evidence_strength: learningFeedback.evidenceStrength.toLowerCase(),
+        evidence_summary: learningFeedback.evidenceSummary,
+        reliability_delta: learningFeedback.delta,
+        verification_status: learningFeedback.verificationStatus,
+        linked_action_count: linkedActions.length,
+        max_linked_progress: linkedActions.reduce((max, item) => Math.max(max, item.progress || 0), 0),
+        verified_at: new Date().toISOString(),
+      },
+      verified_outcome_count: Number(existing.source_data?.verified_outcome_count || 0) + 1,
+      linked_execution_count: linkedActions.length,
+    };
+    const evaluated = appendRecommendationEvaluation(
+      { ...existing, confidence_score: learningFeedback.adjustedConfidence },
+      'outcome_negative',
+      {
+        sourceData: dismissedSourceData,
+        outcome: 'negative',
+        evidenceSummary: learningFeedback.evidenceSummary,
+        linkedExecutionCount: linkedActions.length,
+      }
+    );
 
     const { error } = await this.updateRecommendationById(id, {
         status: 'dismissed',
@@ -1873,27 +1988,14 @@ export class RecommendationsEngine {
         dismissed_reason: reason,
         updated_at: new Date().toISOString(),
         confidence_score: learningFeedback.adjustedConfidence,
-        source_data: {
-          ...appendLifecycleEvent(existing.source_data, {
-          event: 'dismissed',
-          at: new Date().toISOString(),
-          actor_id: this.userId,
-          note: reason
-          }),
-          verification_feedback: {
-            direction: 'negative',
-            evidence_strength: learningFeedback.evidenceStrength.toLowerCase(),
-            evidence_summary: learningFeedback.evidenceSummary,
-            reliability_delta: learningFeedback.delta,
-            verification_status: learningFeedback.verificationStatus,
-            linked_action_count: linkedActions.length,
-            max_linked_progress: linkedActions.reduce((max, item) => Math.max(max, item.progress || 0), 0),
-            verified_at: new Date().toISOString(),
-          },
-        }
+        source_data: evaluated.sourceData,
       });
 
     if (!error) {
+      await persistAIEvaluationEvent({
+        ...evaluated.event,
+        organization_id: existing.organization_id ?? evaluated.event.organization_id,
+      });
       await this.syncLinkedActionItems(id, ['aim-source:recommendation', 'aim-outcome:at_risk', `aim-evidence:${learningFeedback.evidenceStrength.toLowerCase()}`, 'aim-verification:complete'], {
         status: 'on_hold',
       });
