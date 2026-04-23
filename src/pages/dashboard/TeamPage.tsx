@@ -5,10 +5,12 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip, BarChart, Ba
 import { exportToPDF, exportToCSV, exportToExcel, exportChartAsImage, downloadTemplate } from '../../utils/exportUtils';
 import { useToast } from '../../hooks/useToast';
 import ConfirmDialog from '../../components/common/ConfirmDialog';
+import { buildAccessProfile } from '../../services/accessControl';
 
 interface TeamMember {
   id: string;
-  user_id: string;
+  record_type: 'member' | 'invitation';
+  user_id?: string | null;
   organization_id: string;
   email: string;
   full_name: string;
@@ -32,6 +34,21 @@ interface TeamMember {
   created_at: string;
 }
 
+interface OrganizationInvitation {
+  id: string;
+  organization_id: string;
+  email: string;
+  full_name: string | null;
+  role: TeamMember['role'];
+  department: string | null;
+  job_title: string | null;
+  permissions: TeamMember['permissions'];
+  status: 'pending';
+  invited_at: string;
+  invited_by: string | null;
+  created_at: string;
+}
+
 interface InviteForm {
   email: string;
   full_name: string;
@@ -42,8 +59,9 @@ interface InviteForm {
 }
 
 const TeamPage: React.FC = () => {
-  const { user, organizationId } = useAuth();
+  const { user, organizationId, userRole, userPermissions } = useAuth();
   const { showToast } = useToast();
+  const access = buildAccessProfile(userRole, userPermissions);
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -113,7 +131,7 @@ const TeamPage: React.FC = () => {
     try {
       setLoading(true);
       
-      // Fetch user_organizations data
+      // Fetch actual organization memberships
       const { data: userOrgs, error: userOrgsError } = await supabase
         .from('user_organizations')
         .select('*')
@@ -138,14 +156,25 @@ const TeamPage: React.FC = () => {
         }
       }
 
+      // Fetch pending invitations separately so we don't fake them as memberships
+      const { data: invitations, error: invitationsError } = await supabase
+        .from('organization_invitations')
+        .select('*')
+        .eq('organization_id', organizationId)
+        .eq('status', 'pending')
+        .order('invited_at', { ascending: false });
+
+      if (invitationsError) throw invitationsError;
+
       // Create a map of user profiles for quick lookup
       const profileMap = new Map(userProfiles.map(p => [p.id, p]));
 
-      // Format members with profile data
+      // Format active/inactive members with profile data
       const formattedMembers = userOrgs?.map(member => {
         const profile = profileMap.get(member.user_id);
         return {
           id: member.id,
+          record_type: 'member' as const,
           user_id: member.user_id,
           organization_id: member.organization_id,
           email: member.email || '',
@@ -165,7 +194,24 @@ const TeamPage: React.FC = () => {
         };
       }) || [];
 
-      setMembers(formattedMembers);
+      const formattedInvitations = ((invitations || []) as OrganizationInvitation[]).map((invite) => ({
+        id: invite.id,
+        record_type: 'invitation' as const,
+        user_id: null,
+        organization_id: invite.organization_id,
+        email: invite.email,
+        full_name: invite.full_name || invite.email,
+        role: invite.role,
+        department: invite.department || undefined,
+        job_title: invite.job_title || undefined,
+        status: 'pending' as const,
+        permissions: invite.permissions || rolePermissions[invite.role],
+        invited_at: invite.invited_at,
+        invited_by: invite.invited_by || undefined,
+        created_at: invite.created_at,
+      }));
+
+      setMembers([...formattedInvitations, ...formattedMembers]);
     } catch (error) {
       console.error('Error fetching team members:', error);
       showToast('Failed to load team members', 'error');
@@ -176,10 +222,15 @@ const TeamPage: React.FC = () => {
 
   const handleInviteMember = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!access.canManageTeam) {
+      showToast('Only approved operational roles can invite team members.', 'error');
+      return;
+    }
     try {
-      const { error } = await supabase.from('user_organizations').insert({
+      const { error } = await supabase.from('organization_invitations').insert({
         organization_id: organizationId,
         email: inviteForm.email,
+        full_name: inviteForm.full_name,
         role: inviteForm.role,
         department: inviteForm.department,
         job_title: inviteForm.job_title,
@@ -191,6 +242,24 @@ const TeamPage: React.FC = () => {
 
       if (error) throw error;
 
+      const { error: auditError } = await supabase.from('audit_logs').insert({
+        organization_id: organizationId,
+        user_id: user?.id,
+        action: 'team.invitation.sent',
+        entity_type: 'organization_invitation',
+        details: {
+          email: inviteForm.email,
+          role: inviteForm.role,
+          department: inviteForm.department || null,
+        },
+        severity: 'info',
+        status: 'success',
+      });
+
+      if (auditError) {
+        console.error('Error writing invitation audit log:', auditError);
+      }
+
       setShowInviteModal(false);
       setInviteForm({
         email: '',
@@ -201,19 +270,42 @@ const TeamPage: React.FC = () => {
         message: '',
       });
       fetchTeamMembers();
-      showToast('Invitation sent successfully!', 'success');
+      showToast('Invitation recorded successfully. The user can now sign up or sign in with that email to claim access.', 'success');
     } catch (error) {
       console.error('Error inviting member:', error);
-      showToast('Failed to send invitation', 'error');
+      const errorMessage = error instanceof Error ? error.message : 'Unknown invitation error';
+      showToast(`Failed to send invitation: ${errorMessage}`, 'error');
     }
   };
 
   const handleUpdateMember = async (memberId: string, updates: Partial<TeamMember>) => {
+    if (!access.canManageTeam) {
+      showToast('You do not have permission to update team members.', 'error');
+      return;
+    }
     try {
-      const { error } = await supabase
-        .from('user_organizations')
-        .update(updates)
-        .eq('id', memberId);
+      const selected = members.find((member) => member.id === memberId);
+      if (!selected) throw new Error('Selected member not found');
+
+      const payload = {
+        role: updates.role,
+        status: updates.status,
+        department: updates.department,
+        job_title: updates.job_title,
+        permissions: updates.permissions,
+      };
+
+      const query =
+        selected.record_type === 'invitation'
+          ? supabase.from('organization_invitations').update({
+              role: payload.role,
+              department: payload.department,
+              job_title: payload.job_title,
+              permissions: payload.permissions,
+            })
+          : supabase.from('user_organizations').update(payload);
+
+      const { error } = await query.eq('id', memberId);
 
       if (error) throw error;
       fetchTeamMembers();
@@ -226,9 +318,14 @@ const TeamPage: React.FC = () => {
 
   const handleUpdatePermissions = async () => {
     if (!selectedMember) return;
+    if (!access.canManageTeam) {
+      showToast('You do not have permission to change member permissions.', 'error');
+      return;
+    }
     try {
+      const targetTable = selectedMember.record_type === 'invitation' ? 'organization_invitations' : 'user_organizations';
       const { error } = await supabase
-        .from('user_organizations')
+        .from(targetTable)
         .update({ permissions: selectedMember.permissions })
         .eq('id', selectedMember.id);
 
@@ -243,6 +340,10 @@ const TeamPage: React.FC = () => {
   };
 
   const handleRemoveMember = async (memberId: string) => {
+    if (!access.canManageTeam) {
+      showToast('You do not have permission to remove team members.', 'error');
+      return;
+    }
     setMemberToDelete(memberId);
     setShowDeleteConfirm(true);
   };
@@ -251,14 +352,18 @@ const TeamPage: React.FC = () => {
     if (!memberToDelete) return;
     
     try {
+      const selected = members.find((member) => member.id === memberToDelete);
+      if (!selected) throw new Error('Selected member not found');
+
+      const targetTable = selected.record_type === 'invitation' ? 'organization_invitations' : 'user_organizations';
       const { error } = await supabase
-        .from('user_organizations')
+        .from(targetTable)
         .delete()
         .eq('id', memberToDelete);
 
       if (error) throw error;
       fetchTeamMembers();
-      showToast('Team member removed successfully', 'success');
+      showToast(selected.record_type === 'invitation' ? 'Invitation revoked successfully' : 'Team member removed successfully', 'success');
     } catch (error) {
       console.error('Error removing member:', error);
       showToast('Failed to remove member', 'error');
@@ -351,10 +456,10 @@ const TeamPage: React.FC = () => {
   });
 
   const stats = {
-    total: members.length,
-    active: members.filter(m => m.status === 'active').length,
+    total: members.filter((m) => m.record_type === 'member').length,
+    active: members.filter(m => m.record_type === 'member' && m.status === 'active').length,
     pending: members.filter(m => m.status === 'pending').length,
-    admins: members.filter(m => ['owner', 'admin'].includes(m.role)).length,
+    admins: members.filter(m => m.record_type === 'member' && ['owner', 'admin'].includes(m.role)).length,
   };
 
   const getRoleBadgeColor = (role: string) => {
@@ -430,8 +535,13 @@ const TeamPage: React.FC = () => {
               <span className="hidden sm:inline">Excel</span>
             </button>
             <button
-              onClick={() => setShowInviteModal(true)}
-              className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 flex items-center gap-2"
+              onClick={() => access.canManageTeam && setShowInviteModal(true)}
+              disabled={!access.canManageTeam}
+              className={`px-4 py-2 rounded-lg flex items-center gap-2 ${
+                access.canManageTeam
+                  ? 'bg-teal-600 text-white hover:bg-teal-700'
+                  : 'cursor-not-allowed bg-slate-200 text-slate-500'
+              }`}
             >
               <i className="ri-user-add-line"></i>
               Invite Member
@@ -439,6 +549,12 @@ const TeamPage: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {!access.canManageTeam && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          Team membership is visible to you, but invites, role changes, and permission edits are limited to approved operational roles.
+        </div>
+      )}
 
       {/* Statistics */}
       <div className="grid grid-cols-4 gap-4">
@@ -602,6 +718,12 @@ const TeamPage: React.FC = () => {
                   Last active: {new Date(member.last_active_at).toLocaleDateString()}
                 </div>
               )}
+              {!member.last_active_at && member.invited_at && member.record_type === 'invitation' && (
+                <div className="text-sm text-gray-600">
+                  <i className="ri-mail-send-line mr-2"></i>
+                  Invited: {new Date(member.invited_at).toLocaleDateString()}
+                </div>
+              )}
             </div>
 
             <div className="flex items-center gap-2 mb-4">
@@ -616,28 +738,42 @@ const TeamPage: React.FC = () => {
             <div className="flex items-center gap-2">
               <button
                 onClick={() => {
-                  setSelectedMember(member);
-                  setShowEditModal(true);
+                  if (access.canManageTeam) {
+                    setSelectedMember(member);
+                    setShowEditModal(true);
+                  }
                 }}
-                className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
+                disabled={!access.canManageTeam}
+                className={`flex-1 px-3 py-2 text-sm border rounded-lg ${
+                  access.canManageTeam ? 'border-gray-300 hover:bg-gray-50' : 'cursor-not-allowed border-gray-200 text-gray-400'
+                }`}
               >
                 Edit
               </button>
               <button
                 onClick={() => {
-                  setSelectedMember(member);
-                  setShowPermissionsModal(true);
+                  if (access.canManageTeam) {
+                    setSelectedMember(member);
+                    setShowPermissionsModal(true);
+                  }
                 }}
-                className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
+                disabled={!access.canManageTeam}
+                className={`flex-1 px-3 py-2 text-sm border rounded-lg ${
+                  access.canManageTeam ? 'border-gray-300 hover:bg-gray-50' : 'cursor-not-allowed border-gray-200 text-gray-400'
+                }`}
               >
                 Permissions
               </button>
-              {member.role !== 'owner' && (
+              {(member.record_type === 'invitation' || member.role !== 'owner') && (
                 <button
                   onClick={() => handleRemoveMember(member.id)}
-                  className="px-3 py-2 text-sm text-red-600 border border-red-300 rounded-lg hover:bg-red-50"
+                  disabled={!access.canManageTeam}
+                  className={`px-3 py-2 text-sm border rounded-lg ${
+                    access.canManageTeam ? 'text-red-600 border-red-300 hover:bg-red-50' : 'cursor-not-allowed text-red-300 border-red-200'
+                  }`}
+                  title={member.record_type === 'invitation' ? 'Revoke invitation' : 'Remove member'}
                 >
-                  <i className="ri-delete-bin-line"></i>
+                  <i className={member.record_type === 'invitation' ? 'ri-close-circle-line' : 'ri-delete-bin-line'}></i>
                 </button>
               )}
             </div>
@@ -770,18 +906,20 @@ const TeamPage: React.FC = () => {
                   <option value="owner">Owner</option>
                 </select>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-                <select
-                  value={selectedMember.status}
-                  onChange={(e) => setSelectedMember({ ...selectedMember, status: e.target.value as TeamMember['status'] })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                >
-                  <option value="active">Active</option>
-                  <option value="inactive">Inactive</option>
-                  <option value="pending">Pending</option>
-                </select>
-              </div>
+              {selectedMember.record_type === 'member' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                  <select
+                    value={selectedMember.status}
+                    onChange={(e) => setSelectedMember({ ...selectedMember, status: e.target.value as TeamMember['status'] })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  >
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                    <option value="pending">Pending</option>
+                  </select>
+                </div>
+              )}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Department</label>
                 <input

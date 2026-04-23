@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import type { Organization } from '../lib/supabase';
+import type { PermissionMatrix } from '../services/accessControl';
 
 interface AuthContextType {
   user: User | null;
@@ -9,6 +10,7 @@ interface AuthContextType {
   organization: Organization | null;
   organizationId: string | null;
   userRole: string | null;
+  userPermissions: PermissionMatrix | null;
   connectionError: string | null;
   signUp: (email: string, password: string, fullName: string) => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
@@ -20,11 +22,24 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+interface PendingInvitation {
+  id: string;
+  organization_id: string;
+  full_name: string | null;
+  role: string;
+  department: string | null;
+  job_title: string | null;
+  permissions: PermissionMatrix | null;
+  invited_at: string;
+  invited_by: string | null;
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [organization, setOrganization] = useState<Organization | null>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
+  const [userPermissions, setUserPermissions] = useState<PermissionMatrix | null>(null);
   const [connectionError, setConnectionError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -33,10 +48,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
       if (session?.user) {
-        loadUserOrganization(session.user.id);
+        loadUserOrganization(session.user);
       } else {
         setOrganization(null);
         setUserRole(null);
+        setUserPermissions(null);
         setLoading(false);
       }
     });
@@ -58,7 +74,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       setUser(session?.user ?? null);
       if (session?.user) {
-        await loadUserOrganization(session.user.id);
+        await loadUserOrganization(session.user);
       } else {
         setLoading(false);
       }
@@ -69,60 +85,177 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const loadUserOrganization = async (userId: string) => {
-    try {
-      // First, ensure user profile exists
-      const { data: existingProfile, error: profileError } = await supabase
+  const ensureUserProfile = async (user: User, preferredFullName?: string | null) => {
+    const userId = user.id;
+
+    const { data: existingProfile, error: profileError } = await supabase
+      .from('user_profiles')
+      .select('id, full_name')
+      .eq('id', userId)
+      .maybeSingle();
+
+    if (profileError) {
+      const isNetworkError =
+        profileError.message?.includes('Failed to fetch') ||
+        profileError.message?.includes('NetworkError') ||
+        profileError.message?.includes('fetch');
+
+      if (isNetworkError) {
+        setConnectionError('Unable to reach the database. Please check your internet connection and try again.');
+        throw profileError;
+      }
+
+      throw profileError;
+    }
+
+    const fallbackName =
+      preferredFullName?.trim() ||
+      (typeof user.user_metadata?.full_name === 'string' ? user.user_metadata.full_name : null) ||
+      user.email?.split('@')[0] ||
+      'User';
+
+    if (!existingProfile) {
+      const { error: insertError } = await supabase
         .from('user_profiles')
-        .select('id')
-        .eq('id', userId)
-        .maybeSingle();
+        .insert({
+          id: userId,
+          full_name: fallbackName,
+        });
 
-      if (profileError) {
-        const isNetworkError =
-          profileError.message?.includes('Failed to fetch') ||
-          profileError.message?.includes('NetworkError') ||
-          profileError.message?.includes('fetch');
-
-        if (isNetworkError) {
-          setConnectionError('Unable to reach the database. Please check your internet connection and try again.');
-          setLoading(false);
-          return;
-        }
-
-        console.error('Error checking user profile:', profileError);
-        setLoading(false);
-        return;
+      if (insertError && insertError.code !== '23505') {
+        throw insertError;
       }
 
-      // If no profile exists, create one
-      if (!existingProfile) {
-        console.log('Creating missing user profile...');
-        const { error: insertError } = await supabase
-          .from('user_profiles')
-          .insert({
-            id: userId,
-            full_name: 'User',
-          });
+      return;
+    }
 
-        if (insertError && insertError.code !== '23505') {
-          console.error('Error creating user profile:', insertError);
-        }
+    if ((!existingProfile.full_name || existingProfile.full_name === 'User') && fallbackName) {
+      const { error: updateError } = await supabase
+        .from('user_profiles')
+        .update({ full_name: fallbackName })
+        .eq('id', userId);
+
+      if (updateError) {
+        console.error('Error updating user profile name:', updateError);
       }
+    }
+  };
 
-      // Then load organization
-      const { data: userOrgs, error: orgError } = await supabase
+  const claimPendingInvitation = async (user: User) => {
+    if (!user.email) return false;
+
+    const { data: invitation, error: invitationError } = await supabase
+      .from('organization_invitations')
+      .select('id, organization_id, full_name, role, department, job_title, permissions, invited_at, invited_by')
+      .ilike('email', user.email)
+      .eq('status', 'pending')
+      .order('invited_at', { ascending: false })
+      .limit(1)
+      .maybeSingle<PendingInvitation>();
+
+    if (invitationError) {
+      console.error('Error loading pending invitation:', invitationError);
+      return false;
+    }
+
+    if (!invitation) return false;
+
+    await ensureUserProfile(user, invitation.full_name);
+
+    const membershipPayload = {
+      user_id: user.id,
+      organization_id: invitation.organization_id,
+      role: invitation.role,
+      department: invitation.department,
+      job_title: invitation.job_title,
+      status: 'active',
+      permissions: invitation.permissions,
+      email: user.email,
+      invited_at: invitation.invited_at,
+      invited_by: invitation.invited_by,
+      joined_at: new Date().toISOString(),
+    };
+
+    const { error: membershipError } = await supabase
+      .from('user_organizations')
+      .insert(membershipPayload);
+
+    if (membershipError && membershipError.code !== '23505') {
+      console.error('Error claiming invitation membership:', membershipError);
+      return false;
+    }
+
+    const { error: invitationUpdateError } = await supabase
+      .from('organization_invitations')
+      .update({
+        status: 'accepted',
+        accepted_by: user.id,
+        accepted_at: new Date().toISOString(),
+      })
+      .eq('id', invitation.id);
+
+    if (invitationUpdateError) {
+      console.error('Error marking invitation accepted:', invitationUpdateError);
+    }
+
+    const { error: auditError } = await supabase.from('audit_logs').insert({
+      organization_id: invitation.organization_id,
+      user_id: user.id,
+      action: 'team.invitation.accepted',
+      entity_type: 'organization_invitation',
+      entity_id: invitation.id,
+      details: {
+        role: invitation.role,
+        email: user.email,
+      },
+      severity: 'info',
+      status: 'success',
+    });
+
+    if (auditError) {
+      console.error('Error writing invitation acceptance audit log:', auditError);
+    }
+
+    return true;
+  };
+
+  const loadUserOrganization = async (user: User) => {
+    try {
+      await ensureUserProfile(user);
+
+      let { data: userOrgs, error: orgError } = await supabase
         .from('user_organizations')
         .select('*, organizations(*)')
-        .eq('user_id', userId)
+        .eq('user_id', user.id)
         .limit(1)
         .maybeSingle();
 
+      if (!userOrgs && user.email) {
+        await claimPendingInvitation(user);
+
+        const retryResult = await supabase
+          .from('user_organizations')
+          .select('*, organizations(*)')
+          .eq('user_id', user.id)
+          .limit(1)
+          .maybeSingle();
+
+        userOrgs = retryResult.data;
+        orgError = retryResult.error;
+      }
+
       if (orgError) {
         console.error('Error loading organization:', orgError);
-      } else if (userOrgs) {
+      }
+
+      if (userOrgs) {
         setOrganization(userOrgs.organizations as Organization);
         setUserRole(userOrgs.role);
+        setUserPermissions((userOrgs.permissions as PermissionMatrix | null) ?? null);
+      } else {
+        setOrganization(null);
+        setUserRole(null);
+        setUserPermissions(null);
       }
     } catch (error: any) {
       const isNetworkError =
@@ -204,6 +337,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (error) throw error;
     setOrganization(null);
     setUserRole(null);
+    setUserPermissions(null);
   };
 
   const resetPassword = async (email: string) => {
@@ -236,6 +370,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         organization,
         organizationId: organization?.id || null,
         userRole,
+        userPermissions,
         connectionError,
         signUp,
         signIn,
